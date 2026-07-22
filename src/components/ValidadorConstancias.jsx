@@ -4,6 +4,54 @@ import jsPDF from 'jspdf'
 
 const PREFIJO = 'TNM-054-'
 
+// Sonidos generados con Web Audio API (sin depender de archivos .mp3/.wav
+// que podrían faltar en el deploy).
+function reproducirSonidoExito() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const notas = [523.25, 659.25, 783.99] // Do-Mi-Sol, tipo "campanita"
+    notas.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      const inicio = ctx.currentTime + i * 0.12
+      gain.gain.setValueAtTime(0, inicio)
+      gain.gain.linearRampToValueAtTime(0.25, inicio + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, inicio + 0.5)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(inicio)
+      osc.stop(inicio + 0.5)
+    })
+  } catch (e) {
+    // Si el navegador bloquea audio sin interacción previa, no rompe la app
+  }
+}
+
+function reproducirSonidoError() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    const notas = [220, 174.61] // dos tonos graves descendentes, tipo "buzz"
+    notas.forEach((freq, i) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'square'
+      osc.frequency.value = freq
+      const inicio = ctx.currentTime + i * 0.18
+      gain.gain.setValueAtTime(0, inicio)
+      gain.gain.linearRampToValueAtTime(0.15, inicio + 0.02)
+      gain.gain.exponentialRampToValueAtTime(0.001, inicio + 0.3)
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(inicio)
+      osc.stop(inicio + 0.3)
+    })
+  } catch (e) {
+    // Si el navegador bloquea audio sin interacción previa, no rompe la app
+  }
+}
+
 export default function ValidadorConstancias({ onVolver }) {
   const [query, setQuery] = useState('')
   const [buscando, setBuscando] = useState(false)
@@ -38,10 +86,12 @@ export default function ValidadorConstancias({ onVolver }) {
     if (error || !data || data.length === 0) {
       setResultado(null)
       setEstado('no_encontrado')
+      reproducirSonidoError()
       return
     }
     setResultado(data[0])
     setEstado('encontrado')
+    reproducirSonidoExito()
   }
 
   function descargarComprobante() {
