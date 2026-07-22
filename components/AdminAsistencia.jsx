@@ -64,17 +64,6 @@ export default function AdminAsistencia() {
     setGuardandoId(null)
   }
 
-  async function cancelarInscripcion(ins) {
-    if (!confirm(`¿Cancelar la inscripción de ${ins.docentes?.nombre_completo} en este curso?`)) return
-    setGuardandoId(ins.id)
-    await supabase
-      .from('inscripciones')
-      .update({ estado: 'cancelado', fecha_cancelacion: new Date().toISOString() })
-      .eq('id', ins.id)
-    setInscritos((prev) => prev.map((i) => (i.id === ins.id ? { ...i, estado: 'cancelado' } : i)))
-    setGuardandoId(null)
-  }
-
   const cursoSeleccionado = cursos.find((c) => c.id === cursoId)
 
   return (
@@ -174,13 +163,6 @@ export default function AdminAsistencia() {
                     }`}
                   >
                     No Activo
-                  </button>
-                  <button
-                    onClick={() => cancelarInscripcion(ins)}
-                    disabled={guardandoId === ins.id}
-                    className="rounded-lg px-3 py-1.5 text-xs font-medium border border-gray-300 text-gray-500 hover:bg-gray-50"
-                  >
-                    Cancelar
                   </button>
                 </div>
               )}

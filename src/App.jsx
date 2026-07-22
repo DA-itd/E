@@ -6,8 +6,11 @@ import BarraSeccion from './components/BarraSeccion'
 import InscripcionWizard from './components/InscripcionWizard'
 import MisInscripciones from './components/MisInscripciones'
 import DescargaConstancias from './components/DescargaConstancias'
+import HistorialCursos from './components/HistorialCursos'
 import AdminAsistencia from './components/AdminAsistencia'
+import AdminBuscarDocente from './components/AdminBuscarDocente'
 import AdminAdministradores from './components/AdminAdministradores'
+import ValidadorConstancias from './components/ValidadorConstancias'
 
 export default function App() {
   const [sesion, setSesion] = useState(undefined) // undefined = cargando, null = sin sesión
@@ -20,6 +23,8 @@ export default function App() {
   const [subTabAdmin, setSubTabAdmin] = useState('asistencia') // 'asistencia' | 'administradores'
   const [pasoInicialWizard, setPasoInicialWizard] = useState(1)
 
+  const [hashActual, setHashActual] = useState(window.location.hash)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       manejarSesion(data.session)
@@ -29,7 +34,15 @@ export default function App() {
       manejarSesion(session)
     })
 
-    return () => listener.subscription.unsubscribe()
+    function alCambiarHash() {
+      setHashActual(window.location.hash)
+    }
+    window.addEventListener('hashchange', alCambiarHash)
+
+    return () => {
+      listener.subscription.unsubscribe()
+      window.removeEventListener('hashchange', alCambiarHash)
+    }
   }, [])
 
   async function manejarSesion(session) {
@@ -77,6 +90,17 @@ export default function App() {
   function irAInscribirmeOtroCurso() {
     setPasoInicialWizard(2)
     setSubTabInscripcion('wizard')
+  }
+
+  if (hashActual.startsWith('#validar')) {
+    return (
+      <ValidadorConstancias
+        onVolver={() => {
+          window.location.hash = ''
+          setHashActual('')
+        }}
+      />
+    )
   }
 
   if (sesion === undefined) {
@@ -167,6 +191,15 @@ export default function App() {
         </>
       )}
 
+      {seccion === 'historial' && (
+        <>
+          <BarraSeccion titulo="Historial de Cursos" onMenu={irAMenu} />
+          <main className="max-w-5xl mx-auto px-4 py-8">
+            <HistorialCursos docente={docente} />
+          </main>
+        </>
+      )}
+
       {seccion === 'constancias' && (
         <>
           <BarraSeccion titulo="Descarga de Constancias" onMenu={irAMenu} />
@@ -182,6 +215,7 @@ export default function App() {
             titulo="Administración"
             subTabs={[
               { id: 'asistencia', label: 'Asistencia' },
+              { id: 'buscar', label: 'Buscar Docente' },
               { id: 'administradores', label: 'Administradores' },
             ]}
             tabActiva={subTabAdmin}
@@ -189,7 +223,13 @@ export default function App() {
             onMenu={irAMenu}
           />
           <main className="max-w-5xl mx-auto px-4 py-8">
-            {subTabAdmin === 'asistencia' ? <AdminAsistencia /> : <AdminAdministradores />}
+            {subTabAdmin === 'asistencia' ? (
+              <AdminAsistencia />
+            ) : subTabAdmin === 'buscar' ? (
+              <AdminBuscarDocente />
+            ) : (
+              <AdminAdministradores />
+            )}
           </main>
         </>
       )}

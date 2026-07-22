@@ -57,18 +57,6 @@ export default function Login() {
         {error && (
           <p className="mt-4 text-sm text-itd-guinda">{error}</p>
         )}
-
-        <div className="mt-6 pt-6 border-t border-itd-navy/10">
-          <p className="text-xs text-itd-navyDark/50 mb-3">
-            ¿Eres de Recursos Humanos o necesitas verificar un documento?
-          </p>
-          <a
-            href="#validar"
-            className="w-full flex items-center justify-center gap-2 rounded-lg border-2 border-itd-guinda/30 bg-itd-guinda/5 px-4 py-3 text-sm font-semibold text-itd-guinda hover:bg-itd-guinda/10 transition-colors"
-          >
-            🔍 Validar una Constancia
-          </a>
-        </div>
       </div>
       <PieDerechos />
     </div>
