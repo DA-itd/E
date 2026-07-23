@@ -10,6 +10,8 @@ import HistorialCursos from './components/HistorialCursos'
 import AdminAsistencia from './components/AdminAsistencia'
 import AdminBuscarDocente from './components/AdminBuscarDocente'
 import AdminAdministradores from './components/AdminAdministradores'
+import AdminConvocatorias from './components/AdminConvocatorias'
+import AdminReportes from './components/AdminReportes'
 import ValidadorConstancias from './components/ValidadorConstancias'
 
 export default function App() {
@@ -216,6 +218,8 @@ export default function App() {
             subTabs={[
               { id: 'asistencia', label: 'Asistencia' },
               { id: 'buscar', label: 'Buscar Docente' },
+              { id: 'convocatorias', label: 'Convocatorias' },
+              { id: 'reportes', label: 'Reportes' },
               { id: 'administradores', label: 'Administradores' },
             ]}
             tabActiva={subTabAdmin}
@@ -227,6 +231,10 @@ export default function App() {
               <AdminAsistencia />
             ) : subTabAdmin === 'buscar' ? (
               <AdminBuscarDocente />
+            ) : subTabAdmin === 'convocatorias' ? (
+              <AdminConvocatorias />
+            ) : subTabAdmin === 'reportes' ? (
+              <AdminReportes />
             ) : (
               <AdminAdministradores />
             )}
