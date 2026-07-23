@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import jsPDF from 'jspdf'
+import QRCode from 'qrcode'
+import { generarCodigoVerificacion } from '../lib/codigoVerificacion'
 
 const PREFIJO = 'TNM-054-'
+
+// Convierte una imagen (fetch por URL) a base64, formato que jsPDF necesita
+// para doc.addImage().
+async function cargarImagenBase64(url) {
+  const resp = await fetch(url)
+  const buffer = await resp.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binario = ''
+  for (let i = 0; i < bytes.byteLength; i++) binario += String.fromCharCode(bytes[i])
+  return btoa(binario)
+}
 
 // Sonidos generados con Web Audio API (sin depender de archivos .mp3/.wav
 // que podrían faltar en el deploy).
@@ -89,16 +102,25 @@ export default function ValidadorConstancias({ onVolver }) {
       reproducirSonidoError()
       return
     }
-    setResultado(data[0])
+    const resultadoEncontrado = data[0]
+    const codigoVerificacion = generarCodigoVerificacion(
+      resultadoEncontrado.nombre,
+      resultadoEncontrado.fecha_texto,
+      resultadoEncontrado.folio
+    )
+    setResultado({ ...resultadoEncontrado, codigoVerificacion })
     setEstado('encontrado')
     reproducirSonidoExito()
   }
 
-  function descargarComprobante() {
+  async function descargarComprobante() {
     if (!resultado) return
     const doc = new jsPDF('p', 'mm', 'letter')
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
+    const margenIzq = 25
+    const margenDer = 25
+    const anchoUtil = pageWidth - margenIzq - margenDer
 
     // Marca de agua diagonal "VÁLIDO"
     doc.saveGraphicsState()
@@ -107,6 +129,27 @@ export default function ValidadorConstancias({ onVolver }) {
     doc.setFont('helvetica', 'bold')
     doc.text('VÁLIDO', pageWidth / 2, pageHeight / 2, { align: 'center', angle: 35 })
     doc.restoreGraphicsState()
+
+    // Logos institucionales: engrane/TecNM a la izquierda, escudo ITD a la
+    // derecha. Se cargan desde /public/logos/ (mismo patrón que las
+    // plantillas en constancias.js, respetando el "base" de vite.config.js).
+    const BASE = import.meta.env.BASE_URL
+    try {
+      const [logoTecnmB64, logoItdB64] = await Promise.all([
+        cargarImagenBase64(`${BASE}logos/logo-tecnm.jpg`),
+        cargarImagenBase64(`${BASE}logos/logo-itd.jpg`),
+      ])
+      // TecNM es rectangular (aprox. 209x96) -- se respeta su proporción
+      const anchoTecnm = 24
+      const altoTecnm = anchoTecnm * (96 / 209)
+      doc.addImage(logoTecnmB64, 'JPEG', margenIzq, 10, anchoTecnm, altoTecnm)
+      // ITD es circular/cuadrado
+      const tamItd = 18
+      doc.addImage(logoItdB64, 'JPEG', pageWidth - margenDer - tamItd, 10, tamItd, tamItd)
+    } catch (err) {
+      console.error('No se pudieron cargar los logos institucionales:', err)
+      // si fallan, el PDF se genera igual, solo sin logos
+    }
 
     doc.setTextColor(27, 57, 106)
     doc.setFontSize(14)
@@ -121,26 +164,41 @@ export default function ValidadorConstancias({ onVolver }) {
     doc.setFont('helvetica', 'bold')
     doc.text('COMPROBANTE DE VALIDACIÓN DE DOCUMENTO', pageWidth / 2, 45, { align: 'center' })
 
-    let y = 65
+    let y = 62
     const campo = (label, valor) => {
       doc.setTextColor(100)
       doc.setFontSize(9)
       doc.setFont('helvetica', 'bold')
-      doc.text(label, 25, y)
+      doc.text(label, margenIzq, y)
+
       doc.setTextColor(0)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(11)
-      doc.text(String(valor || 'N/A'), 25, y + 6)
-      y += 16
+      // Ajuste de línea real: si el texto no cabe en el ancho disponible,
+      // se parte en varias líneas en vez de desbordarse fuera de la página.
+      const lineas = doc.splitTextToSize(String(valor || 'N/A'), anchoUtil)
+      doc.text(lineas, margenIzq, y + 6)
+      y += 6 + lineas.length * 5.5 + 5
     }
 
     campo('FOLIO', resultado.folio)
+    campo('CÓDIGO DE VERIFICACIÓN', resultado.codigoVerificacion)
     campo('NOMBRE', resultado.nombre)
     campo('CURSO', resultado.curso)
     campo('FECHA', resultado.fecha_texto)
     campo('DEPARTAMENTO', resultado.departamento)
     campo('DURACIÓN', `${resultado.horas} horas`)
     campo('TIPO', resultado.tipo)
+
+    // QR que enlaza de vuelta al validador público con el folio precargado
+    try {
+      const urlValidacion = `${window.location.origin}${import.meta.env.BASE_URL}#validar?folio=${encodeURIComponent(resultado.folio)}`
+      const qrDataUrl = await QRCode.toDataURL(urlValidacion, { margin: 0, width: 256 })
+      const tamQr = 28
+      doc.addImage(qrDataUrl, 'PNG', pageWidth - margenDer - tamQr, y + 2, tamQr, tamQr)
+    } catch (err) {
+      console.error('No se pudo generar el QR del comprobante:', err)
+    }
 
     const hoy = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
     doc.setFontSize(8)
@@ -233,6 +291,11 @@ export default function ValidadorConstancias({ onVolver }) {
             <p className="text-sm text-slate-600 mb-4">
               Folio: <strong className="text-slate-900">{resultado.folio}</strong>
             </p>
+
+            <div className="rounded-lg bg-white/70 border border-green-200 px-3 py-2 mb-4">
+              <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">Código de Verificación</p>
+              <p className="text-sm font-mono font-semibold text-slate-900">{resultado.codigoVerificacion}</p>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-slate-200">
               <Campo label="Nombre" valor={resultado.nombre} />
