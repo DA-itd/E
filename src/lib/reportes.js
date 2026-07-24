@@ -114,6 +114,7 @@ export async function calcularReporte(periodo) {
     .from('inscripciones')
     .select(`
       docente_id,
+      folio_personal,
       docentes ( email, genero, nivel, departamento, nombre_completo ),
       cursos!inner ( id, nombre, tipo, fecha_inicio )
     `)
@@ -126,7 +127,7 @@ export async function calcularReporte(periodo) {
   // --- Fuente 2: histórico 2022-2026 (sin fecha real, solo año + texto) ---
   let queryHistorico = supabase
     .from('inscripciones_historial')
-    .select('email, genero, curso, tipo, folio_curso, anio, departamento, nombre_completo')
+    .select('email, genero, curso, tipo, folio_curso, folio_personal, anio, departamento, nombre_completo')
     .eq('anio', anio)
     .ilike('estado', 'activo')
 
@@ -144,6 +145,7 @@ export async function calcularReporte(periodo) {
     filas.push({
       emailKey: (fila.docentes?.email || '').toLowerCase(),
       nombre: fila.docentes?.nombre_completo || '',
+      folio: fila.folio_personal || '',
       genero: fila.docentes?.genero,
       nivelGrupo: nivelAgrupado(fila.docentes?.nivel),
       tipoCurso: fila.cursos?.tipo,
@@ -158,6 +160,7 @@ export async function calcularReporte(periodo) {
     filas.push({
       emailKey,
       nombre: fila.nombre_completo || '',
+      folio: fila.folio_personal || '',
       genero: fila.genero,
       nivelGrupo: nivelPorEmail.get(emailKey) ?? null,
       tipoCurso: fila.tipo,
@@ -184,9 +187,10 @@ export async function calcularReporte(periodo) {
   const cursosDistintosPorTipo = { Docente: new Set(), Profesional: new Set() }
   const generoPorTipo = { Docente: { Hombre: 0, Mujer: 0 }, Profesional: { Hombre: 0, Mujer: 0 } }
   const participantesPorDocente = new Map() // emailKey -> { nombre, departamento, cursos: Set }
+  const detalleParticipantes = [] // una fila por cada curso tomado (folio, nombre, curso, departamento)
 
   for (const fila of filas) {
-    const { genero, tipoCurso, nivelGrupo, cursoNombre, emailKey, cursoClave, departamento, nombre } = fila
+    const { genero, tipoCurso, nivelGrupo, cursoNombre, emailKey, cursoClave, departamento, nombre, folio } = fila
     const esHabilidadDigital = coincideCategoria(cursoNombre, 'habilidades_digitales')
     const esSaludEmocional = coincideCategoria(cursoNombre, 'salud_emocional')
 
@@ -219,6 +223,10 @@ export async function calcularReporte(periodo) {
         participantesPorDocente.set(emailKey, { nombre, departamento, cursos: new Set() })
       }
       if (cursoNombre) participantesPorDocente.get(emailKey).cursos.add(cursoNombre)
+    }
+
+    if (cursoNombre) {
+      detalleParticipantes.push({ folio, nombre, curso: cursoNombre, departamento })
     }
 
     if (cursoNombre) {
@@ -275,6 +283,9 @@ export async function calcularReporte(periodo) {
   reporte.participantes = [...participantesPorDocente.values()]
     .map((p) => ({ nombre: p.nombre, departamento: p.departamento, cursos: [...p.cursos] }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  reporte.detalleParticipantes = detalleParticipantes.sort(
+    (a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.curso.localeCompare(b.curso, 'es')
+  )
 
   return reporte
 }

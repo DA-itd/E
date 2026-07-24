@@ -91,8 +91,16 @@ export default function AdminReportes() {
     ]
   }
 
+  const NOMBRES_TRIMESTRE = { 1: 'Enero', 2: 'Junio', 3: 'Agosto' }
+
+  function tituloPeriodo() {
+    if (tipoPeriodo === 'anio') return `Año ${anio}`
+    if (tipoPeriodo === 'actual') return 'Periodo actual'
+    return `Trimestre ${trimestre} (${NOMBRES_TRIMESTRE[trimestre]}) ${anio}`
+  }
+
   function participantesFiltrados(r) {
-    return r.participantes.filter((p) => {
+    return r.detalleParticipantes.filter((p) => {
       const coincideDepto = !filtroDepartamento || p.departamento === filtroDepartamento
       const coincideNombre = !busquedaNombre || p.nombre.toLowerCase().includes(busquedaNombre.toLowerCase())
       return coincideDepto && coincideNombre
@@ -102,15 +110,44 @@ export default function AdminReportes() {
   function exportarParticipantesExcel() {
     if (!reporte) return
     const lista = participantesFiltrados(reporte)
+    const tituloDepto = filtroDepartamento || 'Todos los departamentos'
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Nombre', 'Departamento', 'Cursos'],
-      ...lista.map((p) => [p.nombre, p.departamento, p.cursos.join(' / ')]),
+      [`Departamento: ${tituloDepto}`],
+      [`Periodo: ${tituloPeriodo()} (${reporte.rango.inicio} a ${reporte.rango.fin})`],
+      [],
+      ['Folio', 'Nombre', 'Curso'],
+      ...lista.map((p) => [p.folio, p.nombre, p.curso]),
     ])
-    ws['!cols'] = [{ wch: 32 }, { wch: 24 }, { wch: 60 }]
+    ws['!cols'] = [{ wch: 22 }, { wch: 32 }, { wch: 60 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Participantes')
     const sufijo = filtroDepartamento ? `_${filtroDepartamento}` : ''
     XLSX.writeFile(wb, `Participantes_${reporte.rango.inicio}_a_${reporte.rango.fin}${sufijo}.xlsx`)
+  }
+
+  function exportarParticipantesPDF() {
+    if (!reporte) return
+    const lista = participantesFiltrados(reporte)
+    const tituloDepto = filtroDepartamento || 'Todos los departamentos'
+    const doc = new jsPDF()
+    doc.setFontSize(13)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Listado de Participantes', 14, 16)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Departamento: ${tituloDepto}`, 14, 23)
+    doc.text(`Periodo: ${tituloPeriodo()} (${reporte.rango.inicio} a ${reporte.rango.fin})`, 14, 29)
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['Folio', 'Nombre', 'Curso']],
+      body: lista.map((p) => [p.folio, p.nombre, p.curso]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [27, 57, 106] },
+    })
+
+    const sufijo = filtroDepartamento ? `_${filtroDepartamento}` : ''
+    doc.save(`Participantes_${reporte.rango.inicio}_a_${reporte.rango.fin}${sufijo}.pdf`)
   }
 
   function exportarExcel() {
@@ -314,28 +351,40 @@ export default function AdminReportes() {
                   onClick={exportarParticipantesExcel}
                   className="rounded-lg bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
                 >
-                  ⬇ Exportar Excel
+                  ⬇ Excel
+                </button>
+                <button
+                  onClick={exportarParticipantesPDF}
+                  className="rounded-lg bg-itd-guinda text-white px-4 py-2 text-sm font-semibold hover:opacity-90"
+                >
+                  ⬇ PDF
                 </button>
                 <p className="text-sm text-itd-navyDark/60 ml-auto">
-                  {participantesFiltrados(reporte).length} de {reporte.participantes.length} participantes
+                  {participantesFiltrados(reporte).length} de {reporte.detalleParticipantes.length} registros
                 </p>
               </div>
+
+              <p className="text-xs text-itd-navyDark/50">
+                Departamento: <strong>{filtroDepartamento || 'Todos los departamentos'}</strong> · Periodo: <strong>{tituloPeriodo()}</strong>
+              </p>
 
               <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
                 <table className="w-full text-sm border-collapse">
                   <thead className="sticky top-0 bg-white">
                     <tr className="border-b border-itd-navy/20">
+                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Folio</th>
                       <th className="text-left py-2 pr-4 text-itd-navyDark/70">Nombre</th>
-                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Departamento</th>
-                      <th className="text-left py-2 text-itd-navyDark/70">Curso(s)</th>
+                      {!filtroDepartamento && <th className="text-left py-2 pr-4 text-itd-navyDark/70">Departamento</th>}
+                      <th className="text-left py-2 text-itd-navyDark/70">Curso</th>
                     </tr>
                   </thead>
                   <tbody>
                     {participantesFiltrados(reporte).map((p, i) => (
                       <tr key={i} className="border-b border-itd-navy/10">
+                        <td className="py-1.5 pr-4 text-itd-navyDark/70 whitespace-nowrap">{p.folio}</td>
                         <td className="py-1.5 pr-4 text-itd-navyDark">{p.nombre}</td>
-                        <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.departamento}</td>
-                        <td className="py-1.5 text-itd-navyDark/70">{p.cursos.join(' / ')}</td>
+                        {!filtroDepartamento && <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.departamento}</td>}
+                        <td className="py-1.5 text-itd-navyDark/70">{p.curso}</td>
                       </tr>
                     ))}
                   </tbody>
