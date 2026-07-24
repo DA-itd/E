@@ -35,7 +35,9 @@ export default function AdminReportes() {
     setCargando(false)
   }
 
-  const [vista, setVista] = useState('tabla') // 'tabla' | 'graficas'
+  const [vista, setVista] = useState('tabla') // 'tabla' | 'graficas' | 'participantes'
+  const [filtroDepartamento, setFiltroDepartamento] = useState('')
+  const [busquedaNombre, setBusquedaNombre] = useState('')
 
   function filasPlanas(r) {
     return [
@@ -87,6 +89,28 @@ export default function AdminReportes() {
       ['PARTICIPACIÓN POR DEPARTAMENTO', ''],
       ...r.porDepartamento.map((d) => [`  ${d.nombre}`, d.cantidad]),
     ]
+  }
+
+  function participantesFiltrados(r) {
+    return r.participantes.filter((p) => {
+      const coincideDepto = !filtroDepartamento || p.departamento === filtroDepartamento
+      const coincideNombre = !busquedaNombre || p.nombre.toLowerCase().includes(busquedaNombre.toLowerCase())
+      return coincideDepto && coincideNombre
+    })
+  }
+
+  function exportarParticipantesExcel() {
+    if (!reporte) return
+    const lista = participantesFiltrados(reporte)
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['Nombre', 'Departamento', 'Cursos'],
+      ...lista.map((p) => [p.nombre, p.departamento, p.cursos.join(' / ')]),
+    ])
+    ws['!cols'] = [{ wch: 32 }, { wch: 24 }, { wch: 60 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Participantes')
+    const sufijo = filtroDepartamento ? `_${filtroDepartamento}` : ''
+    XLSX.writeFile(wb, `Participantes_${reporte.rango.inicio}_a_${reporte.rango.fin}${sufijo}.xlsx`)
   }
 
   function exportarExcel() {
@@ -236,6 +260,12 @@ export default function AdminReportes() {
               >
                 Gráficas
               </button>
+              <button
+                onClick={() => setVista('participantes')}
+                className={`px-4 py-2 text-sm font-medium ${vista === 'participantes' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+              >
+                Participantes
+              </button>
             </div>
           </div>
 
@@ -252,8 +282,66 @@ export default function AdminReportes() {
                 </tbody>
               </table>
             </div>
-          ) : (
+          ) : vista === 'graficas' ? (
             <ReportesGraficas reporte={reporte} />
+          ) : (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Departamento</label>
+                  <select
+                    value={filtroDepartamento}
+                    onChange={(e) => setFiltroDepartamento(e.target.value)}
+                    className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm min-w-[220px]"
+                  >
+                    <option value="">Todos los departamentos</option>
+                    {reporte.porDepartamento.map((d) => (
+                      <option key={d.nombre} value={d.nombre}>{d.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Buscar por nombre</label>
+                  <input
+                    type="text"
+                    value={busquedaNombre}
+                    onChange={(e) => setBusquedaNombre(e.target.value)}
+                    placeholder="Nombre del docente…"
+                    className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  onClick={exportarParticipantesExcel}
+                  className="rounded-lg bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
+                >
+                  ⬇ Exportar Excel
+                </button>
+                <p className="text-sm text-itd-navyDark/60 ml-auto">
+                  {participantesFiltrados(reporte).length} de {reporte.participantes.length} participantes
+                </p>
+              </div>
+
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="border-b border-itd-navy/20">
+                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Nombre</th>
+                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Departamento</th>
+                      <th className="text-left py-2 text-itd-navyDark/70">Curso(s)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {participantesFiltrados(reporte).map((p, i) => (
+                      <tr key={i} className="border-b border-itd-navy/10">
+                        <td className="py-1.5 pr-4 text-itd-navyDark">{p.nombre}</td>
+                        <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.departamento}</td>
+                        <td className="py-1.5 text-itd-navyDark/70">{p.cursos.join(' / ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       )}
