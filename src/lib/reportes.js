@@ -178,6 +178,9 @@ export async function calcularReporte(periodo) {
   const infoPorDocente = new Map() // emailKey -> { genero, tipos: Set }
   const conteoPorCurso = new Map() // cursoNombre -> cantidad de inscritos
   const conteoPorDepartamento = new Map() // departamento -> cantidad de inscritos
+  const generoPorCurso = new Map() // cursoNombre -> { Hombre, Mujer }
+  const cursosDistintosPorTipo = { Docente: new Set(), Profesional: new Set() }
+  const generoPorTipo = { Docente: { Hombre: 0, Mujer: 0 }, Profesional: { Hombre: 0, Mujer: 0 } }
 
   for (const fila of filas) {
     const { genero, tipoCurso, nivelGrupo, cursoNombre, emailKey, cursoClave, departamento } = fila
@@ -185,7 +188,11 @@ export async function calcularReporte(periodo) {
     const esSaludEmocional = coincideCategoria(cursoNombre, 'salud_emocional')
 
     if (genero === 'Hombre' || genero === 'Mujer') reporte.porGenero[genero]++
-    if (tipoCurso === 'Docente' || tipoCurso === 'Profesional') reporte.porTipo[tipoCurso]++
+    if (tipoCurso === 'Docente' || tipoCurso === 'Profesional') {
+      reporte.porTipo[tipoCurso]++
+      if (cursoClave) cursosDistintosPorTipo[tipoCurso].add(cursoClave)
+      if (genero === 'Hombre' || genero === 'Mujer') generoPorTipo[tipoCurso][genero]++
+    }
 
     if (nivelGrupo) {
       const bucket = nivelGrupo === 'Licenciatura' ? reporte.licenciatura : reporte.posgrado
@@ -206,7 +213,11 @@ export async function calcularReporte(periodo) {
       if (tipoCurso) info.tipos.add(tipoCurso)
     }
 
-    if (cursoNombre) conteoPorCurso.set(cursoNombre, (conteoPorCurso.get(cursoNombre) || 0) + 1)
+    if (cursoNombre) {
+      conteoPorCurso.set(cursoNombre, (conteoPorCurso.get(cursoNombre) || 0) + 1)
+      if (!generoPorCurso.has(cursoNombre)) generoPorCurso.set(cursoNombre, { Hombre: 0, Mujer: 0 })
+      if (genero === 'Hombre' || genero === 'Mujer') generoPorCurso.get(cursoNombre)[genero]++
+    }
     conteoPorDepartamento.set(departamento, (conteoPorDepartamento.get(departamento) || 0) + 1)
   }
 
@@ -242,8 +253,17 @@ export async function calcularReporte(periodo) {
     porGenero: sinParticiparPorGenero,
   }
   reporte.distribucionPorNumeroCursos = distribucion
-  reporte.cursosMasDemandados = top(conteoPorCurso, TOP_CURSOS_DEMANDADOS)
+  reporte.cursosMasDemandados = top(conteoPorCurso, TOP_CURSOS_DEMANDADOS).map((c) => ({
+    ...c,
+    Hombre: generoPorCurso.get(c.nombre)?.Hombre || 0,
+    Mujer: generoPorCurso.get(c.nombre)?.Mujer || 0,
+  }))
   reporte.porDepartamento = top(conteoPorDepartamento, TOP_DEPARTAMENTOS)
+  reporte.cursosDistintosPorTipo = {
+    Docente: cursosDistintosPorTipo.Docente.size,
+    Profesional: cursosDistintosPorTipo.Profesional.size,
+  }
+  reporte.generoPorTipo = generoPorTipo
 
   return reporte
 }

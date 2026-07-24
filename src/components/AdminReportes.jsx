@@ -3,6 +3,7 @@ import { calcularReporte } from '../lib/reportes'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import ReportesGraficas from './ReportesGraficas'
 
 const ANIO_ACTUAL = new Date().getFullYear()
 const ANIOS = Array.from({ length: 6 }, (_, i) => ANIO_ACTUAL - i)
@@ -33,6 +34,8 @@ export default function AdminReportes() {
     }
     setCargando(false)
   }
+
+  const [vista, setVista] = useState('tabla') // 'tabla' | 'graficas'
 
   function filasPlanas(r) {
     return [
@@ -186,6 +189,27 @@ export default function AdminReportes() {
 
       {reporte && (
         <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-itd-navy/10 p-4">
+              <p className="text-2xl font-bold text-itd-navy">{reporte.totalInscripciones}</p>
+              <p className="text-xs text-itd-navyDark/60">Total inscripciones</p>
+            </div>
+            <div className="rounded-xl border border-itd-navy/10 p-4">
+              <p className="text-2xl font-bold text-green-700">{reporte.docentesUnicos}</p>
+              <p className="text-xs text-itd-navyDark/60">Docentes únicos</p>
+            </div>
+            <div className="rounded-xl border border-itd-navy/10 p-4">
+              <p className="text-2xl font-bold text-amber-600">{reporte.porcentajeParticipacion}%</p>
+              <p className="text-xs text-itd-navyDark/60">Cobertura de plantilla</p>
+            </div>
+            <div className="rounded-xl border border-itd-navy/10 p-4">
+              <p className="text-2xl font-bold text-itd-guinda">{reporte.sinParticipar.total}</p>
+              <p className="text-xs text-itd-navyDark/60">
+                Sin participar (H:{reporte.sinParticipar.porGenero.Hombre} M:{reporte.sinParticipar.porGenero.Mujer})
+              </p>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <button
               onClick={exportarExcel}
@@ -199,20 +223,38 @@ export default function AdminReportes() {
             >
               ⬇ Exportar PDF (trimestral)
             </button>
+            <div className="ml-auto flex rounded-lg border border-itd-navy/20 overflow-hidden">
+              <button
+                onClick={() => setVista('tabla')}
+                className={`px-4 py-2 text-sm font-medium ${vista === 'tabla' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+              >
+                Tabla
+              </button>
+              <button
+                onClick={() => setVista('graficas')}
+                className={`px-4 py-2 text-sm font-medium ${vista === 'graficas' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+              >
+                Gráficas
+              </button>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              <tbody>
-                {filasPlanas(reporte).map(([label, valor], i) => (
-                  <tr key={i} className={label ? 'border-b border-itd-navy/10' : ''}>
-                    <td className="py-1.5 pr-4 text-itd-navyDark/80">{label}</td>
-                    <td className="py-1.5 font-semibold text-itd-navyDark">{valor}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {vista === 'tabla' ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <tbody>
+                  {filasPlanas(reporte).map(([label, valor], i) => (
+                    <tr key={i} className={label ? 'border-b border-itd-navy/10' : ''}>
+                      <td className="py-1.5 pr-4 text-itd-navyDark/80">{label}</td>
+                      <td className="py-1.5 font-semibold text-itd-navyDark">{valor}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <ReportesGraficas reporte={reporte} />
+          )}
         </div>
       )}
     </div>
