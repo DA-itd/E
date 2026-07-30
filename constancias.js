@@ -32,7 +32,7 @@ const CAMPOS = {
     // Línea "VICTORIA DE DURANGO, DGO., A <fecha>" completa (también se
     // borró de la imagen de fondo -- se redibuja entera en dorado).
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
-    qr: { x: 194, top: 676, tamano: 82 },
+    qr: { x: 193, top: 682, tamano: 50 },
   },
   reconocimiento: {
     imagen: `${BASE}plantillas/reconocimiento.jpg`,
@@ -45,7 +45,7 @@ const CAMPOS = {
     },
     parrafo: { top: 427, bottom: 472, tam: 10.5, interlineado: 15 },
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
-    qr: { x: 194, top: 676, tamano: 82 },
+    qr: { x: 193, top: 682, tamano: 50 },
   },
 }
 
@@ -180,15 +180,18 @@ export async function descargarConstancia(tipoDocumento, datos) {
   const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
 
   try {
-    const { data } = await supabase.functions.invoke('constancia-drive', {
+    const { data, error } = await supabase.functions.invoke('constancia-drive', {
       body: { accion: 'obtener', tipo: tipoDocumento, docenteId: datos.docenteId, cursoId: datos.cursoId },
     })
-    if (data?.existe && data?.pdfBase64) {
+    if (error) {
+      console.error('constancia-drive (obtener) devolvió error:', error, data)
+    } else if (data?.existe && data?.pdfBase64) {
       descargarBase64(data.pdfBase64, nombreArchivo)
       return
     }
   } catch (e) {
-    // Sin Drive configurado todavía -- no bloquea, se genera normal.
+    console.error('constancia-drive (obtener) falló:', e)
+    // Sin Storage configurado o con error de red -- no bloquea, se genera normal.
   }
 
   const bytes = await generarPdfBytes(tipoDocumento, datos)
@@ -206,7 +209,10 @@ export async function descargarConstancia(tipoDocumento, datos) {
         nombreArchivo,
       },
     })
-    .catch(() => {})
+    .then(({ data, error }) => {
+      if (error) console.error('constancia-drive (guardar) devolvió error:', error, data)
+    })
+    .catch((e) => console.error('constancia-drive (guardar) falló:', e))
 }
 
 async function generarPdfBytes(tipoDocumento, datos) {
@@ -296,7 +302,7 @@ async function generarPdfBytes(tipoDocumento, datos) {
   // QR real -- lleva directo al validador público con el folio precargado
   if (config.qr && datos.folioPersonal) {
     try {
-      const urlValidacion = `${window.location.origin}${BASE}#validar?folio=${encodeURIComponent(datos.folioPersonal)}`
+      const urlValidacion = `${window.location.origin}${BASE}?validar=${encodeURIComponent(datos.folioPersonal)}&tipo=${tipoDocumento}`
       const qrDataUrl = await QRCode.toDataURL(urlValidacion, { margin: 0, width: 256 })
       const qrBytes = await fetch(qrDataUrl).then((r) => r.arrayBuffer())
       const qrImagen = await pdfDoc.embedPng(qrBytes)
