@@ -1,5 +1,6 @@
 import { PDFDocument, rgb } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
+import QRCode from 'qrcode'
 import { formatearRangoFechas } from './formatoFechas'
 import { supabase } from './supabaseClient'
 
@@ -7,6 +8,9 @@ import { supabase } from './supabaseClient'
 const ANCHO_PAGINA = 612
 const ALTO_PAGINA = 792
 const BASE = import.meta.env.BASE_URL // respeta el "base" de vite.config.js (ej. "/E/")
+// URL pública donde cualquiera puede verificar la autenticidad de una constancia
+// escaneando el QR (ver App.jsx -> detección de "?validar=" y ValidarConstancia.jsx)
+const URL_SITIO = 'https://da-itd.github.io/E/'
 
 const COLOR_TEXTO = '#1f2937'
 const COLOR_DORADO = '#B48A00'
@@ -31,6 +35,9 @@ const CAMPOS = {
     // Línea "VICTORIA DE DURANGO, DGO., A <fecha>" completa (también se
     // borró de la imagen de fondo -- se redibuja entera en dorado).
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
+    // Recuadro en blanco reservado para el QR de validación (medido
+    // directamente sobre la imagen de la plantilla, en puntos).
+    qr: { x0: 97.2, x1: 154.8, top: 698.4, bottom: 756.0 },
   },
   reconocimiento: {
     imagen: `${BASE}plantillas/reconocimiento.jpg`,
@@ -43,6 +50,7 @@ const CAMPOS = {
     },
     parrafo: { top: 427, bottom: 472, tam: 10.5, interlineado: 15 },
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
+    qr: { x0: 97.2, x1: 154.8, top: 698.4, bottom: 756.0 },
   },
 }
 
@@ -289,6 +297,22 @@ async function generarPdfBytes(tipoDocumento, datos) {
   const lineasF = armarLineas(segmentosF, fontNegrita, fontNegrita, lf.tam, 480)
   const yF = ALTO_PAGINA - (lf.top + lf.bottom) / 2 - lf.tam / 2.8
   dibujarLineasCentradas(page, lineasF, fontNegrita, fontNegrita, lf.tam, 0, yF, ANCHO_PAGINA / 2, COLOR_DORADO)
+
+  // Código QR de validación: al escanearlo, cualquiera puede confirmar que
+  // esta constancia/folio es auténtica (ver ValidarConstancia.jsx).
+  if (config.qr && valores.FolioPersonal) {
+    const urlValidacion = `${URL_SITIO}?validar=${encodeURIComponent(valores.FolioPersonal)}&tipo=${tipoDocumento}`
+    const qrDataUrl = await QRCode.toDataURL(urlValidacion, { margin: 0, width: 300 })
+    const qrPngBytes = await fetch(qrDataUrl).then((r) => r.arrayBuffer())
+    const qrImagen = await pdfDoc.embedPng(qrPngBytes)
+    const q = config.qr
+    page.drawImage(qrImagen, {
+      x: q.x0,
+      y: ALTO_PAGINA - q.bottom,
+      width: q.x1 - q.x0,
+      height: q.bottom - q.top,
+    })
+  }
 
   return await pdfDoc.save()
 }

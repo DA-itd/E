@@ -6,6 +6,7 @@ export default function MisInscripciones({ docente, onIrAInscribirme }) {
   const [inscripciones, setInscripciones] = useState([])
   const [cargando, setCargando] = useState(true)
   const [cancelando, setCancelando] = useState(null)
+  const [avisoCancelacion, setAvisoCancelacion] = useState(null)
 
   useEffect(() => {
     cargar()
@@ -32,6 +33,7 @@ export default function MisInscripciones({ docente, onIrAInscribirme }) {
     setCancelando(null)
 
     if (!error) {
+      console.log('[cancelación] Intentando enviar correo de cancelación a:', docente?.email)
       supabase.functions
         .invoke('send-email', {
           body: {
@@ -49,7 +51,17 @@ export default function MisInscripciones({ docente, onIrAInscribirme }) {
             ],
           },
         })
-        .catch(() => {})
+        .then(({ data, error: errorCorreo }) => {
+          if (errorCorreo) console.error('[cancelación] Error al enviar correo:', errorCorreo)
+          else console.log('[cancelación] Respuesta del envío de correo:', data)
+        })
+        .catch((e) => console.error('[cancelación] Excepción al enviar correo:', e))
+    } else {
+      console.error('[cancelación] La actualización en la base de datos falló, no se envía correo:', error)
+    }
+
+    if (!error) {
+      setAvisoCancelacion(ins.cursos?.nombre || 'el curso')
       cargar()
     }
   }
@@ -81,6 +93,19 @@ export default function MisInscripciones({ docente, onIrAInscribirme }) {
   return (
     <div>
       {encabezado}
+      {avisoCancelacion && (
+        <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-green-800">
+            Cancelaste <strong>{avisoCancelacion}</strong>. Ya tienes lugar libre, ¡puedes inscribirte a otro curso disponible!
+          </p>
+          <button
+            onClick={onIrAInscribirme}
+            className="shrink-0 rounded-lg bg-itd-navy text-white text-sm font-medium px-4 py-2 hover:bg-itd-navyDark transition-colors"
+          >
+            Inscribirme a otro curso
+          </button>
+        </div>
+      )}
       <div className="space-y-3">
       {inscripciones.map((ins) => (
         <div

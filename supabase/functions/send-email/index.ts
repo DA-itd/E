@@ -2,12 +2,18 @@
 // Envía correos de confirmación o cancelación de inscripción, con el mismo
 // estilo visual que usaba el sistema anterior (Apps Script + MailApp).
 //
-// Requiere una variable de entorno (secret) RESEND_API_KEY configurada en
+// Usa SendGrid con "Single Sender Verification" (se verifica una sola
+// dirección de correo dando clic a un enlace -- no requiere acceso al DNS
+// del dominio, a diferencia de Resend).
+//
+// Requiere una variable de entorno (secret) SENDGRID_API_KEY configurada en
 // Supabase -> Project Settings -> Edge Functions -> Secrets.
-// Regístrate gratis en https://resend.com (100 correos/día gratis).
+// Regístrate gratis en https://sendgrid.com y verifica tu remitente en
+// Settings -> Sender Authentication -> Single Sender Verification.
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
-const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'onboarding@resend.dev'
+const SENDGRID_API_KEY = Deno.env.get('SENDGRID_API_KEY')
+const FROM_EMAIL = Deno.env.get('FROM_EMAIL') || 'coord_actualizaciondocente@itdurango.edu.mx'
+const FROM_NAME = 'Actualización Docente ITD (no responder este correo)'
 const LOGO_URL = 'https://raw.githubusercontent.com/DA-itd/web/main/logo_itdurango.png'
 
 const corsHeaders = {
@@ -81,6 +87,7 @@ function construirCorreo({ tipo, nombre, cursos }) {
           <div style="background-color:#f8fafc;padding:20px;text-align:center;border-top:1px solid #e2e8f0;">
             <p style="font-size:12px;font-weight:bold;color:#64748b;margin:0;">Coordinación de Actualización Docente</p>
             <p style="font-size:12px;color:#94a3b8;margin:5px 0;">Instituto Tecnológico de Durango</p>
+            <p style="font-size:11px;color:#94a3b8;margin:5px 0 0;font-style:italic;">Este es un correo automático, favor de no responder a esta dirección.</p>
           </div>
         </div>
       </td></tr></table>
@@ -93,8 +100,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!RESEND_API_KEY) {
-      throw new Error('Falta configurar el secret RESEND_API_KEY en Supabase.')
+    if (!SENDGRID_API_KEY) {
+      throw new Error('Falta configurar el secret SENDGRID_API_KEY en Supabase.')
     }
 
     const body = await req.json()
@@ -111,26 +118,34 @@ Deno.serve(async (req) => {
 
     const html = construirCorreo({ tipo, nombre, cursos })
 
-    const resp = await fetch('https://api.resend.com/emails', {
+    const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
+        Authorization: `Bearer ${SENDGRID_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: `Actualización Docente ITD <${FROM_EMAIL}>`,
-        to: [email],
+        personalizations: [{ to: [{ email }] }],
+        from: { email: FROM_EMAIL, name: FROM_NAME },
         subject: asunto,
-        html,
+        content: [{ type: 'text/html', value: html }],
       }),
     })
 
-    const data = await resp.json()
     if (!resp.ok) {
-      throw new Error(data?.message || 'Error al enviar el correo con Resend.')
+      // SendGrid regresa un cuerpo JSON con errores cuando algo falla.
+      let mensaje = `Error al enviar el correo con SendGrid (status ${resp.status}).`
+      try {
+        const data = await resp.json()
+        if (data?.errors?.length) mensaje = data.errors.map((e) => e.message).join('; ')
+      } catch {
+        // el cuerpo no era JSON, se deja el mensaje genérico
+      }
+      throw new Error(mensaje)
     }
 
-    return new Response(JSON.stringify({ success: true, data }), {
+    // SendGrid responde 202 Accepted sin cuerpo cuando todo sale bien.
+    return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
