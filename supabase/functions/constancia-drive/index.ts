@@ -1,17 +1,21 @@
 // Supabase Edge Function: constancia-drive
 //
-// Dos acciones:
-//  - "obtener": ¿ya existe esta constancia? Si sí, regresa el PDF guardado
-//    en Drive (para no generar una copia nueva cada vez).
-//  - "guardar": sube el PDF recién generado a la carpeta oculta de Drive
-//    y deja el registro en la tabla constancias_generadas.
+// (El nombre se quedó igual para no tener que tocar el frontend, pero ya
+// NO usa Google Drive -- ahora guarda las constancias en Supabase Storage,
+// en el bucket privado "constancias". Se cambió porque las cuentas de
+// servicio de Google no tienen cuota de almacenamiento propia fuera de
+// una Unidad Compartida, y eso requiere permisos de administrador del
+// dominio que no tenemos.)
 //
-// Requiere estos secrets en Supabase (Project Settings -> Edge Functions):
-//   GOOGLE_SERVICE_ACCOUNT_EMAIL
-//   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY   (con los \n reales, ver README)
-//   GOOGLE_DRIVE_FOLDER_ID
-//   SUPABASE_SERVICE_ROLE_KEY  (ya viene incluida por default en Supabase)
-//   SUPABASE_URL               (ya viene incluida por default en Supabase)
+// Dos acciones:
+//  - "obtener": ¿ya existe esta constancia? Si sí, regresa el PDF guardado.
+//  - "guardar": sube el PDF recién generado al bucket y deja el registro
+//    en la tabla constancias_generadas.
+//
+// Requiere que exista el bucket privado "constancias" en Supabase Storage
+// (Storage -> New bucket -> nombre "constancias", Public: OFF).
+// No requiere secrets nuevos: usa las mismas SUPABASE_URL y
+// SUPABASE_SERVICE_ROLE_KEY que ya vienen incluidas por default.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -20,87 +24,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const SERVICE_EMAIL = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_EMAIL')
-const PRIVATE_KEY = (Deno.env.get('GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY') || '').replace(/\\n/g, '\n')
-const FOLDER_ID = Deno.env.get('GOOGLE_DRIVE_FOLDER_ID')
+const BUCKET = 'constancias'
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 )
-
-// ---------------------------------------------------------------
-// Autenticación de cuenta de servicio de Google (JWT firmado -> access_token)
-// ---------------------------------------------------------------
-function base64url(bytes) {
-  return btoa(String.fromCharCode(...new Uint8Array(bytes)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-async function obtenerAccessToken() {
-  const header = { alg: 'RS256', typ: 'JWT' }
-  const ahora = Math.floor(Date.now() / 1000)
-  const claim = {
-    iss: SERVICE_EMAIL,
-    scope: 'https://www.googleapis.com/auth/drive',
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: ahora + 3600,
-    iat: ahora,
-  }
-
-  const enc = new TextEncoder()
-  const unsigned = `${base64url(enc.encode(JSON.stringify(header)))}.${base64url(enc.encode(JSON.stringify(claim)))}`
-
-  const pemBody = PRIVATE_KEY.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')
-  const keyBytes = Uint8Array.from(atob(pemBody), (c) => c.charCodeAt(0))
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8', keyBytes, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']
-  )
-  const firma = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', cryptoKey, enc.encode(unsigned))
-  const jwt = `${unsigned}.${base64url(firma)}`
-
-  const resp = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwt,
-    }),
-  })
-  const data = await resp.json()
-  if (!resp.ok) throw new Error('No se pudo autenticar con Google: ' + JSON.stringify(data))
-  return data.access_token
-}
-
-async function subirADrive(accessToken, nombreArchivo, pdfBytes) {
-  const metadata = { name: nombreArchivo, parents: [FOLDER_ID] }
-  const boundary = 'itd_boundary_' + crypto.randomUUID()
-  const enc = new TextEncoder()
-
-  const parte1 = enc.encode(
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
-    `--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`
-  )
-  const parte2 = enc.encode(`\r\n--${boundary}--`)
-  const body = new Blob([parte1, pdfBytes, parte2])
-
-  const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
-    body,
-  })
-  const data = await resp.json()
-  if (!resp.ok) throw new Error('No se pudo subir a Drive: ' + JSON.stringify(data))
-  return data.id
-}
-
-async function descargarDeDrive(accessToken, fileId) {
-  const resp = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!resp.ok) throw new Error('No se pudo descargar de Drive')
-  return new Uint8Array(await resp.arrayBuffer())
-}
 
 function obtenerEmailDelToken(req) {
   try {
@@ -141,6 +70,8 @@ Deno.serve(async (req) => {
       })
     }
 
+    const rutaArchivo = `${tipo}/${docenteId}_${cursoId}.pdf`
+
     if (accion === 'obtener') {
       const { data: existente } = await supabaseAdmin
         .from('constancias_generadas')
@@ -154,8 +85,18 @@ Deno.serve(async (req) => {
         })
       }
 
-      const accessToken = await obtenerAccessToken()
-      const bytes = await descargarDeDrive(accessToken, existente.drive_file_id)
+      const { data: archivo, error: errorDescarga } = await supabaseAdmin
+        .storage.from(BUCKET).download(existente.drive_file_id)
+
+      if (errorDescarga) {
+        // Si por alguna razón el archivo ya no está (se borró manualmente,
+        // etc.), no truena -- solo se regenera como si no existiera.
+        return new Response(JSON.stringify({ success: true, existe: false }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const bytes = new Uint8Array(await archivo.arrayBuffer())
       const base64 = btoa(String.fromCharCode(...bytes))
       return new Response(JSON.stringify({ success: true, existe: true, pdfBase64: base64 }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -163,18 +104,21 @@ Deno.serve(async (req) => {
     }
 
     if (accion === 'guardar') {
-      const { pdfBase64, nombreArchivo } = body
+      const { pdfBase64 } = body
       const pdfBytes = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0))
 
-      const accessToken = await obtenerAccessToken()
-      const fileId = await subirADrive(accessToken, nombreArchivo, pdfBytes)
+      const { error: errorSubida } = await supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(rutaArchivo, pdfBytes, { contentType: 'application/pdf', upsert: true })
+
+      if (errorSubida) throw new Error('No se pudo subir a Storage: ' + errorSubida.message)
 
       await supabaseAdmin.from('constancias_generadas').upsert(
-        { tipo, docente_id: docenteId, curso_id: cursoId, drive_file_id: fileId },
+        { tipo, docente_id: docenteId, curso_id: cursoId, drive_file_id: rutaArchivo },
         { onConflict: 'tipo,docente_id,curso_id' }
       )
 
-      return new Response(JSON.stringify({ success: true, driveFileId: fileId }), {
+      return new Response(JSON.stringify({ success: true, path: rutaArchivo }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
