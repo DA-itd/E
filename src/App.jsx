@@ -8,8 +8,12 @@ import MisInscripciones from './components/MisInscripciones'
 import DescargaConstancias from './components/DescargaConstancias'
 import AdminAsistencia from './components/AdminAsistencia'
 import AdminAdministradores from './components/AdminAdministradores'
+import ValidarConstancia from './components/ValidarConstancia'
 
 export default function App() {
+  const parametros = new URLSearchParams(window.location.search)
+  const folioAValidar = parametros.get('validar')
+
   const [sesion, setSesion] = useState(undefined) // undefined = cargando, null = sin sesión
   const [docente, setDocente] = useState(undefined) // undefined = cargando, null = no encontrado
   const [errorDominio, setErrorDominio] = useState(false)
@@ -77,6 +81,10 @@ export default function App() {
   function irAInscribirmeOtroCurso() {
     setPasoInicialWizard(2)
     setSubTabInscripcion('wizard')
+  }
+
+  if (folioAValidar) {
+    return <ValidarConstancia folio={folioAValidar} tipo={parametros.get('tipo')} />
   }
 
   if (sesion === undefined) {
