@@ -2,3 +2,4 @@ node_modules
 dist
 .env
 .env.local
+sistema-de-inscripcion-itd*.json
