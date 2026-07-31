@@ -44,7 +44,7 @@ const CAMPOS = {
     // Línea "VICTORIA DE DURANGO, DGO., A <fecha>" completa (también se
     // borró de la imagen de fondo -- se redibuja entera en dorado).
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
-    qr: { x: 179, top: 682, tamano: 50 },
+    qr: { x: 164.8, top: 682, tamano: 50 },
   },
   reconocimiento: {
     imagen: `${BASE}plantillas/reconocimiento.jpg`,
@@ -57,7 +57,7 @@ const CAMPOS = {
     },
     parrafo: { top: 427, bottom: 472, tam: 10.5, interlineado: 15 },
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
-    qr: { x: 179, top: 682, tamano: 50 },
+    qr: { x: 164.8, top: 682, tamano: 50 },
   },
 }
 
