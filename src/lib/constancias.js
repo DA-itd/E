@@ -37,7 +37,7 @@ const CAMPOS = {
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
     // Recuadro en blanco reservado para el QR de validación (medido
     // directamente sobre la imagen de la plantilla, en puntos).
-    qr: { x0: 480, x1: 550, top: 478, bottom: 538 },
+    qr: { x: 193, top: 682, tamano: 50 },
   },
   reconocimiento: {
     imagen: `${BASE}plantillas/reconocimiento.jpg`,
@@ -50,7 +50,7 @@ const CAMPOS = {
     },
     parrafo: { top: 427, bottom: 472, tam: 10.5, interlineado: 15 },
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
-    qr: { x0: 480, x1: 550, top: 478, bottom: 538 },
+    qr: { x: 193, top: 682, tamano: 50 },
   },
 }
 
