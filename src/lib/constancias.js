@@ -8,13 +8,22 @@ import { supabase } from './supabaseClient'
 const ANCHO_PAGINA = 612
 const ALTO_PAGINA = 792
 const BASE = import.meta.env.BASE_URL // respeta el "base" de vite.config.js (ej. "/E/")
-// URL pública donde cualquiera puede verificar la autenticidad de una constancia
-// escaneando el QR (ver App.jsx -> detección de "?validar=" y ValidarConstancia.jsx)
-const URL_SITIO = 'https://da-itd.github.io/E/'
 
 const COLOR_TEXTO = '#1f2937'
 const COLOR_DORADO = '#B48A00'
 const COLOR_GRIS = '#6b7280'
+
+// Convierte bytes a base64 por bloques -- btoa(String.fromCharCode(...bytes))
+// truena con "Maximum call stack size exceeded" en archivos grandes, sobre
+// todo en Safari. Procesar en bloques evita el límite de argumentos.
+function bytesABase64(bytes) {
+  let binario = ''
+  const TAMANO_BLOQUE = 8192
+  for (let i = 0; i < bytes.length; i += TAMANO_BLOQUE) {
+    binario += String.fromCharCode(...bytes.subarray(i, i + TAMANO_BLOQUE))
+  }
+  return btoa(binario)
+}
 
 // Campos pequeños de una sola línea (posiciones extraídas de tu PDF original,
 // en puntos, origen arriba-izquierda -- se convierten a coordenadas de
@@ -35,8 +44,6 @@ const CAMPOS = {
     // Línea "VICTORIA DE DURANGO, DGO., A <fecha>" completa (también se
     // borró de la imagen de fondo -- se redibuja entera en dorado).
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
-    // Recuadro en blanco reservado para el QR de validación (medido
-    // directamente sobre la imagen de la plantilla, en puntos).
     qr: { x: 193, top: 682, tamano: 50 },
   },
   reconocimiento: {
@@ -185,21 +192,24 @@ export async function descargarConstancia(tipoDocumento, datos) {
   const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
 
   try {
-    const { data } = await supabase.functions.invoke('constancia-drive', {
+    const { data, error } = await supabase.functions.invoke('constancia-drive', {
       body: { accion: 'obtener', tipo: tipoDocumento, docenteId: datos.docenteId, cursoId: datos.cursoId },
     })
-    if (data?.existe && data?.pdfBase64) {
+    if (error) {
+      console.error('constancia-drive (obtener) devolvió error:', error, data)
+    } else if (data?.existe && data?.pdfBase64) {
       descargarBase64(data.pdfBase64, nombreArchivo)
       return
     }
   } catch (e) {
-    // Sin Drive configurado todavía -- no bloquea, se genera normal.
+    console.error('constancia-drive (obtener) falló:', e)
+    // Sin Storage configurado o con error de red -- no bloquea, se genera normal.
   }
 
   const bytes = await generarPdfBytes(tipoDocumento, datos)
   descargarBytes(bytes, nombreArchivo)
 
-  const pdfBase64 = btoa(String.fromCharCode(...bytes))
+  const pdfBase64 = bytesABase64(bytes)
   supabase.functions
     .invoke('constancia-drive', {
       body: {
@@ -211,7 +221,10 @@ export async function descargarConstancia(tipoDocumento, datos) {
         nombreArchivo,
       },
     })
-    .catch(() => {})
+    .then(({ data, error }) => {
+      if (error) console.error('constancia-drive (guardar) devolvió error:', error, data)
+    })
+    .catch((e) => console.error('constancia-drive (guardar) falló:', e))
 }
 
 async function generarPdfBytes(tipoDocumento, datos) {
@@ -298,20 +311,24 @@ async function generarPdfBytes(tipoDocumento, datos) {
   const yF = ALTO_PAGINA - (lf.top + lf.bottom) / 2 - lf.tam / 2.8
   dibujarLineasCentradas(page, lineasF, fontNegrita, fontNegrita, lf.tam, 0, yF, ANCHO_PAGINA / 2, COLOR_DORADO)
 
-  // Código QR de validación: al escanearlo, cualquiera puede confirmar que
-  // esta constancia/folio es auténtica (ver ValidarConstancia.jsx).
-  if (config.qr && valores.FolioPersonal) {
-    const urlValidacion = `${URL_SITIO}?validar=${encodeURIComponent(valores.FolioPersonal)}&tipo=${tipoDocumento}`
-    const qrDataUrl = await QRCode.toDataURL(urlValidacion, { margin: 0, width: 300 })
-    const qrPngBytes = await fetch(qrDataUrl).then((r) => r.arrayBuffer())
-    const qrImagen = await pdfDoc.embedPng(qrPngBytes)
-    const q = config.qr
-    page.drawImage(qrImagen, {
-      x: q.x0,
-      y: ALTO_PAGINA - q.bottom,
-      width: q.x1 - q.x0,
-      height: q.bottom - q.top,
-    })
+  // QR real -- lleva directo al validador público con el folio precargado
+  if (config.qr && datos.folioPersonal) {
+    try {
+      const urlValidacion = `${window.location.origin}${BASE}?validar=${encodeURIComponent(datos.folioPersonal)}&tipo=${tipoDocumento}`
+      const qrDataUrl = await QRCode.toDataURL(urlValidacion, { margin: 0, width: 256 })
+      const qrBytes = await fetch(qrDataUrl).then((r) => r.arrayBuffer())
+      const qrImagen = await pdfDoc.embedPng(qrBytes)
+      const q = config.qr
+      page.drawImage(qrImagen, {
+        x: q.x,
+        y: ALTO_PAGINA - q.top - q.tamano,
+        width: q.tamano,
+        height: q.tamano,
+      })
+    } catch (err) {
+      console.error('No se pudo generar el QR de validación:', err)
+      // si falla, el PDF se genera igual, solo sin QR
+    }
   }
 
   return await pdfDoc.save()
