@@ -8,6 +8,10 @@ import MisInscripciones from './components/MisInscripciones'
 import DescargaConstancias from './components/DescargaConstancias'
 import AdminAsistencia from './components/AdminAsistencia'
 import AdminAdministradores from './components/AdminAdministradores'
+import AdminConvocatorias from './components/AdminConvocatorias'
+import AdminReportes from './components/AdminReportes'
+import AdminBuscarDocente from './components/AdminBuscarDocente'
+import HistorialCursos from './components/HistorialCursos'
 import ValidarConstancia from './components/ValidarConstancia'
 
 export default function App() {
@@ -19,9 +23,9 @@ export default function App() {
   const [errorDominio, setErrorDominio] = useState(false)
   const [esAdmin, setEsAdmin] = useState(false)
 
-  const [seccion, setSeccion] = useState('menu') // 'menu' | 'inscripcion' | 'constancias' | 'administracion'
+  const [seccion, setSeccion] = useState('menu') // 'menu' | 'inscripcion' | 'historial' | 'constancias' | 'administracion'
   const [subTabInscripcion, setSubTabInscripcion] = useState('wizard') // 'wizard' | 'mis-cursos'
-  const [subTabAdmin, setSubTabAdmin] = useState('asistencia') // 'asistencia' | 'administradores'
+  const [subTabAdmin, setSubTabAdmin] = useState('asistencia') // 'asistencia' | 'convocatorias' | 'buscar-docente' | 'reportes' | 'administradores'
   const [pasoInicialWizard, setPasoInicialWizard] = useState(1)
 
   useEffect(() => {
@@ -175,6 +179,15 @@ export default function App() {
         </>
       )}
 
+      {seccion === 'historial' && (
+        <>
+          <BarraSeccion titulo="Historial de Cursos" onMenu={irAMenu} />
+          <main className="max-w-5xl mx-auto px-4 py-8">
+            <HistorialCursos docente={docente} />
+          </main>
+        </>
+      )}
+
       {seccion === 'constancias' && (
         <>
           <BarraSeccion titulo="Descarga de Constancias" onMenu={irAMenu} />
@@ -190,6 +203,9 @@ export default function App() {
             titulo="Administración"
             subTabs={[
               { id: 'asistencia', label: 'Asistencia' },
+              { id: 'convocatorias', label: 'Convocatorias y cursos' },
+              { id: 'buscar-docente', label: 'Buscar docente' },
+              { id: 'reportes', label: 'Reportes' },
               { id: 'administradores', label: 'Administradores' },
             ]}
             tabActiva={subTabAdmin}
@@ -197,7 +213,11 @@ export default function App() {
             onMenu={irAMenu}
           />
           <main className="max-w-5xl mx-auto px-4 py-8">
-            {subTabAdmin === 'asistencia' ? <AdminAsistencia /> : <AdminAdministradores />}
+            {subTabAdmin === 'asistencia' && <AdminAsistencia />}
+            {subTabAdmin === 'convocatorias' && <AdminConvocatorias />}
+            {subTabAdmin === 'buscar-docente' && <AdminBuscarDocente />}
+            {subTabAdmin === 'reportes' && <AdminReportes />}
+            {subTabAdmin === 'administradores' && <AdminAdministradores />}
           </main>
         </>
       )}
