@@ -7,10 +7,14 @@
 // una Unidad Compartida, y eso requiere permisos de administrador del
 // dominio que no tenemos.)
 //
-// Dos acciones:
-//  - "obtener": ¿ya existe esta constancia? Si sí, regresa el PDF guardado.
+// Acciones:
+//  - "obtener": ¿ya existe esta constancia? Si sí, regresa el PDF guardado
+//    (base64) -- se usa al descargar desde la app.
 //  - "guardar": sube el PDF recién generado al bucket y deja el registro
 //    en la tabla constancias_generadas.
+//  - "liga": regresa una URL firmada temporal (30 días) al PDF ya guardado,
+//    sin descargar el contenido -- se usa en el reporte para Recursos
+//    Humanos, donde solo se necesita el enlace, no el archivo completo.
 //
 // Requiere que exista el bucket privado "constancias" en Supabase Storage
 // (Storage -> New bucket -> nombre "constancias", Public: OFF).
@@ -25,11 +29,25 @@ const corsHeaders = {
 }
 
 const BUCKET = 'constancias'
+const VIGENCIA_LIGA_SEGUNDOS = 60 * 60 * 24 * 30 // 30 días
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL'),
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 )
+
+// Convierte bytes a base64 por bloques -- btoa(String.fromCharCode(...bytes))
+// truena con "Maximum call stack size exceeded" en archivos grandes (el
+// operador spread pasa cada byte como argumento individual, y hay un
+// límite de argumentos por llamada). Procesar en bloques evita ese límite.
+function bytesABase64(bytes) {
+  let binario = ''
+  const TAMANO_BLOQUE = 8192
+  for (let i = 0; i < bytes.length; i += TAMANO_BLOQUE) {
+    binario += String.fromCharCode(...bytes.subarray(i, i + TAMANO_BLOQUE))
+  }
+  return btoa(binario)
+}
 
 function obtenerEmailDelToken(req) {
   try {
@@ -97,7 +115,7 @@ Deno.serve(async (req) => {
       }
 
       const bytes = new Uint8Array(await archivo.arrayBuffer())
-      const base64 = btoa(String.fromCharCode(...bytes))
+      const base64 = bytesABase64(bytes)
       return new Response(JSON.stringify({ success: true, existe: true, pdfBase64: base64 }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -119,6 +137,34 @@ Deno.serve(async (req) => {
       )
 
       return new Response(JSON.stringify({ success: true, path: rutaArchivo }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (accion === 'liga') {
+      const { data: existente } = await supabaseAdmin
+        .from('constancias_generadas')
+        .select('storage_path')
+        .eq('tipo', tipo).eq('docente_id', docenteId).eq('curso_id', cursoId)
+        .maybeSingle()
+
+      if (!existente?.storage_path) {
+        return new Response(JSON.stringify({ success: true, existe: false }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const { data: firmada, error: errorFirma } = await supabaseAdmin
+        .storage.from(BUCKET)
+        .createSignedUrl(existente.storage_path, VIGENCIA_LIGA_SEGUNDOS)
+
+      if (errorFirma || !firmada?.signedUrl) {
+        return new Response(JSON.stringify({ success: true, existe: false }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      return new Response(JSON.stringify({ success: true, existe: true, url: firmada.signedUrl }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

@@ -10,6 +10,7 @@ import AdminAsistencia from './components/AdminAsistencia'
 import AdminAdministradores from './components/AdminAdministradores'
 import AdminConvocatorias from './components/AdminConvocatorias'
 import AdminReportes from './components/AdminReportes'
+import AdminReporteRH from './components/AdminReporteRH'
 import AdminBuscarDocente from './components/AdminBuscarDocente'
 import HistorialCursos from './components/HistorialCursos'
 import ValidarConstancia from './components/ValidarConstancia'
@@ -206,6 +207,7 @@ export default function App() {
               { id: 'convocatorias', label: 'Convocatorias y cursos' },
               { id: 'buscar-docente', label: 'Buscar docente' },
               { id: 'reportes', label: 'Reportes' },
+              { id: 'reporte-rh', label: 'Reporte RH' },
               { id: 'administradores', label: 'Administradores' },
             ]}
             tabActiva={subTabAdmin}
@@ -217,6 +219,7 @@ export default function App() {
             {subTabAdmin === 'convocatorias' && <AdminConvocatorias />}
             {subTabAdmin === 'buscar-docente' && <AdminBuscarDocente />}
             {subTabAdmin === 'reportes' && <AdminReportes />}
+            {subTabAdmin === 'reporte-rh' && <AdminReporteRH />}
             {subTabAdmin === 'administradores' && <AdminAdministradores />}
           </main>
         </>

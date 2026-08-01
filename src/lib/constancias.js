@@ -350,3 +350,38 @@ function descargarBase64(base64, nombreArchivo) {
   const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
   descargarBytes(bytes, nombreArchivo)
 }
+
+/**
+ * Regresa la liga (URL firmada, vigente 30 días) al PDF de una constancia
+ * ya generada. Si nunca se había generado, la genera y sube primero (sin
+ * descargarla en el navegador) y luego regresa la liga. Se usa en el
+ * reporte para Recursos Humanos.
+ */
+export async function obtenerLigaConstancia(tipoDocumento, datos) {
+  const pedirLiga = () =>
+    supabase.functions.invoke('constancia-drive', {
+      body: { accion: 'liga', tipo: tipoDocumento, docenteId: datos.docenteId, cursoId: datos.cursoId },
+    })
+
+  let { data } = await pedirLiga()
+  if (data?.existe && data?.url) return data.url
+
+  // No existe todavía -- se genera y se sube, sin descargarla al navegador.
+  const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
+  const bytes = await generarPdfBytes(tipoDocumento, datos)
+  const pdfBase64 = bytesABase64(bytes)
+
+  await supabase.functions.invoke('constancia-drive', {
+    body: {
+      accion: 'guardar',
+      tipo: tipoDocumento,
+      docenteId: datos.docenteId,
+      cursoId: datos.cursoId,
+      pdfBase64,
+      nombreArchivo,
+    },
+  })
+
+  ;({ data } = await pedirLiga())
+  return data?.existe ? data.url : null
+}
