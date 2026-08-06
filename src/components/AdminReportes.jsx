@@ -115,10 +115,10 @@ export default function AdminReportes() {
       [`Departamento: ${tituloDepto}`],
       [`Periodo: ${tituloPeriodo()} (${reporte.rango.inicio} a ${reporte.rango.fin})`],
       [],
-      ['Folio', 'Nombre', 'Curso'],
-      ...lista.map((p) => [p.folio, p.nombre, p.curso]),
+      ['Folio', 'Nombre', 'Curso', 'Departamento oferente'],
+      ...lista.map((p) => [p.folio, p.nombre, p.curso, p.departamentoOferente]),
     ])
-    ws['!cols'] = [{ wch: 22 }, { wch: 32 }, { wch: 60 }]
+    ws['!cols'] = [{ wch: 22 }, { wch: 32 }, { wch: 60 }, { wch: 30 }]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Participantes')
     const sufijo = filtroDepartamento ? `_${filtroDepartamento}` : ''
@@ -140,8 +140,8 @@ export default function AdminReportes() {
 
     autoTable(doc, {
       startY: 35,
-      head: [['Folio', 'Nombre', 'Curso']],
-      body: lista.map((p) => [p.folio, p.nombre, p.curso]),
+      head: [['Folio', 'Nombre', 'Curso', 'Departamento oferente']],
+      body: lista.map((p) => [p.folio, p.nombre, p.curso, p.departamentoOferente]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [27, 57, 106] },
     })
@@ -374,8 +374,9 @@ export default function AdminReportes() {
                     <tr className="border-b border-itd-navy/20">
                       <th className="text-left py-2 pr-4 text-itd-navyDark/70">Folio</th>
                       <th className="text-left py-2 pr-4 text-itd-navyDark/70">Nombre</th>
-                      {!filtroDepartamento && <th className="text-left py-2 pr-4 text-itd-navyDark/70">Departamento</th>}
-                      <th className="text-left py-2 text-itd-navyDark/70">Curso</th>
+                      {!filtroDepartamento && <th className="text-left py-2 pr-4 text-itd-navyDark/70">Departamento (docente)</th>}
+                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Curso</th>
+                      <th className="text-left py-2 text-itd-navyDark/70">Departamento oferente</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -384,7 +385,8 @@ export default function AdminReportes() {
                         <td className="py-1.5 pr-4 text-itd-navyDark/70 whitespace-nowrap">{p.folio}</td>
                         <td className="py-1.5 pr-4 text-itd-navyDark">{p.nombre}</td>
                         {!filtroDepartamento && <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.departamento}</td>}
-                        <td className="py-1.5 text-itd-navyDark/70">{p.curso}</td>
+                        <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.curso}</td>
+                        <td className="py-1.5 text-itd-navyDark/70">{p.departamentoOferente}</td>
                       </tr>
                     ))}
                   </tbody>

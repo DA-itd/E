@@ -116,7 +116,7 @@ export async function calcularReporte(periodo) {
       docente_id,
       folio_personal,
       docentes ( email, genero, nivel, departamento, nombre_completo ),
-      cursos!inner ( id, nombre, tipo, fecha_inicio )
+      cursos!inner ( id, nombre, tipo, fecha_inicio, departamento )
     `)
     .eq('estado', 'activo')
     .gte('cursos.fecha_inicio', inicio)
@@ -152,6 +152,7 @@ export async function calcularReporte(periodo) {
       cursoNombre: fila.cursos?.nombre,
       cursoClave: `C-${fila.cursos?.id}`,
       departamento: fila.docentes?.departamento || 'Sin especificar',
+      departamentoOferente: fila.cursos?.departamento || 'Sin especificar',
     })
   }
 
@@ -167,6 +168,9 @@ export async function calcularReporte(periodo) {
       cursoNombre: fila.curso,
       cursoClave: `H-${fila.folio_curso || fila.curso}`,
       departamento: fila.departamento || 'Sin especificar',
+      // Los históricos no tienen un departamento de curso por separado --
+      // se usa el mismo como mejor aproximación disponible.
+      departamentoOferente: fila.departamento || 'Sin especificar',
     })
   }
 
@@ -190,7 +194,7 @@ export async function calcularReporte(periodo) {
   const detalleParticipantes = [] // una fila por cada curso tomado (folio, nombre, curso, departamento)
 
   for (const fila of filas) {
-    const { genero, tipoCurso, nivelGrupo, cursoNombre, emailKey, cursoClave, departamento, nombre, folio } = fila
+    const { genero, tipoCurso, nivelGrupo, cursoNombre, emailKey, cursoClave, departamento, departamentoOferente, nombre, folio } = fila
     const esHabilidadDigital = coincideCategoria(cursoNombre, 'habilidades_digitales')
     const esSaludEmocional = coincideCategoria(cursoNombre, 'salud_emocional')
 
@@ -226,7 +230,7 @@ export async function calcularReporte(periodo) {
     }
 
     if (cursoNombre) {
-      detalleParticipantes.push({ folio, nombre, curso: cursoNombre, departamento })
+      detalleParticipantes.push({ folio, nombre, curso: cursoNombre, departamento, departamentoOferente })
     }
 
     if (cursoNombre) {
