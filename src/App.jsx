@@ -9,6 +9,7 @@ import DescargaConstancias from './components/DescargaConstancias'
 import AdminAsistencia from './components/AdminAsistencia'
 import AdminAdministradores from './components/AdminAdministradores'
 import AdminConvocatorias from './components/AdminConvocatorias'
+import AdminPreregistro from './components/AdminPreregistro'
 import AdminReportes from './components/AdminReportes'
 import AdminReporteRH from './components/AdminReporteRH'
 import AdminBuscarDocente from './components/AdminBuscarDocente'
@@ -27,6 +28,7 @@ export default function App() {
   const [seccion, setSeccion] = useState('menu') // 'menu' | 'inscripcion' | 'historial' | 'constancias' | 'administracion'
   const [subTabInscripcion, setSubTabInscripcion] = useState('wizard') // 'wizard' | 'mis-cursos'
   const [subTabAdmin, setSubTabAdmin] = useState('asistencia') // 'asistencia' | 'convocatorias' | 'buscar-docente' | 'reportes' | 'administradores'
+  const [prefillCurso, setPrefillCurso] = useState(null) // datos que "pasan" de Preregistro a Convocatorias
   const [pasoInicialWizard, setPasoInicialWizard] = useState(1)
 
   useEffect(() => {
@@ -204,6 +206,7 @@ export default function App() {
             titulo="Administración"
             subTabs={[
               { id: 'asistencia', label: 'Asistencia' },
+              { id: 'preregistro', label: 'Preregistro' },
               { id: 'convocatorias', label: 'Convocatorias y cursos' },
               { id: 'buscar-docente', label: 'Buscar docente' },
               { id: 'reportes', label: 'Reportes' },
@@ -216,7 +219,17 @@ export default function App() {
           />
           <main className="max-w-5xl mx-auto px-4 py-8">
             {subTabAdmin === 'asistencia' && <AdminAsistencia />}
-            {subTabAdmin === 'convocatorias' && <AdminConvocatorias />}
+            {subTabAdmin === 'preregistro' && (
+              <AdminPreregistro
+                onAprobar={(datos) => {
+                  setPrefillCurso(datos)
+                  setSubTabAdmin('convocatorias')
+                }}
+              />
+            )}
+            {subTabAdmin === 'convocatorias' && (
+              <AdminConvocatorias prefill={prefillCurso} onPrefillConsumido={() => setPrefillCurso(null)} />
+            )}
             {subTabAdmin === 'buscar-docente' && <AdminBuscarDocente />}
             {subTabAdmin === 'reportes' && <AdminReportes />}
             {subTabAdmin === 'reporte-rh' && <AdminReporteRH />}

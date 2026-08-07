@@ -23,7 +23,7 @@ function formVacioCurso(convocatoriaId) {
   }
 }
 
-export default function AdminConvocatorias() {
+export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
   const [convocatorias, setConvocatorias] = useState([])
   const [cargando, setCargando] = useState(true)
   const [expandidaId, setExpandidaId] = useState(null)
@@ -188,6 +188,19 @@ export default function AdminConvocatorias() {
 
         {errorMsg && <p className="text-sm text-itd-guinda mb-4">{errorMsg}</p>}
 
+        {prefill && (
+          <div className="rounded-xl border border-itd-gold/40 bg-itd-gold/10 p-4 mb-6 text-sm">
+            <p className="font-medium text-itd-navyDark">
+              Vienes de Preregistro con datos de "<strong>{prefill.nombre}</strong>" listos para usar.
+            </p>
+            <p className="text-itd-navyDark/60 mt-1">
+              Abre (o crea) la convocatoria a la que pertenece y da clic en "+ Agregar curso" — el
+              formulario se va a llenar solo con lo que ya capturaste. Solo te va a faltar folio, semana,
+              tipo y cupo.
+            </p>
+          </div>
+        )}
+
         {formConvocatoria && (
           <form onSubmit={guardarConvocatoria} className="rounded-xl border border-itd-navy/20 bg-itd-sand/40 p-4 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input
@@ -283,7 +296,11 @@ export default function AdminConvocatorias() {
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-semibold text-itd-navyDark/70">Cursos de esta convocatoria</h3>
                     <button
-                      onClick={() => setFormCurso(formVacioCurso(conv.id))}
+                      onClick={() => {
+                        const base = formVacioCurso(conv.id)
+                        setFormCurso(prefill ? { ...base, ...prefill, convocatoria_id: conv.id } : base)
+                        if (prefill) onPrefillConsumido?.()
+                      }}
                       className="text-xs rounded-lg bg-itd-navy text-white px-3 py-1.5"
                     >
                       + Nuevo curso
