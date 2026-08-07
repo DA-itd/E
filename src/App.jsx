@@ -14,6 +14,7 @@ import AdminReportes from './components/AdminReportes'
 import AdminReporteRH from './components/AdminReporteRH'
 import AdminBuscarDocente from './components/AdminBuscarDocente'
 import HistorialCursos from './components/HistorialCursos'
+import PreregistroCurso from './components/PreregistroCurso'
 import ValidarConstancia from './components/ValidarConstancia'
 
 export default function App() {
@@ -25,7 +26,7 @@ export default function App() {
   const [errorDominio, setErrorDominio] = useState(false)
   const [esAdmin, setEsAdmin] = useState(false)
 
-  const [seccion, setSeccion] = useState('menu') // 'menu' | 'inscripcion' | 'historial' | 'constancias' | 'administracion'
+  const [seccion, setSeccion] = useState('menu') // 'menu' | 'inscripcion' | 'historial' | 'preregistro' | 'constancias' | 'administracion'
   const [subTabInscripcion, setSubTabInscripcion] = useState('wizard') // 'wizard' | 'mis-cursos'
   const [subTabAdmin, setSubTabAdmin] = useState('asistencia') // 'asistencia' | 'convocatorias' | 'buscar-docente' | 'reportes' | 'administradores'
   const [prefillCurso, setPrefillCurso] = useState(null) // datos que "pasan" de Preregistro a Convocatorias
@@ -187,6 +188,15 @@ export default function App() {
           <BarraSeccion titulo="Historial de Cursos" onMenu={irAMenu} />
           <main className="max-w-5xl mx-auto px-4 py-8">
             <HistorialCursos docente={docente} />
+          </main>
+        </>
+      )}
+
+      {seccion === 'preregistro' && (
+        <>
+          <BarraSeccion titulo="Preregistro de Curso" onMenu={irAMenu} />
+          <main className="max-w-5xl mx-auto px-4 py-8">
+            <PreregistroCurso docente={docente} />
           </main>
         </>
       )}

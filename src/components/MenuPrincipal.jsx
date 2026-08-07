@@ -22,6 +22,12 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
       descripcion: 'Descarga tus constancias y reconocimientos ya validados.',
       icono: '📄',
     },
+    {
+      id: 'preregistro',
+      titulo: 'Preregistro de Curso',
+      descripcion: 'Propón un curso para impartir: nombre, objetivo y periodo.',
+      icono: '🗒️',
+    },
   ]
 
   if (esAdmin) {
