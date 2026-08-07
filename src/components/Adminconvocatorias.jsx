@@ -4,7 +4,10 @@ import { supabase } from '../lib/supabaseClient'
 const TIPOS_CURSO = ['Docente', 'Profesional']
 
 function formVacioConvocatoria() {
-  return { nombre: '', anio: new Date().getFullYear(), mes: 1, fecha_inicio: '', fecha_fin: '' }
+  return {
+    nombre: '', anio: new Date().getFullYear(), mes: 1, fecha_inicio: '', fecha_fin: '',
+    periodo1_inicio: '', periodo1_fin: '', periodo2_inicio: '', periodo2_fin: '',
+  }
 }
 
 function formVacioCurso(convocatoriaId) {
@@ -19,7 +22,7 @@ function formVacioCurso(convocatoriaId) {
     fecha_fin: '',
     horas: '',
     tipo: 'Docente',
-    cupo_maximo: 30,
+    cupo_max: 30,
   }
 }
 
@@ -37,8 +40,6 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
   useEffect(() => {
     cargarConvocatorias()
   }, [])
-
-  const [mostrarHistoricas, setMostrarHistoricas] = useState(false)
 
   async function cargarConvocatorias() {
     setCargando(true)
@@ -86,7 +87,15 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
     e.preventDefault()
     setGuardando(true)
     setErrorMsg('')
-    const datos = { ...formConvocatoria, anio: Number(formConvocatoria.anio), mes: Number(formConvocatoria.mes) }
+    const datos = {
+      ...formConvocatoria,
+      anio: Number(formConvocatoria.anio),
+      mes: Number(formConvocatoria.mes),
+      periodo1_inicio: formConvocatoria.periodo1_inicio || null,
+      periodo1_fin: formConvocatoria.periodo1_fin || null,
+      periodo2_inicio: formConvocatoria.periodo2_inicio || null,
+      periodo2_fin: formConvocatoria.periodo2_fin || null,
+    }
     const esNueva = !datos.id
 
     const query = esNueva
@@ -118,7 +127,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
     e.preventDefault()
     setGuardando(true)
     setErrorMsg('')
-    const datos = { ...formCurso, horas: Number(formCurso.horas), cupo_maximo: Number(formCurso.cupo_maximo) }
+    const datos = { ...formCurso, horas: Number(formCurso.horas), cupo_max: Number(formCurso.cupo_max) }
     const esNuevo = !datos.id
 
     const query = esNuevo
@@ -177,15 +186,6 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
           Da de alta/baja convocatorias, agrega o edita cursos, y cierra inscripciones manualmente.
         </p>
 
-        <label className="flex items-center gap-2 text-sm text-itd-navyDark/70 mb-6 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={mostrarHistoricas}
-            onChange={(e) => setMostrarHistoricas(e.target.checked)}
-          />
-          Mostrar convocatorias históricas (inactivas)
-        </label>
-
         {errorMsg && <p className="text-sm text-itd-guinda mb-4">{errorMsg}</p>}
 
         {prefill && (
@@ -226,7 +226,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
               <option value={8}>Agosto (Trimestre 3)</option>
             </select>
             <label className="text-xs text-itd-navyDark/60">
-              Fecha inicio
+              Fecha inicio (convocatoria completa)
               <input
                 required type="date"
                 value={formConvocatoria.fecha_inicio}
@@ -235,7 +235,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
               />
             </label>
             <label className="text-xs text-itd-navyDark/60">
-              Fecha fin
+              Fecha fin (convocatoria completa)
               <input
                 required type="date"
                 value={formConvocatoria.fecha_fin}
@@ -243,6 +243,48 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                 className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1"
               />
             </label>
+
+            <div className="sm:col-span-2 rounded-lg bg-itd-sand/60 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <p className="sm:col-span-2 text-xs font-semibold text-itd-navyDark/70">
+                Fechas de cada periodo (para que los cursos se agrupen automáticamente)
+              </p>
+              <label className="text-xs text-itd-navyDark/60">
+                Periodo 1 — inicio
+                <input
+                  type="date"
+                  value={formConvocatoria.periodo1_inicio}
+                  onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo1_inicio: e.target.value })}
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                />
+              </label>
+              <label className="text-xs text-itd-navyDark/60">
+                Periodo 1 — fin
+                <input
+                  type="date"
+                  value={formConvocatoria.periodo1_fin}
+                  onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo1_fin: e.target.value })}
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                />
+              </label>
+              <label className="text-xs text-itd-navyDark/60">
+                Periodo 2 — inicio
+                <input
+                  type="date"
+                  value={formConvocatoria.periodo2_inicio}
+                  onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo2_inicio: e.target.value })}
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                />
+              </label>
+              <label className="text-xs text-itd-navyDark/60">
+                Periodo 2 — fin
+                <input
+                  type="date"
+                  value={formConvocatoria.periodo2_fin}
+                  onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo2_fin: e.target.value })}
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                />
+              </label>
+            </div>
             <div className="sm:col-span-2 flex gap-2 justify-end">
               <button type="button" onClick={() => setFormConvocatoria(null)} className="rounded-lg px-4 py-2 text-sm text-itd-navyDark/60">
                 Cancelar
@@ -256,7 +298,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
 
         <div className="space-y-3">
           {convocatorias
-            .filter((conv) => mostrarHistoricas || conv.activo)
+            .filter((conv) => conv.activo)
             .map((conv) => (
             <div key={conv.id} className="rounded-xl border border-itd-navy/10 overflow-hidden">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 bg-white">
@@ -271,7 +313,13 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                 </button>
                 <div className="flex gap-2 shrink-0">
                   <button
-                    onClick={() => setFormConvocatoria(conv)}
+                    onClick={() => setFormConvocatoria({
+                      ...conv,
+                      periodo1_inicio: conv.periodo1_inicio || '',
+                      periodo1_fin: conv.periodo1_fin || '',
+                      periodo2_inicio: conv.periodo2_inicio || '',
+                      periodo2_fin: conv.periodo2_fin || '',
+                    })}
                     className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand"
                   >
                     Editar
@@ -310,7 +358,26 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                   {formCurso && formCurso.convocatoria_id === conv.id && (
                     <form onSubmit={guardarCurso} className="rounded-xl border border-itd-navy/20 bg-white p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <input required placeholder="Folio" value={formCurso.folio} onChange={(e) => setFormCurso({ ...formCurso, folio: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
-                      <input placeholder="Semana" value={formCurso.semana} onChange={(e) => setFormCurso({ ...formCurso, semana: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <select
+                        required
+                        value={formCurso.semana}
+                        onChange={(e) => {
+                          const periodo = e.target.value
+                          const conv = convocatorias.find((c) => c.id === formCurso.convocatoria_id)
+                          const auto =
+                            periodo === 'PERIODO_1'
+                              ? { fecha_inicio: conv?.periodo1_inicio || '', fecha_fin: conv?.periodo1_fin || '' }
+                              : periodo === 'PERIODO_2'
+                              ? { fecha_inicio: conv?.periodo2_inicio || '', fecha_fin: conv?.periodo2_fin || '' }
+                              : {}
+                          setFormCurso({ ...formCurso, semana: periodo, ...auto })
+                        }}
+                        className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+                      >
+                        <option value="">Periodo…</option>
+                        <option value="PERIODO_1">Periodo 1</option>
+                        <option value="PERIODO_2">Periodo 2</option>
+                      </select>
                       <input required placeholder="Nombre del curso" value={formCurso.nombre} onChange={(e) => setFormCurso({ ...formCurso, nombre: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2" />
                       <input placeholder="Instructor" value={formCurso.instructor} onChange={(e) => setFormCurso({ ...formCurso, instructor: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
                       <input placeholder="Departamento" value={formCurso.departamento} onChange={(e) => setFormCurso({ ...formCurso, departamento: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
@@ -323,7 +390,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                         <input required type="date" value={formCurso.fecha_fin} onChange={(e) => setFormCurso({ ...formCurso, fecha_fin: e.target.value })} className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1" />
                       </label>
                       <input required type="number" placeholder="Horas" value={formCurso.horas} onChange={(e) => setFormCurso({ ...formCurso, horas: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
-                      <input required type="number" placeholder="Cupo máximo" value={formCurso.cupo_maximo} onChange={(e) => setFormCurso({ ...formCurso, cupo_maximo: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <input required type="number" placeholder="Cupo máximo" value={formCurso.cupo_max} onChange={(e) => setFormCurso({ ...formCurso, cupo_max: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
                       <select value={formCurso.tipo} onChange={(e) => setFormCurso({ ...formCurso, tipo: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2">
                         {TIPOS_CURSO.map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -344,7 +411,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                           {curso.cerrado_manualmente && <span className="ml-2 text-xs text-itd-guinda">(inscripciones cerradas)</span>}
                         </p>
                         <p className="text-xs text-itd-navyDark/60">
-                          Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · cupo {curso.cupo_maximo}
+                          Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · cupo {curso.cupo_max}
                         </p>
                       </div>
                       <div className="flex gap-2 shrink-0">
