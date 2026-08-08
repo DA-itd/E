@@ -1,20 +1,26 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { formatearRangoFechas } from '../lib/formatoFechas'
 
 const DEPARTAMENTOS = [
-  'DEPARTAMENTO INGENIERÍA ELÉCTRICA - ELECTRÓNICA',
-  'DEPARTAMENTO CIENCIAS DE LA TIERRA',
-  'DEPARTAMENTO CIENCIAS ECONÓMICO ADMINISTRATIVAS',
-  'DEPARTAMENTO DESARROLLO ACADÉMICO',
-  'DEPARTAMENTO SISTEMAS Y COMPUTACION',
-  'DEPARTAMENTO META-MECÁNICA',
-  'DEPARTAMENTO DE INGENIERÍA INDUSTRIAL',
-  'LABORATORIO DE INGENIERÍAS QUÍMICA-BIOQUÍMICA',
-  'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION',
   'DEPARTAMENTO DE CIENCIAS BÁSICAS',
+  'DEPARTAMENTO CIENCIAS ECONÓMICO ADMINISTRATIVAS',
+  'DEPARTAMENTO INGENIERÍAS ELÉCTRICA - ELECTRÓNICA',
+  'DEPARTAMENTO DE INGENIERÍA INDUSTRIAL',
+  'DEPARTAMENTO METAL-MECÁNICA',
+  'DEPARTAMENTO DE INGENIERÍAS QUÍMICA-BIOQUÍMICA',
+  'DEPARTAMENTO SISTEMAS Y COMPUTACION',
+  'DEPARTAMENTO CIENCIAS DE LA TIERRA',
+  'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION',
+  'DEPARTAMENTO DESARROLLO ACADÉMICO',
 ]
 
 const MODALIDADES = ['Presencial', 'Virtual', 'Mixta']
+
+// Prefijos aceptados para "Lugar" cuando la modalidad no es Virtual --
+// evita respuestas genéricas como "ITD" o "Instituto Tecnológico de
+// Durango" que no dicen en qué espacio específico será el curso.
+const PREFIJOS_LUGAR_VALIDOS = ['AULA', 'TALLER', 'SALA', 'LABORATORIO', 'EDIFICIO DE']
 
 function formVacio() {
   return {
@@ -40,6 +46,13 @@ function etiquetaPeriodo(p) {
   return p
 }
 
+// Todo se guarda en MAYÚSCULAS (así aparece tal cual en constancias y
+// reconocimientos) excepto el objetivo, que se deja como el docente lo
+// escriba -- ahí sí puede ir en minúsculas.
+function aMayusculas(texto) {
+  return texto.toUpperCase()
+}
+
 // Formulario para que el propio docente proponga un curso a impartir
 // (nombre, objetivo, periodo, etc.). La Coordinación revisa esto en
 // Administración -> Preregistro, y ahí asigna si es tipo Docente o
@@ -50,9 +63,11 @@ export default function PreregistroCurso({ docente }) {
   const [form, setForm] = useState(formVacio())
   const [guardando, setGuardando] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [convocatoria, setConvocatoria] = useState(null) // para mostrar fechas de cada periodo
 
   useEffect(() => {
     cargar()
+    cargarConvocatoria()
   }, [])
 
   async function cargar() {
@@ -64,14 +79,56 @@ export default function PreregistroCurso({ docente }) {
     setMisPreregistros(data || [])
   }
 
+  async function cargarConvocatoria() {
+    const { data } = await supabase
+      .from('convocatorias')
+      .select('periodo1_inicio, periodo1_fin, periodo2_inicio, periodo2_fin')
+      .eq('activo', true)
+      .order('fecha_inicio', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    setConvocatoria(data)
+  }
+
+  function validarLugar(lugar, modalidad) {
+    if (modalidad === 'Virtual') return true // no aplica si es en línea
+    const l = lugar.trim().toUpperCase()
+    return PREFIJOS_LUGAR_VALIDOS.some((prefijo) => l.startsWith(prefijo))
+  }
+
   async function guardar(e) {
     e.preventDefault()
-    setGuardando(true)
     setErrorMsg('')
+
+    // Todos los campos son obligatorios (lugar solo si no es virtual).
+    const faltantes = []
+    if (!form.curso.trim()) faltantes.push('Nombre del curso')
+    if (!form.objetivo.trim()) faltantes.push('Objetivo')
+    if (!form.periodo) faltantes.push('Periodo')
+    if (!form.duracion_horas) faltantes.push('Duración')
+    if (!form.modalidad) faltantes.push('Modalidad')
+    if (form.modalidad !== 'Virtual' && !form.lugar.trim()) faltantes.push('Lugar')
+    if (!form.dirigido_a) faltantes.push('Departamento')
+    if (!form.nombre_jefe.trim()) faltantes.push('Nombre del jefe(a) de departamento')
+
+    if (faltantes.length) {
+      setErrorMsg('Faltan campos por llenar: ' + faltantes.join(', '))
+      return
+    }
+
+    if (!validarLugar(form.lugar, form.modalidad)) {
+      setErrorMsg(
+        'El "Lugar" debe indicar el espacio específico: Aula, Taller, Sala, Laboratorio o Edificio de... ' +
+          '(no se acepta solo "ITD" o el nombre del instituto). Si es virtual, deja el campo vacío y elige modalidad Virtual.'
+      )
+      return
+    }
+
+    setGuardando(true)
     const { error } = await supabase.from('preregistro_cursos').insert({
       ...form,
       docente_id: docente.id,
-      duracion_horas: form.duracion_horas ? Number(form.duracion_horas) : null,
+      duracion_horas: Number(form.duracion_horas),
     })
     setGuardando(false)
     if (error) {
@@ -82,6 +139,13 @@ export default function PreregistroCurso({ docente }) {
     setFormAbierto(false)
     cargar()
   }
+
+  const fechasPeriodo1 = convocatoria?.periodo1_inicio && convocatoria?.periodo1_fin
+    ? formatearRangoFechas(convocatoria.periodo1_inicio, convocatoria.periodo1_fin)
+    : null
+  const fechasPeriodo2 = convocatoria?.periodo2_inicio && convocatoria?.periodo2_fin
+    ? formatearRangoFechas(convocatoria.periodo2_inicio, convocatoria.periodo2_fin)
+    : null
 
   return (
     <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8">
@@ -103,14 +167,19 @@ export default function PreregistroCurso({ docente }) {
 
       {formAbierto && (
         <form onSubmit={guardar} className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-itd-navy/10 pt-6">
+          <div className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+            ⚠️ Cuida la ortografía y los acentos: lo que captures aquí aparecerá <strong>tal cual</strong> en
+            las constancias y reconocimientos. Todos los campos son obligatorios.
+          </div>
+
           {errorMsg && <p className="sm:col-span-2 text-sm text-red-600">{errorMsg}</p>}
 
           <input
             required
             placeholder="Nombre del curso"
             value={form.curso}
-            onChange={(e) => setForm({ ...form, curso: e.target.value })}
-            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+            onChange={(e) => setForm({ ...form, curso: aMayusculas(e.target.value) })}
+            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm uppercase"
           />
           <textarea
             required
@@ -121,18 +190,26 @@ export default function PreregistroCurso({ docente }) {
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           />
 
-          <select
-            required
-            value={form.periodo}
-            onChange={(e) => setForm({ ...form, periodo: e.target.value })}
-            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-          >
-            <option value="">Periodo…</option>
-            <option value="PERIODO_1">Periodo 1</option>
-            <option value="PERIODO_2">Periodo 2</option>
-          </select>
+          <div>
+            <select
+              required
+              value={form.periodo}
+              onChange={(e) => setForm({ ...form, periodo: e.target.value })}
+              className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+            >
+              <option value="">Periodo…</option>
+              <option value="PERIODO_1">Periodo 1{fechasPeriodo1 ? ` (${fechasPeriodo1})` : ''}</option>
+              <option value="PERIODO_2">Periodo 2{fechasPeriodo2 ? ` (${fechasPeriodo2})` : ''}</option>
+            </select>
+            {!convocatoria && (
+              <p className="text-[11px] text-itd-navyDark/40 mt-1">
+                Aún no hay fechas de periodo publicadas para el siguiente trimestre.
+              </p>
+            )}
+          </div>
 
           <input
+            required
             placeholder="Duración (horas)"
             type="number"
             value={form.duracion_horas}
@@ -141,8 +218,9 @@ export default function PreregistroCurso({ docente }) {
           />
 
           <select
+            required
             value={form.modalidad}
-            onChange={(e) => setForm({ ...form, modalidad: e.target.value })}
+            onChange={(e) => setForm({ ...form, modalidad: e.target.value, lugar: e.target.value === 'Virtual' ? '' : form.lugar })}
             className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           >
             <option value="">Modalidad…</option>
@@ -151,14 +229,24 @@ export default function PreregistroCurso({ docente }) {
             ))}
           </select>
 
-          <input
-            placeholder="Lugar"
-            value={form.lugar}
-            onChange={(e) => setForm({ ...form, lugar: e.target.value })}
-            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-          />
+          <div>
+            <input
+              required={form.modalidad !== 'Virtual'}
+              disabled={form.modalidad === 'Virtual'}
+              placeholder="Ej. AULA 3, TALLER DE ELECTRÓNICA, LABORATORIO 2…"
+              value={form.lugar}
+              onChange={(e) => setForm({ ...form, lugar: aMayusculas(e.target.value) })}
+              className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm uppercase disabled:opacity-40 disabled:bg-itd-sand/40"
+            />
+            <p className="text-[11px] text-itd-navyDark/40 mt-1">
+              {form.modalidad === 'Virtual'
+                ? 'No aplica en modalidad Virtual.'
+                : 'Indica Aula, Taller, Sala, Laboratorio o Edificio de… (no se acepta solo "ITD").'}
+            </p>
+          </div>
 
           <select
+            required
             value={form.dirigido_a}
             onChange={(e) => setForm({ ...form, dirigido_a: e.target.value })}
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
@@ -170,10 +258,11 @@ export default function PreregistroCurso({ docente }) {
           </select>
 
           <input
+            required
             placeholder="Nombre del jefe(a) de departamento"
             value={form.nombre_jefe}
-            onChange={(e) => setForm({ ...form, nombre_jefe: e.target.value })}
-            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+            onChange={(e) => setForm({ ...form, nombre_jefe: aMayusculas(e.target.value) })}
+            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm uppercase"
           />
 
           <button

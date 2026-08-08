@@ -13,7 +13,7 @@ function formVacioConvocatoria() {
 function formVacioCurso(convocatoriaId) {
   return {
     convocatoria_id: convocatoriaId,
-    folio: '',a
+    folio: '',
     semana: '',
     nombre: '',
     instructor: '',
