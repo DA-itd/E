@@ -84,6 +84,7 @@ export default function PreregistroCurso({ docente }) {
       .from('convocatorias')
       .select('periodo1_inicio, periodo1_fin, periodo2_inicio, periodo2_fin')
       .eq('activo', true)
+      .not('periodo1_inicio', 'is', null)
       .order('fecha_inicio', { ascending: true })
       .limit(1)
       .maybeSingle()
