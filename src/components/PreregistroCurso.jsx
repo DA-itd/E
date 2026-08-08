@@ -1,22 +1,43 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
+const DEPARTAMENTOS = [
+  'DEPARTAMENTO INGENIERÍA ELÉCTRICA - ELECTRÓNICA',
+  'DEPARTAMENTO CIENCIAS DE LA TIERRA',
+  'DEPARTAMENTO CIENCIAS ECONÓMICO ADMINISTRATIVAS',
+  'DEPARTAMENTO DESARROLLO ACADÉMICO',
+  'DEPARTAMENTO SISTEMAS Y COMPUTACION',
+  'DEPARTAMENTO META-MECÁNICA',
+  'DEPARTAMENTO DE INGENIERÍA INDUSTRIAL',
+  'LABORATORIO DE INGENIERÍAS QUÍMICA-BIOQUÍMICA',
+  'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION',
+  'DEPARTAMENTO DE CIENCIAS BÁSICAS',
+]
+
+const MODALIDADES = ['Presencial', 'Virtual', 'Mixta']
+
 function formVacio() {
   return {
     curso: '',
     objetivo: '',
-    fecha_inicio: '',
-    fecha_fin: '',
+    periodo: '',
     duracion_horas: '',
     modalidad: '',
     lugar: '',
     dirigido_a: '',
+    nombre_jefe: '',
   }
 }
 
 const ESTADO_LABEL = {
   pendiente: { texto: 'En revisión', clase: 'bg-amber-100 text-amber-700' },
   aprobado: { texto: 'Aprobado', clase: 'bg-green-100 text-green-700' },
+}
+
+function etiquetaPeriodo(p) {
+  if (p === 'PERIODO_1') return 'Periodo 1'
+  if (p === 'PERIODO_2') return 'Periodo 2'
+  return p
 }
 
 // Formulario para que el propio docente proponga un curso a impartir
@@ -100,26 +121,16 @@ export default function PreregistroCurso({ docente }) {
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           />
 
-          <div>
-            <label className="block text-xs text-itd-navyDark/50 mb-1">Fecha inicio</label>
-            <input
-              required
-              type="date"
-              value={form.fecha_inicio}
-              onChange={(e) => setForm({ ...form, fecha_inicio: e.target.value })}
-              className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-itd-navyDark/50 mb-1">Fecha fin</label>
-            <input
-              required
-              type="date"
-              value={form.fecha_fin}
-              onChange={(e) => setForm({ ...form, fecha_fin: e.target.value })}
-              className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-            />
-          </div>
+          <select
+            required
+            value={form.periodo}
+            onChange={(e) => setForm({ ...form, periodo: e.target.value })}
+            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+          >
+            <option value="">Periodo…</option>
+            <option value="PERIODO_1">Periodo 1</option>
+            <option value="PERIODO_2">Periodo 2</option>
+          </select>
 
           <input
             placeholder="Duración (horas)"
@@ -128,23 +139,41 @@ export default function PreregistroCurso({ docente }) {
             onChange={(e) => setForm({ ...form, duracion_horas: e.target.value })}
             className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           />
-          <input
-            placeholder="Modalidad (presencial, en línea…)"
+
+          <select
             value={form.modalidad}
             onChange={(e) => setForm({ ...form, modalidad: e.target.value })}
             className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-          />
+          >
+            <option value="">Modalidad…</option>
+            {MODALIDADES.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+
           <input
             placeholder="Lugar"
             value={form.lugar}
             onChange={(e) => setForm({ ...form, lugar: e.target.value })}
             className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           />
-          <input
-            placeholder="Dirigido a (departamento)"
+
+          <select
             value={form.dirigido_a}
             onChange={(e) => setForm({ ...form, dirigido_a: e.target.value })}
-            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+          >
+            <option value="">Departamento…</option>
+            {DEPARTAMENTOS.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+
+          <input
+            placeholder="Nombre del jefe(a) de departamento"
+            value={form.nombre_jefe}
+            onChange={(e) => setForm({ ...form, nombre_jefe: e.target.value })}
+            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           />
 
           <button
@@ -172,9 +201,7 @@ export default function PreregistroCurso({ docente }) {
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-semibold text-itd-navyDark">{item.curso}</p>
-                      <p className="text-xs text-itd-navyDark/50 mt-1">
-                        {item.fecha_inicio} al {item.fecha_fin}
-                      </p>
+                      <p className="text-xs text-itd-navyDark/50 mt-1">{etiquetaPeriodo(item.periodo)}</p>
                     </div>
                     <span className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${estado.clase}`}>
                       {estado.texto}
@@ -189,4 +216,3 @@ export default function PreregistroCurso({ docente }) {
     </div>
   )
 }
-

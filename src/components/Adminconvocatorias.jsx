@@ -13,7 +13,7 @@ function formVacioConvocatoria() {
 function formVacioCurso(convocatoriaId) {
   return {
     convocatoria_id: convocatoriaId,
-    folio: '',
+    folio: '',a
     semana: '',
     nombre: '',
     instructor: '',
@@ -95,6 +95,11 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
       periodo1_fin: formConvocatoria.periodo1_fin || null,
       periodo2_inicio: formConvocatoria.periodo2_inicio || null,
       periodo2_fin: formConvocatoria.periodo2_fin || null,
+      // La fecha general de la convocatoria ya no se captura a mano --
+      // se calcula sola: desde el inicio del Periodo 1 hasta el fin del
+      // Periodo 2.
+      fecha_inicio: formConvocatoria.periodo1_inicio || formConvocatoria.periodo2_inicio || null,
+      fecha_fin: formConvocatoria.periodo2_fin || formConvocatoria.periodo1_fin || null,
     }
     const esNueva = !datos.id
 
@@ -225,24 +230,6 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
               <option value={6}>Junio (Trimestre 2)</option>
               <option value={8}>Agosto (Trimestre 3)</option>
             </select>
-            <label className="text-xs text-itd-navyDark/60">
-              Fecha inicio (convocatoria completa)
-              <input
-                required type="date"
-                value={formConvocatoria.fecha_inicio}
-                onChange={(e) => setFormConvocatoria({ ...formConvocatoria, fecha_inicio: e.target.value })}
-                className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1"
-              />
-            </label>
-            <label className="text-xs text-itd-navyDark/60">
-              Fecha fin (convocatoria completa)
-              <input
-                required type="date"
-                value={formConvocatoria.fecha_fin}
-                onChange={(e) => setFormConvocatoria({ ...formConvocatoria, fecha_fin: e.target.value })}
-                className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1"
-              />
-            </label>
 
             <div className="sm:col-span-2 rounded-lg bg-itd-sand/60 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <p className="sm:col-span-2 text-xs font-semibold text-itd-navyDark/70">
@@ -346,7 +333,13 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                     <button
                       onClick={() => {
                         const base = formVacioCurso(conv.id)
-                        setFormCurso(prefill ? { ...base, ...prefill, convocatoria_id: conv.id } : base)
+                        let datos = prefill ? { ...base, ...prefill, convocatoria_id: conv.id } : base
+                        if (prefill?.semana === 'PERIODO_1') {
+                          datos = { ...datos, fecha_inicio: conv.periodo1_inicio || '', fecha_fin: conv.periodo1_fin || '' }
+                        } else if (prefill?.semana === 'PERIODO_2') {
+                          datos = { ...datos, fecha_inicio: conv.periodo2_inicio || '', fecha_fin: conv.periodo2_fin || '' }
+                        }
+                        setFormCurso(datos)
                         if (prefill) onPrefillConsumido?.()
                       }}
                       className="text-xs rounded-lg bg-itd-navy text-white px-3 py-1.5"

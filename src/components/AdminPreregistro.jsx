@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
+function etiquetaPeriodo(p) {
+  if (p === 'PERIODO_1') return 'Periodo 1'
+  if (p === 'PERIODO_2') return 'Periodo 2'
+  return p || 'Sin periodo'
+}
+
 // Pestaña de Administración -> Preregistro: revisa las propuestas de curso
 // que los propios docentes capturan (ver PreregistroCurso.jsx, en el menú
 // principal). Aquí se asigna el tipo (Docente/Profesional) y, al aprobar,
@@ -40,8 +46,7 @@ export default function AdminPreregistro({ onAprobar }) {
       nombre: item.curso,
       instructor: item.docentes?.nombre_completo || '',
       departamento: item.dirigido_a || item.docentes?.departamento || '',
-      fecha_inicio: item.fecha_inicio || '',
-      fecha_fin: item.fecha_fin || '',
+      semana: item.periodo || '',
       horas: item.duracion_horas || '',
       tipo,
     })
@@ -73,10 +78,13 @@ export default function AdminPreregistro({ onAprobar }) {
               <p className="font-semibold text-itd-navyDark">{item.curso}</p>
               {item.objetivo && <p className="text-sm text-itd-navyDark/60 mt-1">{item.objetivo}</p>}
               <p className="text-xs text-itd-navyDark/50 mt-2">
-                {item.fecha_inicio && item.fecha_fin ? `${item.fecha_inicio} al ${item.fecha_fin}` : 'Sin fechas'}
+                {etiquetaPeriodo(item.periodo)}
                 {item.duracion_horas && ` · ${item.duracion_horas} hrs`}
                 {item.modalidad && ` · ${item.modalidad}`}
               </p>
+              {item.nombre_jefe && (
+                <p className="text-xs text-itd-navyDark/50">Jefe(a) de depto.: {item.nombre_jefe}</p>
+              )}
               <p className="text-xs text-itd-navyDark/50 mt-1">
                 Propuesto por: <strong>{item.docentes?.nombre_completo || 'Desconocido'}</strong>
                 {item.docentes?.departamento && ` (${item.docentes.departamento})`}
