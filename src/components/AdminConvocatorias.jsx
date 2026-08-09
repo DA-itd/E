@@ -40,6 +40,22 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
   const [formCurso, setFormCurso] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const [anioFolio, setAnioFolio] = useState(new Date().getFullYear())
+  const [mostrarAnioFolio, setMostrarAnioFolio] = useState(false)
+
+  // Octubre a diciembre se lanza la convocatoria de enero del año siguiente,
+  // así que en esos meses hay que poder elegir el año del folio. El resto
+  // del año se usa el año actual sin preguntar.
+  async function folioSugeridoPara(anio) {
+    const { data } = await supabase.rpc('siguiente_folio_curso', { anio })
+    return data || ''
+  }
+
+  async function regenerarFolio(anio) {
+    const folio = await folioSugeridoPara(anio)
+    setAnioFolio(anio)
+    setFormCurso((prev) => (prev ? { ...prev, folio: folio || prev.folio } : prev))
+  }
 
   useEffect(() => {
     cargarConvocatorias()
@@ -335,7 +351,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-semibold text-itd-navyDark/70">Cursos de esta convocatoria</h3>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const base = formVacioCurso(conv.id)
                         let datos = prefill ? { ...base, ...prefill, convocatoria_id: conv.id } : base
                         if (prefill?.semana === 'PERIODO_1') {
@@ -343,7 +359,17 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                         } else if (prefill?.semana === 'PERIODO_2') {
                           datos = { ...datos, fecha_inicio: conv.periodo2_inicio || '', fecha_fin: conv.periodo2_fin || '' }
                         }
-                        setFormCurso(datos)
+
+                        const hoy = new Date()
+                        const anioActual = hoy.getFullYear()
+                        const enZonaAmbigua = hoy.getMonth() + 1 >= 10 // oct, nov, dic
+                        const anioSugerido = enZonaAmbigua ? anioActual + 1 : anioActual
+
+                        setMostrarAnioFolio(enZonaAmbigua)
+                        setAnioFolio(anioSugerido)
+                        const folio = await folioSugeridoPara(anioSugerido)
+
+                        setFormCurso({ ...datos, folio: folio || datos.folio })
                         if (prefill) onPrefillConsumido?.()
                       }}
                       className="text-xs rounded-lg bg-itd-navy text-white px-3 py-1.5"
@@ -354,7 +380,26 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
 
                   {formCurso && formCurso.convocatoria_id === conv.id && (
                     <form onSubmit={guardarCurso} className="rounded-xl border border-itd-navy/20 bg-white p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <input required placeholder="Folio" value={formCurso.folio} onChange={(e) => setFormCurso({ ...formCurso, folio: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <div className="flex gap-2">
+                        <input
+                          required
+                          placeholder="Folio"
+                          value={formCurso.folio}
+                          onChange={(e) => setFormCurso({ ...formCurso, folio: e.target.value })}
+                          className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm flex-1"
+                        />
+                        {mostrarAnioFolio && (
+                          <select
+                            value={anioFolio}
+                            onChange={(e) => regenerarFolio(Number(e.target.value))}
+                            title="Año del folio (oct-dic: confirma si es de este año o el que entra)"
+                            className="rounded-lg border border-itd-navy/20 px-2 py-2 text-sm"
+                          >
+                            <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+                            <option value={new Date().getFullYear() + 1}>{new Date().getFullYear() + 1}</option>
+                          </select>
+                        )}
+                      </div>
                       <select
                         required
                         value={formCurso.semana}
