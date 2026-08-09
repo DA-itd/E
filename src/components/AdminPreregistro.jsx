@@ -79,18 +79,46 @@ export default function AdminPreregistro({ onAprobar }) {
       alert('Antes de aprobar, confirma el folio del curso.')
       return
     }
-    await supabase.from('preregistro_cursos').update({ estado: 'aprobado', tipo }).eq('id', item.id)
-    cargar()
-    onAprobar?.({
+
+    const { data: convActiva } = await supabase
+      .from('convocatorias')
+      .select('*')
+      .eq('activo', true)
+      .order('fecha_inicio', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (!convActiva) {
+      alert('No hay una convocatoria activa para asignar este curso. Crea o activa una en "Convocatorias y cursos" primero.')
+      return
+    }
+
+    const fechaInicio = item.periodo === 'PERIODO_2' ? convActiva.periodo2_inicio : convActiva.periodo1_inicio
+    const fechaFin = item.periodo === 'PERIODO_2' ? convActiva.periodo2_fin : convActiva.periodo1_fin
+
+    const { error: errorCurso } = await supabase.from('cursos').insert({
+      convocatoria_id: convActiva.id,
+      folio,
+      semana: item.periodo || '',
       nombre: item.curso,
       instructor: item.docentes?.nombre_completo || '',
       departamento: item.dirigido_a || item.docentes?.departamento || '',
-      semana: item.periodo || '',
+      fecha_inicio: fechaInicio || null,
+      fecha_fin: fechaFin || null,
       horas: item.duracion_horas || '',
       horario: item.horario || '',
       tipo,
-      folio,
+      cupo_max: 30,
+      status: 'borrador', // aprobado, pero tú decides cuándo publicarlo desde Convocatorias y cursos
     })
+
+    if (errorCurso) {
+      alert('No se pudo crear el curso: ' + errorCurso.message)
+      return
+    }
+
+    await supabase.from('preregistro_cursos').update({ estado: 'aprobado', tipo }).eq('id', item.id)
+    cargar()
   }
 
   const pendientes = lista ? lista.filter((i) => i.estado !== 'aprobado') : []
@@ -100,8 +128,8 @@ export default function AdminPreregistro({ onAprobar }) {
     <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8">
       <h2 className="font-display text-xl font-semibold text-itd-navy mb-1">Preregistro de Cursos</h2>
       <p className="text-sm text-itd-navyDark/60 mb-6">
-        Propuestas de curso capturadas por los docentes. Asigna el tipo y aprueba para pasarlas a
-        Convocatorias y cursos.
+        Propuestas de curso capturadas por los docentes. Asigna el tipo, confirma el folio y aprueba: el
+        curso se crea directo (como borrador, sin publicar) en Convocatorias y cursos.
       </p>
 
       <h3 className="text-sm font-semibold text-itd-navyDark/70 mb-3">
@@ -167,7 +195,7 @@ export default function AdminPreregistro({ onAprobar }) {
                   onClick={() => aprobar(item)}
                   className="rounded-lg bg-itd-navy text-white px-3 py-1.5 text-xs font-medium hover:bg-itd-navyDark"
                 >
-                  Aprobar y pasar →
+                  Aprobar y crear curso →
                 </button>
                 <button onClick={() => borrar(item)} className="text-xs text-red-600 hover:underline ml-auto">
                   Borrar
