@@ -24,7 +24,7 @@ function formVacioCurso(convocatoriaId) {
     horario: '',
     tipo: 'Docente',
     cupo_max: 30,
-    status: 'activo',
+    status: 'borrador', // 'borrador' = aprobado pero no visible para inscripción; 'activo' = publicado
   }
 }
 
@@ -175,6 +175,17 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
     const { error } = await supabase.from('cursos').delete().eq('id', curso.id)
     if (error) {
       setErrorMsg('No se pudo eliminar (probablemente ya tiene inscripciones): ' + error.message)
+      return
+    }
+    cargarCursos(curso.convocatoria_id)
+  }
+
+  async function alternarPublicacion(curso) {
+    setErrorMsg('')
+    const nuevoStatus = curso.status === 'activo' ? 'borrador' : 'activo'
+    const { error } = await supabase.from('cursos').update({ status: nuevoStatus }).eq('id', curso.id)
+    if (error) {
+      setErrorMsg('No se pudo actualizar la publicación: ' + error.message)
       return
     }
     cargarCursos(curso.convocatoria_id)
@@ -458,6 +469,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                       <div>
                         <p className="text-sm font-medium text-itd-navyDark">
                           {curso.nombre}
+                          {curso.status !== 'activo' && <span className="ml-2 text-xs text-amber-600">(borrador · no visible)</span>}
                           {curso.cerrado_manualmente && <span className="ml-2 text-xs text-itd-guinda">(inscripciones cerradas)</span>}
                         </p>
                         <p className="text-xs text-itd-navyDark/60">
@@ -466,6 +478,16 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                       </div>
                       <div className="flex gap-2 shrink-0">
                         <button onClick={() => setFormCurso(curso)} className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand">Editar</button>
+                        <button
+                          onClick={() => alternarPublicacion(curso)}
+                          className={`text-xs rounded-lg px-3 py-1.5 font-medium ${
+                            curso.status === 'activo'
+                              ? 'border border-itd-navy/20 hover:bg-itd-sand'
+                              : 'bg-itd-navy text-white hover:bg-itd-navyDark'
+                          }`}
+                        >
+                          {curso.status === 'activo' ? 'Ocultar' : 'Publicar →'}
+                        </button>
                         <button onClick={() => alternarCierreCurso(curso)} className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand">
                           {curso.cerrado_manualmente ? 'Reabrir' : 'Cerrar inscripciones'}
                         </button>

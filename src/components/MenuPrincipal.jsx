@@ -1,8 +1,26 @@
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import EncabezadoInstitucional from './EncabezadoInstitucional'
 import PieDerechos from './PieDerechos'
 
 export default function MenuPrincipal({ docente, esAdmin, onIr }) {
+  const [proximosCursos, setProximosCursos] = useState([])
+
+  useEffect(() => {
+    cargarProximosCursos()
+  }, [])
+
+  // Cursos ya aprobados (creados en Convocatorias y cursos) pero que el admin
+  // todavía no publica para inscripción: se muestran como adelanto.
+  async function cargarProximosCursos() {
+    const { data } = await supabase
+      .from('cursos')
+      .select('nombre, horas, horario, departamento, convocatorias(nombre)')
+      .eq('status', 'borrador')
+      .order('nombre')
+    setProximosCursos(data || [])
+  }
+
   const opciones = [
     {
       id: 'inscripcion',
@@ -73,6 +91,31 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
           </button>
         </div>
       </div>
+
+      {proximosCursos.length > 0 && (
+        <div className="w-full max-w-2xl mt-10">
+          <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6">
+            <h3 className="font-display text-base font-semibold text-itd-navy mb-1">
+              Próximos cursos 👀
+            </h3>
+            <p className="text-sm text-itd-navyDark/60 mb-4">
+              Ya se aprobaron, en breve se abre la inscripción. Ve pensando en cuál te interesa.
+            </p>
+            <div className="space-y-2">
+              {proximosCursos.map((curso, i) => (
+                <div key={i} className="text-sm border border-itd-navy/10 rounded-lg px-3 py-2">
+                  <p className="font-medium text-itd-navyDark">{curso.nombre}</p>
+                  <p className="text-xs text-itd-navyDark/50">
+                    {curso.horas && `${curso.horas} hrs`}
+                    {curso.horario && ` · ${curso.horario}`}
+                    {curso.departamento && ` · ${curso.departamento}`}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       <PieDerechos />
     </div>
   )
