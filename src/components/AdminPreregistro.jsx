@@ -48,6 +48,7 @@ export default function AdminPreregistro({ onAprobar }) {
       departamento: item.dirigido_a || item.docentes?.departamento || '',
       semana: item.periodo || '',
       horas: item.duracion_horas || '',
+      horario: item.horario || '',
       tipo,
     })
   }
@@ -80,6 +81,7 @@ export default function AdminPreregistro({ onAprobar }) {
               <p className="text-xs text-itd-navyDark/50 mt-2">
                 {etiquetaPeriodo(item.periodo)}
                 {item.duracion_horas && ` · ${item.duracion_horas} hrs`}
+                {item.horario && ` · ${item.horario}`}
                 {item.modalidad && ` · ${item.modalidad}`}
               </p>
               {item.nombre_jefe && (

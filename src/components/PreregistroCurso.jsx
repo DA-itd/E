@@ -16,6 +16,7 @@ const DEPARTAMENTOS = [
 ]
 
 const MODALIDADES = ['Presencial', 'Virtual', 'Mixta']
+const HORARIOS = ['09:00 A 15:00 HRS', '15:00 A 20:00 HRS']
 
 // Prefijos aceptados para "Lugar" cuando la modalidad no es Virtual --
 // evita respuestas genéricas como "ITD" o "Instituto Tecnológico de
@@ -27,6 +28,7 @@ function formVacio() {
     curso: '',
     objetivo: '',
     periodo: '',
+    horario: '',
     duracion_horas: '',
     modalidad: '',
     lugar: '',
@@ -106,6 +108,7 @@ export default function PreregistroCurso({ docente }) {
     if (!form.curso.trim()) faltantes.push('Nombre del curso')
     if (!form.objetivo.trim()) faltantes.push('Objetivo')
     if (!form.periodo) faltantes.push('Periodo')
+    if (!form.horario) faltantes.push('Horario')
     if (!form.duracion_horas) faltantes.push('Duración')
     if (!form.modalidad) faltantes.push('Modalidad')
     if (form.modalidad !== 'Virtual' && !form.lugar.trim()) faltantes.push('Lugar')
@@ -208,6 +211,18 @@ export default function PreregistroCurso({ docente }) {
               </p>
             )}
           </div>
+
+          <select
+            required
+            value={form.horario}
+            onChange={(e) => setForm({ ...form, horario: e.target.value })}
+            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+          >
+            <option value="">Horario…</option>
+            {HORARIOS.map((h) => (
+              <option key={h} value={h}>{h}</option>
+            ))}
+          </select>
 
           <input
             required

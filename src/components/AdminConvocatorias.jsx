@@ -21,10 +21,14 @@ function formVacioCurso(convocatoriaId) {
     fecha_inicio: '',
     fecha_fin: '',
     horas: '',
+    horario: '',
     tipo: 'Docente',
     cupo_max: 30,
+    status: 'activo',
   }
 }
+
+const HORARIOS = ['09:00 A 15:00 HRS', '15:00 A 20:00 HRS']
 
 export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
   const [convocatorias, setConvocatorias] = useState([])
@@ -384,6 +388,12 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                       </label>
                       <input required type="number" placeholder="Horas" value={formCurso.horas} onChange={(e) => setFormCurso({ ...formCurso, horas: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
                       <input required type="number" placeholder="Cupo máximo" value={formCurso.cupo_max} onChange={(e) => setFormCurso({ ...formCurso, cupo_max: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <select required value={formCurso.horario} onChange={(e) => setFormCurso({ ...formCurso, horario: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm">
+                        <option value="">Horario…</option>
+                        {HORARIOS.map((h) => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
                       <select value={formCurso.tipo} onChange={(e) => setFormCurso({ ...formCurso, tipo: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2">
                         {TIPOS_CURSO.map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -404,7 +414,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                           {curso.cerrado_manualmente && <span className="ml-2 text-xs text-itd-guinda">(inscripciones cerradas)</span>}
                         </p>
                         <p className="text-xs text-itd-navyDark/60">
-                          Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · cupo {curso.cupo_max}
+                          Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · {curso.horario || 'sin horario'} · cupo {curso.cupo_max}
                         </p>
                       </div>
                       <div className="flex gap-2 shrink-0">
