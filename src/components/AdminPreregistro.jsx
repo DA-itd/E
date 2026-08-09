@@ -14,11 +14,25 @@ function etiquetaPeriodo(p) {
 export default function AdminPreregistro({ onAprobar }) {
   const [lista, setLista] = useState(null) // null = cargando
   const [tipoSeleccionado, setTipoSeleccionado] = useState({}) // id -> 'Docente' | 'Profesional'
+  const [folioSeleccionado, setFolioSeleccionado] = useState({}) // id -> 'TNM-054-XX-año'
+  const [anioFolio, setAnioFolio] = useState(new Date().getFullYear())
+  const [mostrarAnioFolio, setMostrarAnioFolio] = useState(false)
   const [verAprobados, setVerAprobados] = useState(false)
 
   useEffect(() => {
+    // Octubre a diciembre se lanza la convocatoria de enero del año siguiente,
+    // así que en esos meses hay que poder elegir el año del folio. El resto
+    // del año se asume el año actual sin preguntar.
+    const hoy = new Date()
+    const enZonaAmbigua = hoy.getMonth() + 1 >= 10
+    setMostrarAnioFolio(enZonaAmbigua)
+    setAnioFolio(enZonaAmbigua ? hoy.getFullYear() + 1 : hoy.getFullYear())
     cargar()
   }, [])
+
+  useEffect(() => {
+    if (lista) sugerirFolios(anioFolio, lista.filter((i) => i.estado !== 'aprobado'))
+  }, [lista, anioFolio])
 
   async function cargar() {
     const { data } = await supabase
@@ -26,6 +40,26 @@ export default function AdminPreregistro({ onAprobar }) {
       .select('*, docentes(nombre_completo, email, departamento)')
       .order('created_at', { ascending: false })
     setLista(data || [])
+  }
+
+  // Sugiere folios consecutivos para los pendientes visibles, sin pisar los
+  // que el usuario ya haya editado a mano.
+  async function sugerirFolios(anio, pendientesActuales) {
+    const { data: base } = await supabase.rpc('siguiente_folio_curso', { anio })
+    const match = base?.match(/TNM-054-(\d{2})-(\d{4})/)
+    if (!match) return
+    let n = parseInt(match[1], 10)
+    const nuevos = {}
+    pendientesActuales.forEach((item) => {
+      nuevos[item.id] = `TNM-054-${String(n).padStart(2, '0')}-${anio}`
+      n += 1
+    })
+    setFolioSeleccionado((prev) => ({ ...nuevos, ...prev }))
+  }
+
+  function cambiarAnioFolio(anio) {
+    setAnioFolio(anio)
+    setFolioSeleccionado({}) // limpia para regenerar todos con el nuevo año
   }
 
   async function borrar(item) {
@@ -40,6 +74,11 @@ export default function AdminPreregistro({ onAprobar }) {
       alert('Antes de aprobar, elige si es tipo Docente o Profesional.')
       return
     }
+    const folio = folioSeleccionado[item.id]
+    if (!folio) {
+      alert('Antes de aprobar, confirma el folio del curso.')
+      return
+    }
     await supabase.from('preregistro_cursos').update({ estado: 'aprobado', tipo }).eq('id', item.id)
     cargar()
     onAprobar?.({
@@ -50,6 +89,7 @@ export default function AdminPreregistro({ onAprobar }) {
       horas: item.duracion_horas || '',
       horario: item.horario || '',
       tipo,
+      folio,
     })
   }
 
@@ -67,6 +107,20 @@ export default function AdminPreregistro({ onAprobar }) {
       <h3 className="text-sm font-semibold text-itd-navyDark/70 mb-3">
         Pendientes de revisar {lista && `(${pendientes.length})`}
       </h3>
+
+      {mostrarAnioFolio && pendientes.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 text-xs text-itd-navyDark/60">
+          <span>Año del folio para estos cursos:</span>
+          <select
+            value={anioFolio}
+            onChange={(e) => cambiarAnioFolio(Number(e.target.value))}
+            className="rounded-lg border border-itd-navy/20 px-2 py-1 text-xs"
+          >
+            <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+            <option value={new Date().getFullYear() + 1}>{new Date().getFullYear() + 1}</option>
+          </select>
+        </div>
+      )}
 
       {!lista ? (
         <p className="text-center text-itd-navyDark/50 py-6">Cargando…</p>
@@ -102,6 +156,13 @@ export default function AdminPreregistro({ onAprobar }) {
                   <option value="Docente">Docente</option>
                   <option value="Profesional">Profesional</option>
                 </select>
+                <input
+                  value={folioSeleccionado[item.id] || ''}
+                  onChange={(e) => setFolioSeleccionado({ ...folioSeleccionado, [item.id]: e.target.value })}
+                  placeholder="Folio…"
+                  title="Folio del curso (TNM-054-XX-año)"
+                  className="rounded-lg border border-itd-navy/20 px-2 py-1.5 text-xs w-36"
+                />
                 <button
                   onClick={() => aprobar(item)}
                   className="rounded-lg bg-itd-navy text-white px-3 py-1.5 text-xs font-medium hover:bg-itd-navyDark"

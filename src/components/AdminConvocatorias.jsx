@@ -367,7 +367,9 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
 
                         setMostrarAnioFolio(enZonaAmbigua)
                         setAnioFolio(anioSugerido)
-                        const folio = await folioSugeridoPara(anioSugerido)
+                        // Si ya viene un folio confirmado desde Preregistro, se respeta;
+                        // solo se genera uno nuevo si se crea el curso directo desde aquí.
+                        const folio = datos.folio || (await folioSugeridoPara(anioSugerido))
 
                         setFormCurso({ ...datos, folio: folio || datos.folio })
                         if (prefill) onPrefillConsumido?.()
