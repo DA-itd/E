@@ -16,7 +16,7 @@ function partesFecha(fechaISO) {
 }
 
 // Departamento que emite el oficio -- fijo, ajústalo aquí si cambia.
-const DEPTO_HEADER = 'Coordinación de Actualización Docente'
+const DEPTO_HEADER = 'de Desarrollo Académico'
 
 // Destinatario fijo del oficio -- ajusta aquí si cambia la jefatura.
 const DESTINATARIO = ['M.C. MÓNICA ROSALES PÉREZ', 'JEFA DEL DEPTO.  DESARROLLO ACADÉMICO', 'PRESENTE']
@@ -120,18 +120,23 @@ export async function descargarOficioRegistro(item, convocatoria) {
   const pdfDoc = await PDFDocument.load(plantillaBytes)
   const page = pdfDoc.getPages()[0]
 
-  const [regularBytes, boldBytes] = await Promise.all([
+  const [regularBytes, boldBytes, boldItalicaBytes] = await Promise.all([
     fetch(`${BASE}fuentes/Roboto-Regular.ttf`).then((r) => r.arrayBuffer()),
     fetch(`${BASE}fuentes/Roboto-Bold.ttf`).then((r) => r.arrayBuffer()),
+    fetch(`${BASE}fuentes/Roboto-BoldItalic.ttf`).then((r) => r.arrayBuffer()),
   ])
   pdfDoc.registerFontkit(fontkit)
   const fontNormal = await pdfDoc.embedFont(regularBytes)
   const fontNegrita = await pdfDoc.embedFont(boldBytes)
+  const fontNegritaItalica = await pdfDoc.embedFont(boldItalicaBytes)
 
   const fechaEmision = new Date(item.created_at || Date.now())
   const fechaTexto = fechaEmision.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
   const anioEmision = fechaEmision.getFullYear()
-  const oficioNoCompleto = `${item.oficio_no || ''}/${anioEmision}`
+  // Por si alguien llega a escribir "123/2026" en vez de solo "123", nos quedamos
+  // únicamente con la parte numérica antes de agregar el año.
+  const numeroOficio = String(item.oficio_no || '').split('/')[0].trim()
+  const oficioNoCompleto = `${numeroOficio}/${anioEmision}`
 
   // --- Bloque superior derecho (membrete), alineado a la derecha ---
   const xDerecha = 569.5
@@ -177,8 +182,8 @@ export async function descargarOficioRegistro(item, convocatoria) {
 
   // --- Despedida y firma ---
   dibujarTexto(page, 'ATENTAMENTE', 56.7, 562.5, fontNegrita, 10)
-  dibujarTexto(page, 'Excelencia en Educación Tecnológica®', 56.7, 575.4, fontNegrita, 8)
-  dibujarTexto(page, 'La Técnica al Servicio de la Patria', 56.7, 585.0, fontNegrita, 8)
+  dibujarTexto(page, 'Excelencia en Educación Tecnológica®', 56.7, 575.4, fontNegritaItalica, 8)
+  dibujarTexto(page, 'La Técnica al Servicio de la Patria', 56.7, 585.0, fontNegritaItalica, 8)
 
   dibujarTexto(page, item.nombre_jefe || '', 56.7, 634.5, fontNegrita, 10)
   dibujarTexto(page, item.jefatura_cargo || '', 56.7, 650.1, fontNormal, 10)
