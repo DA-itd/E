@@ -25,8 +25,8 @@ const DEPTO_HEADER = 'Coordinación de Actualización Docente'
 // arriba-izquierda en puntos, tal como las reporta pdfplumber.
 const CAMPOS = {
   nombre_depto_header: { x0: 483.9, x1: 569.5, top: 111.1, bottom: 118.1, tam: 7, negrita: false },
-  fecha: { x0: 530.4, x1: 567.2, top: 135.0, bottom: 144.0, tam: 9, negrita: false },
-  oficio_no: { x0: 514.4, x1: 567.2, top: 147.3, bottom: 156.3, tam: 9, negrita: false },
+  fecha: { x0: 530.4, x1: 567.2, top: 135.0, bottom: 144.0, tam: 10, negrita: false },
+  oficio_no: { x0: 514.4, x1: 567.2, top: 147.3, bottom: 156.3, tam: 10, negrita: false },
   nombre_jefe: { x0: 56.7, top: 624.5, bottom: 634.5, tam: 10, negrita: true },
   jefatura: { x0: 56.7, top: 640.1, bottom: 650.1, tam: 10, negrita: false },
 }
@@ -40,25 +40,68 @@ function ajustarTexto(texto, font, tamInicial, anchoMax, tamMinimo = 6) {
   return { texto, tam }
 }
 
-function armarLineasSimple(texto, font, tam, anchoMax) {
-  const parrafos = texto.split('\n\n')
+function armarLineasConEstilo(segmentos, fontNormal, fontNegrita, tam, anchoMax) {
+  // Cada segmento trae su propio texto y si va en negrita; se tokeniza a
+  // nivel palabra conservando el estilo, y se separan párrafos con '\n\n'.
+  const parrafos = [[]]
+  for (const seg of segmentos) {
+    seg.texto.split('\n\n').forEach((parte, i) => {
+      if (i > 0) parrafos.push([])
+      parte.split(' ').filter(Boolean).forEach((palabra) => {
+        parrafos[parrafos.length - 1].push({ texto: palabra, negrita: seg.negrita })
+      })
+    })
+  }
+
+  const espacio = fontNormal.widthOfTextAtSize(' ', tam)
   const lineas = []
-  parrafos.forEach((parrafo, i) => {
-    const palabras = parrafo.split(' ').filter(Boolean)
-    let actual = ''
+  parrafos.forEach((palabras, i) => {
+    let actual = []
+    let ancho = 0
     for (const palabra of palabras) {
-      const intento = actual ? `${actual} ${palabra}` : palabra
-      if (font.widthOfTextAtSize(intento, tam) > anchoMax && actual) {
+      const font = palabra.negrita ? fontNegrita : fontNormal
+      const anchoPalabra = font.widthOfTextAtSize(palabra.texto, tam)
+      const anchoNuevo = actual.length ? ancho + espacio + anchoPalabra : anchoPalabra
+      if (anchoNuevo > anchoMax && actual.length > 0) {
         lineas.push(actual)
-        actual = palabra
+        actual = [palabra]
+        ancho = anchoPalabra
       } else {
-        actual = intento
+        actual.push(palabra)
+        ancho = anchoNuevo
       }
     }
-    if (actual) lineas.push(actual)
-    if (i < parrafos.length - 1) lineas.push('') // línea en blanco entre párrafos
+    if (actual.length) lineas.push(actual)
+    if (i < parrafos.length - 1) lineas.push([]) // línea en blanco entre párrafos
   })
   return lineas
+}
+
+function agruparEnRuns(linea) {
+  const runs = []
+  for (const palabra of linea) {
+    const ultimo = runs[runs.length - 1]
+    if (ultimo && ultimo.negrita === palabra.negrita) {
+      ultimo.texto += ' ' + palabra.texto
+    } else {
+      runs.push({ texto: palabra.texto, negrita: palabra.negrita })
+    }
+  }
+  return runs
+}
+
+function dibujarParrafoConEstilo(page, lineas, fontNormal, fontNegrita, tam, interlineado, yInicial, x) {
+  const espacio = fontNormal.widthOfTextAtSize(' ', tam)
+  let y = yInicial
+  for (const linea of lineas) {
+    let cursorX = x
+    for (const run of agruparEnRuns(linea)) {
+      const font = run.negrita ? fontNegrita : fontNormal
+      page.drawText(run.texto, { x: cursorX, y, size: tam, font, color: NEGRO })
+      cursorX += font.widthOfTextAtSize(run.texto, tam) + espacio
+    }
+    y -= interlineado
+  }
 }
 
 function descargarBytes(bytes, nombreArchivo) {
@@ -128,24 +171,28 @@ export async function descargarOficioRegistro(item, convocatoria) {
     page.drawText(texto, { x: pos.x0, y: y + 2, size: tam, font, color: NEGRO })
   }
 
-  // Párrafo del cuerpo -- el mismo texto de la plantilla, con las llaves sustituidas tal cual.
-  const textoCuerpo =
-    `Por este conducto me permito solicitar su amable intervención para la validación y registro del ` +
-    `CURSO: ${item.curso}, mismo que tiene una duración de ${item.duracion_horas} horas, en modalidad ` +
-    `${item.modalidad}. comprendido del ${ini ? ini.dia : ''} de ${ini ? MESES[ini.mes - 1] : ''} al ` +
-    `${fin ? fin.dia : ''} de ${fin ? MESES[fin.mes - 1] : ''} dirigido al personal docente del ${item.dirigido_a} ` +
-    `cuyo objetivo general es: ${item.objetivo} y del cual se envía ficha técnica, tabla de cronograma y ` +
-    `currículum de instructor(a) anexos al presente, para impartirse en: ${item.lugar}\n\n` +
-    `Agradeciendo de antemano su atención, me es grato reiterarle mi consideración alta y distinguida.`
+  // Párrafo del cuerpo -- mismo texto de la plantilla, con negrita en los
+  // datos clave: horas, fechas del curso, a quién va dirigido, y objetivo.
+  const diaMes1 = ini ? `${ini.dia} de ${MESES[ini.mes - 1]}` : ''
+  const diaMes2 = fin ? `${fin.dia} de ${MESES[fin.mes - 1]}` : ''
+
+  const segmentos = [
+    { texto: `Por este conducto me permito solicitar su amable intervención para la validación y registro del CURSO: ${item.curso}, mismo que tiene una duración de `, negrita: false },
+    { texto: `${item.duracion_horas} horas,`, negrita: true },
+    { texto: ` en modalidad ${item.modalidad}. comprendido del `, negrita: false },
+    { texto: `${diaMes1} al ${diaMes2}`, negrita: true },
+    { texto: ` dirigido al personal docente del `, negrita: false },
+    { texto: `${item.dirigido_a}`, negrita: true },
+    { texto: ` cuyo objetivo general es: `, negrita: false },
+    { texto: `${item.objetivo}`, negrita: true },
+    { texto: ` y del cual se envía ficha técnica, tabla de cronograma y currículum de instructor(a) anexos al presente, para impartirse en: ${item.lugar}`, negrita: false },
+    { texto: `\n\nAgradeciendo de antemano su atención, me es grato reiterarle mi consideración alta y distinguida.`, negrita: false },
+  ]
 
   const anchoMax = CUERPO.derecha - CUERPO.izquierda
-  const lineas = armarLineasSimple(textoCuerpo, fontNormal, CUERPO.tam, anchoMax)
+  const lineas = armarLineasConEstilo(segmentos, fontNormal, fontNegrita, CUERPO.tam, anchoMax)
   const yInicial = ALTO_PAGINA - CUERPO.top - CUERPO.tam
-  let y = yInicial
-  for (const linea of lineas) {
-    page.drawText(linea, { x: CUERPO.izquierda, y, size: CUERPO.tam, font: fontNormal, color: NEGRO })
-    y -= CUERPO.interlineado
-  }
+  dibujarParrafoConEstilo(page, lineas, fontNormal, fontNegrita, CUERPO.tam, CUERPO.interlineado, yInicial, CUERPO.izquierda)
 
   const bytes = await pdfDoc.save()
   descargarBytes(bytes, `Oficio_registro_${(item.oficio_no || 'ITD').replace('/', '-')}.pdf`)

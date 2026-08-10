@@ -36,6 +36,7 @@ function formVacio() {
     dirigido_a: '',
     nombre_jefe: '',
     jefatura_cargo: '',
+    oficio_no: '',
   }
 }
 
@@ -117,6 +118,7 @@ export default function PreregistroCurso({ docente }) {
     if (!form.dirigido_a) faltantes.push('Departamento')
     if (!form.nombre_jefe.trim()) faltantes.push('Nombre del jefe(a) de departamento')
     if (!form.jefatura_cargo.trim()) faltantes.push('Cargo del jefe(a) de departamento')
+    if (!form.oficio_no.trim()) faltantes.push('Número de oficio')
 
     if (faltantes.length) {
       setErrorMsg('Faltan campos por llenar: ' + faltantes.join(', '))
@@ -132,13 +134,10 @@ export default function PreregistroCurso({ docente }) {
     }
 
     setGuardando(true)
-    const anio = new Date().getFullYear()
-    const { data: oficioNo } = await supabase.rpc('siguiente_oficio_no', { anio })
     const { error } = await supabase.from('preregistro_cursos').insert({
       ...form,
       docente_id: docente.id,
       duracion_horas: Number(form.duracion_horas),
-      oficio_no: oficioNo || null,
     })
     setGuardando(false)
     if (error) {
@@ -292,6 +291,14 @@ export default function PreregistroCurso({ docente }) {
             placeholder="Cargo del jefe(a), ej. Jefe(a) del Departamento de Sistemas y Computación"
             value={form.jefatura_cargo}
             onChange={(e) => setForm({ ...form, jefatura_cargo: e.target.value })}
+            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+          />
+
+          <input
+            required
+            placeholder="No. de oficio de tu departamento, ej. 015/2026"
+            value={form.oficio_no}
+            onChange={(e) => setForm({ ...form, oficio_no: e.target.value })}
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           />
 
