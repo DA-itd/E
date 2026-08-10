@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { formatearRangoFechas } from '../lib/formatoFechas'
+import { descargarOficioRegistro } from '../lib/oficio'
 
 const DEPARTAMENTOS = [
   'DEPARTAMENTO DE CIENCIAS BÁSICAS',
@@ -34,6 +35,7 @@ function formVacio() {
     lugar: '',
     dirigido_a: '',
     nombre_jefe: '',
+    jefatura_cargo: '',
   }
 }
 
@@ -114,6 +116,7 @@ export default function PreregistroCurso({ docente }) {
     if (form.modalidad !== 'Virtual' && !form.lugar.trim()) faltantes.push('Lugar')
     if (!form.dirigido_a) faltantes.push('Departamento')
     if (!form.nombre_jefe.trim()) faltantes.push('Nombre del jefe(a) de departamento')
+    if (!form.jefatura_cargo.trim()) faltantes.push('Cargo del jefe(a) de departamento')
 
     if (faltantes.length) {
       setErrorMsg('Faltan campos por llenar: ' + faltantes.join(', '))
@@ -129,10 +132,13 @@ export default function PreregistroCurso({ docente }) {
     }
 
     setGuardando(true)
+    const anio = new Date().getFullYear()
+    const { data: oficioNo } = await supabase.rpc('siguiente_oficio_no', { anio })
     const { error } = await supabase.from('preregistro_cursos').insert({
       ...form,
       docente_id: docente.id,
       duracion_horas: Number(form.duracion_horas),
+      oficio_no: oficioNo || null,
     })
     setGuardando(false)
     if (error) {
@@ -281,6 +287,14 @@ export default function PreregistroCurso({ docente }) {
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm uppercase"
           />
 
+          <input
+            required
+            placeholder="Cargo del jefe(a), ej. Jefe(a) del Departamento de Sistemas y Computación"
+            value={form.jefatura_cargo}
+            onChange={(e) => setForm({ ...form, jefatura_cargo: e.target.value })}
+            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+          />
+
           <button
             type="submit"
             disabled={guardando}
@@ -312,6 +326,14 @@ export default function PreregistroCurso({ docente }) {
                       {estado.texto}
                     </span>
                   </div>
+                  {item.oficio_no && (
+                    <button
+                      onClick={() => descargarOficioRegistro(item, convocatoria)}
+                      className="mt-3 text-xs font-medium text-itd-navy border border-itd-navy/20 rounded-lg px-3 py-1.5 hover:bg-itd-sand"
+                    >
+                      📄 Descargar oficio de registro (No. {item.oficio_no})
+                    </button>
+                  )}
                 </div>
               )
             })}
