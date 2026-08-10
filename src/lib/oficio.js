@@ -1,11 +1,8 @@
 import { PDFDocument, rgb } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 
-const ANCHO_PAGINA = 612
 const ALTO_PAGINA = 792
 const BASE = import.meta.env.BASE_URL
-
-const BLANCO = rgb(1, 1, 1)
 const NEGRO = rgb(0.1, 0.1, 0.1)
 
 const MESES = [
@@ -21,28 +18,24 @@ function partesFecha(fechaISO) {
 // Departamento que emite el oficio -- fijo, ajústalo aquí si cambia.
 const DEPTO_HEADER = 'Coordinación de Actualización Docente'
 
-// Posiciones exactas tomadas del PDF original (TD-AD-FO-07), origen
-// arriba-izquierda en puntos, tal como las reporta pdfplumber.
-const CAMPOS = {
-  nombre_depto_header: { x0: 483.9, x1: 569.5, top: 111.1, bottom: 118.1, tam: 7, negrita: false },
-  fecha: { x0: 530.4, x1: 567.2, top: 135.0, bottom: 144.0, tam: 10, negrita: false },
-  oficio_no: { x0: 514.4, x1: 567.2, top: 147.3, bottom: 156.3, tam: 10, negrita: false },
-  nombre_jefe: { x0: 56.7, top: 624.5, bottom: 634.5, tam: 10, negrita: true },
-  jefatura: { x0: 56.7, top: 640.1, bottom: 650.1, tam: 10, negrita: false },
+// Destinatario fijo del oficio -- ajusta aquí si cambia la jefatura.
+const DESTINATARIO = ['M.C. MÓNICA ROSALES PÉREZ', 'JEFA DEL DEPTO.  DESARROLLO ACADÉMICO', 'PRESENTE']
+const ATENCION = ['At’n: M.C. Alejandro Calderón Rentería', 'Coordinador de Actualización Docente']
+
+function y(top) {
+  return ALTO_PAGINA - top
 }
 
-// Área en blanco del cuerpo del oficio (entre el bloque "At'n" y "ATENTAMENTE").
-const CUERPO = { top: 260, bottom: 545, tam: 10.5, interlineado: 15, izquierda: 56.7, derecha: 555 }
+function dibujarTexto(page, texto, x, top, font, tam) {
+  page.drawText(texto, { x, y: y(top), size: tam, font, color: NEGRO })
+}
 
-function ajustarTexto(texto, font, tamInicial, anchoMax, tamMinimo = 6) {
-  let tam = tamInicial
-  while (tam > tamMinimo && font.widthOfTextAtSize(texto, tam) > anchoMax) tam -= 0.5
-  return { texto, tam }
+function dibujarTextoDerecha(page, texto, xDerecha, top, font, tam) {
+  const ancho = font.widthOfTextAtSize(texto, tam)
+  dibujarTexto(page, texto, xDerecha - ancho, top, font, tam)
 }
 
 function armarLineasConEstilo(segmentos, fontNormal, fontNegrita, tam, anchoMax) {
-  // Cada segmento trae su propio texto y si va en negrita; se tokeniza a
-  // nivel palabra conservando el estilo, y se separan párrafos con '\n\n'.
   const parrafos = [[]]
   for (const seg of segmentos) {
     seg.texto.split('\n\n').forEach((parte, i) => {
@@ -52,7 +45,6 @@ function armarLineasConEstilo(segmentos, fontNormal, fontNegrita, tam, anchoMax)
       })
     })
   }
-
   const espacio = fontNormal.widthOfTextAtSize(' ', tam)
   const lineas = []
   parrafos.forEach((palabras, i) => {
@@ -72,7 +64,7 @@ function armarLineasConEstilo(segmentos, fontNormal, fontNegrita, tam, anchoMax)
       }
     }
     if (actual.length) lineas.push(actual)
-    if (i < parrafos.length - 1) lineas.push([]) // línea en blanco entre párrafos
+    if (i < parrafos.length - 1) lineas.push([])
   })
   return lineas
 }
@@ -92,15 +84,15 @@ function agruparEnRuns(linea) {
 
 function dibujarParrafoConEstilo(page, lineas, fontNormal, fontNegrita, tam, interlineado, yInicial, x) {
   const espacio = fontNormal.widthOfTextAtSize(' ', tam)
-  let y = yInicial
+  let yCursor = yInicial
   for (const linea of lineas) {
     let cursorX = x
     for (const run of agruparEnRuns(linea)) {
       const font = run.negrita ? fontNegrita : fontNormal
-      page.drawText(run.texto, { x: cursorX, y, size: tam, font, color: NEGRO })
+      page.drawText(run.texto, { x: cursorX, y: yCursor, size: tam, font, color: NEGRO })
       cursorX += font.widthOfTextAtSize(run.texto, tam) + espacio
     }
-    y -= interlineado
+    yCursor -= interlineado
   }
 }
 
@@ -118,13 +110,12 @@ function descargarBytes(bytes, nombreArchivo) {
 
 /**
  * Genera y descarga el oficio de registro de un curso propuesto en Preregistro.
- * item: fila de preregistro_cursos (con oficio_no, curso, objetivo, duracion_horas,
- * modalidad, lugar, dirigido_a, nombre_jefe, jefatura_cargo, created_at).
- * convocatoria: { periodo1_inicio, periodo1_fin, periodo2_inicio, periodo2_fin }
- * de la convocatoria activa, para calcular las fechas del periodo elegido.
+ * La plantilla base (oficio_registro_blanco.pdf) solo trae logos e imágenes --
+ * todo el texto se dibuja aquí, con una sola fuente, para que no haya
+ * diferencias de tamaño entre el texto fijo y los datos capturados.
  */
 export async function descargarOficioRegistro(item, convocatoria) {
-  const resp = await fetch(`${BASE}plantillas/oficio_registro.pdf`)
+  const resp = await fetch(`${BASE}plantillas/oficio_registro_blanco.pdf`)
   const plantillaBytes = await resp.arrayBuffer()
   const pdfDoc = await PDFDocument.load(plantillaBytes)
   const page = pdfDoc.getPages()[0]
@@ -139,43 +130,35 @@ export async function descargarOficioRegistro(item, convocatoria) {
 
   const fechaEmision = new Date(item.created_at || Date.now())
   const fechaTexto = fechaEmision.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
+  const anioEmision = fechaEmision.getFullYear()
+  const oficioNoCompleto = `${item.oficio_no || ''}/${anioEmision}`
 
+  // --- Bloque superior derecho (membrete), alineado a la derecha ---
+  const xDerecha = 569.5
+  dibujarTextoDerecha(page, 'Instituto Tecnológico de Durango', xDerecha, 108.6, fontNegrita, 9)
+  dibujarTextoDerecha(page, `Departamento ${DEPTO_HEADER}`, xDerecha, 118.1, fontNormal, 8)
+  dibujarTextoDerecha(page, `Durango, Dgo., ${fechaTexto}`, xDerecha, 144.0, fontNormal, 9)
+  dibujarTextoDerecha(page, `Oficio No. ${oficioNoCompleto}`, xDerecha, 156.3, fontNormal, 9)
+
+  // --- Destinatario (izquierda) ---
+  DESTINATARIO.forEach((linea, i) => {
+    dibujarTexto(page, linea, 56.7, 187.4 + i * 13.6, fontNegrita, 10)
+  })
+
+  // --- At'n (derecha, debajo del destinatario) ---
+  ATENCION.forEach((linea, i) => {
+    dibujarTexto(page, linea, 374.7, 228.3 + i * 13.6, fontNegrita, 10)
+  })
+
+  // --- Cuerpo del oficio ---
   const inicioISO = item.periodo === 'PERIODO_2' ? convocatoria?.periodo2_inicio : convocatoria?.periodo1_inicio
   const finISO = item.periodo === 'PERIODO_2' ? convocatoria?.periodo2_fin : convocatoria?.periodo1_fin
   const ini = inicioISO ? partesFecha(inicioISO) : null
   const fin = finISO ? partesFecha(finISO) : null
-
-  const valores = {
-    nombre_depto_header: DEPTO_HEADER,
-    fecha: fechaTexto,
-    oficio_no: item.oficio_no || '',
-    nombre_jefe: item.nombre_jefe || '',
-    jefatura: item.jefatura_cargo || '',
-  }
-
-  // Cubre cada placeholder con un rectángulo blanco y escribe el valor real encima.
-  for (const [nombreCampo, pos] of Object.entries(CAMPOS)) {
-    const alto = pos.bottom - pos.top
-    const y = ALTO_PAGINA - pos.bottom
-    const anchoRect = (pos.x1 ?? pos.x0 + 250) - pos.x0
-    page.drawRectangle({ x: pos.x0 - 1, y: y - 1, width: anchoRect + 2, height: alto + 2, color: BLANCO })
-
-    const font = pos.negrita ? fontNegrita : fontNormal
-    let texto = valores[nombreCampo] ?? ''
-    let tam = pos.tam
-    if (pos.x1) {
-      const ajustado = ajustarTexto(texto, font, pos.tam, pos.x1 - pos.x0)
-      texto = ajustado.texto
-      tam = ajustado.tam
-    }
-    page.drawText(texto, { x: pos.x0, y: y + 2, size: tam, font, color: NEGRO })
-  }
-
-  // Párrafo del cuerpo -- mismo texto de la plantilla, con negrita en los
-  // datos clave: horas, fechas del curso, a quién va dirigido, y objetivo.
   const diaMes1 = ini ? `${ini.dia} de ${MESES[ini.mes - 1]}` : ''
   const diaMes2 = fin ? `${fin.dia} de ${MESES[fin.mes - 1]}` : ''
 
+  const CUERPO = { top: 260, izquierda: 56.7, derecha: 555, tam: 10.5, interlineado: 15 }
   const segmentos = [
     { texto: `Por este conducto me permito solicitar su amable intervención para la validación y registro del CURSO: ${item.curso}, mismo que tiene una duración de `, negrita: false },
     { texto: `${item.duracion_horas} horas,`, negrita: true },
@@ -188,12 +171,19 @@ export async function descargarOficioRegistro(item, convocatoria) {
     { texto: ` y del cual se envía ficha técnica, tabla de cronograma y currículum de instructor(a) anexos al presente, para impartirse en: ${item.lugar}`, negrita: false },
     { texto: `\n\nAgradeciendo de antemano su atención, me es grato reiterarle mi consideración alta y distinguida.`, negrita: false },
   ]
-
   const anchoMax = CUERPO.derecha - CUERPO.izquierda
   const lineas = armarLineasConEstilo(segmentos, fontNormal, fontNegrita, CUERPO.tam, anchoMax)
-  const yInicial = ALTO_PAGINA - CUERPO.top - CUERPO.tam
-  dibujarParrafoConEstilo(page, lineas, fontNormal, fontNegrita, CUERPO.tam, CUERPO.interlineado, yInicial, CUERPO.izquierda)
+  dibujarParrafoConEstilo(page, lineas, fontNormal, fontNegrita, CUERPO.tam, CUERPO.interlineado, y(CUERPO.top), CUERPO.izquierda)
+
+  // --- Despedida y firma ---
+  dibujarTexto(page, 'ATENTAMENTE', 56.7, 562.5, fontNegrita, 10)
+  dibujarTexto(page, 'Excelencia en Educación Tecnológica®', 56.7, 575.4, fontNegrita, 8)
+  dibujarTexto(page, 'La Técnica al Servicio de la Patria', 56.7, 585.0, fontNegrita, 8)
+
+  dibujarTexto(page, item.nombre_jefe || '', 56.7, 634.5, fontNegrita, 10)
+  dibujarTexto(page, item.jefatura_cargo || '', 56.7, 650.1, fontNormal, 10)
+  dibujarTexto(page, 'c.c.p Archivo', 56.7, 672.6, fontNormal, 8)
 
   const bytes = await pdfDoc.save()
-  descargarBytes(bytes, `Oficio_registro_${(item.oficio_no || 'ITD').replace('/', '-')}.pdf`)
+  descargarBytes(bytes, `Oficio_registro_${oficioNoCompleto.replace('/', '-')}.pdf`)
 }

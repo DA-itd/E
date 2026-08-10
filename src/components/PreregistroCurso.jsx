@@ -296,7 +296,7 @@ export default function PreregistroCurso({ docente }) {
 
           <input
             required
-            placeholder="No. de oficio de tu departamento, ej. 015/2026"
+            placeholder="No. de oficio de tu departamento (solo el número, ej. 123)"
             value={form.oficio_no}
             onChange={(e) => setForm({ ...form, oficio_no: e.target.value })}
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
@@ -338,7 +338,7 @@ export default function PreregistroCurso({ docente }) {
                       onClick={() => descargarOficioRegistro(item, convocatoria)}
                       className="mt-3 text-xs font-medium text-itd-navy border border-itd-navy/20 rounded-lg px-3 py-1.5 hover:bg-itd-sand"
                     >
-                      📄 Descargar oficio de registro (No. {item.oficio_no})
+                      📄 Descargar oficio de registro (No. {item.oficio_no}/{new Date(item.created_at).getFullYear()})
                     </button>
                   )}
                 </div>
