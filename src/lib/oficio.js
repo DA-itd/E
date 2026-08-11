@@ -15,6 +15,14 @@ function partesFecha(fechaISO) {
   return { anio, mes, dia }
 }
 
+// Convierte texto en MAYÚSCULAS (o mezclado) a texto uniforme: todo en
+// minúsculas salvo la primera letra y la primera letra después de cada punto.
+function normalizarTexto(texto) {
+  if (!texto) return ''
+  const minusculas = texto.toLowerCase()
+  return minusculas.replace(/(^\s*[a-záéíóúñü]|[.!?]\s+[a-záéíóúñü])/g, (m) => m.toUpperCase())
+}
+
 // Departamento que emite el oficio -- fijo, ajústalo aquí si cambia.
 const DEPTO_HEADER = 'de Desarrollo Académico'
 
@@ -163,17 +171,24 @@ export async function descargarOficioRegistro(item, convocatoria) {
   const diaMes1 = ini ? `${ini.dia} de ${MESES[ini.mes - 1]}` : ''
   const diaMes2 = fin ? `${fin.dia} de ${MESES[fin.mes - 1]}` : ''
 
-  const CUERPO = { top: 260, izquierda: 56.7, derecha: 555, tam: 10.5, interlineado: 15 }
+  const CUERPO = { top: 275, izquierda: 56.7, derecha: 555, tam: 10.5, interlineado: 15 }
+  const cursoTexto = normalizarTexto(item.curso)
+  const dirigidoATexto = normalizarTexto(item.dirigido_a)
+  const objetivoTexto = normalizarTexto(item.objetivo)
+  const lugarTexto = normalizarTexto(item.lugar)
   const segmentos = [
-    { texto: `Por este conducto me permito solicitar su amable intervención para la validación y registro del CURSO: ${item.curso}, mismo que tiene una duración de `, negrita: false },
+    { texto: `Por este conducto me permito solicitar su amable intervención para la validación y registro del curso: `, negrita: false },
+    { texto: `${cursoTexto},`, negrita: true },
+    { texto: ` mismo que tiene una duración de `, negrita: false },
     { texto: `${item.duracion_horas} horas,`, negrita: true },
     { texto: ` en modalidad ${item.modalidad}. comprendido del `, negrita: false },
     { texto: `${diaMes1} al ${diaMes2}`, negrita: true },
     { texto: ` dirigido al personal docente del `, negrita: false },
-    { texto: `${item.dirigido_a}`, negrita: true },
+    { texto: `${dirigidoATexto}`, negrita: true },
     { texto: ` cuyo objetivo general es: `, negrita: false },
-    { texto: `${item.objetivo}`, negrita: true },
-    { texto: ` y del cual se envía ficha técnica, tabla de cronograma y currículum de instructor(a) anexos al presente, para impartirse en: ${item.lugar}`, negrita: false },
+    { texto: `${objetivoTexto}`, negrita: true },
+    { texto: ` y del cual se envía ficha técnica, tabla de cronograma y currículum de instructor(a) anexos al presente, para impartirse en: `, negrita: false },
+    { texto: `${lugarTexto}.`, negrita: true },
     { texto: `\n\nAgradeciendo de antemano su atención, me es grato reiterarle mi consideración alta y distinguida.`, negrita: false },
   ]
   const anchoMax = CUERPO.derecha - CUERPO.izquierda
