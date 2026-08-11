@@ -1,5 +1,5 @@
 // src/components/EvaluacionInstructor.jsx
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { generarPDFCriterios } from '../lib/criteriosInstructor';
 
@@ -19,7 +19,7 @@ const ESCALA = [
   { value: 5, label: 'Excelente' }
 ];
 
-// ========== NUEVO: Componente de Autocompletado ==========
+// ========== COMPONENTE DE AUTOCOMPLETADO ==========
 function AutocompleteInput({ 
   value, 
   onChange, 
@@ -37,13 +37,18 @@ function AutocompleteInput({
   const wrapperRef = useRef(null);
   const inputRef = useRef(null);
 
+  // Actualizar searchTerm cuando value cambia desde fuera
+  useEffect(() => {
+    setSearchTerm(value || '');
+  }, [value]);
+
   // Filtrar opciones cuando cambia el término de búsqueda
   useEffect(() => {
     if (searchTerm.trim().length > 0) {
       const filtered = options.filter(opt => 
         opt.toLowerCase().includes(searchTerm.toLowerCase().trim())
       );
-      setFilteredOptions(filtered.slice(0, 15)); // Limitar a 15 resultados
+      setFilteredOptions(filtered.slice(0, 15));
     } else {
       setFilteredOptions([]);
     }
@@ -67,7 +72,6 @@ function AutocompleteInput({
     onChange(val);
     setIsOpen(true);
     
-    // Si el usuario borra todo, limpiar selección
     if (val.trim() === '') {
       onSelect('');
     }
@@ -118,7 +122,6 @@ function AutocompleteInput({
         autoComplete="off"
       />
       
-      {/* Dropdown de sugerencias */}
       {isOpen && filteredOptions.length > 0 && (
         <ul className="absolute z-50 w-full mt-1 bg-white border border-itd-navy/20 rounded-lg shadow-lg max-h-60 overflow-y-auto">
           {filteredOptions.map((option, index) => (
@@ -138,7 +141,6 @@ function AutocompleteInput({
         </ul>
       )}
       
-      {/* Mensaje cuando no hay resultados */}
       {isOpen && searchTerm.trim().length > 0 && filteredOptions.length === 0 && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-itd-navy/20 rounded-lg shadow-lg p-3 text-sm text-itd-navyDark/50">
           No se encontraron resultados para "{searchTerm}"
@@ -163,9 +165,9 @@ export default function EvaluacionInstructor({
   const [success, setSuccess] = useState(false);
 
   const [evaluacion, setEvaluacion] = useState({
-    instructor_nombre: preregistro?.docentes?.nombre_completo || '',
+    instructor_nombre: '',
     fecha_evaluacion: new Date().toISOString().split('T')[0],
-    curso_nombre: preregistro?.curso || '',
+    curso_nombre: '',
     empresa_plantel: 'ITD',
     criterio_1: null,
     criterio_2: null,
@@ -177,8 +179,18 @@ export default function EvaluacionInstructor({
     cargo_evaluador: ''
   });
 
-  // ========== NUEVO: Si viene una evaluación existente, cargarla ==========
+  // Cargar datos iniciales
   useEffect(() => {
+    // Si hay preregistro, autocompletar
+    if (preregistro) {
+      setEvaluacion(prev => ({
+        ...prev,
+        instructor_nombre: preregistro.docentes?.nombre_completo || '',
+        curso_nombre: preregistro.curso || ''
+      }));
+    }
+
+    // Si hay evaluación existente, cargarla
     if (evaluacionExistente) {
       setEvaluacion({
         instructor_nombre: evaluacionExistente.instructor_nombre || '',
@@ -195,77 +207,78 @@ export default function EvaluacionInstructor({
         cargo_evaluador: evaluacionExistente.cargo_evaluador || ''
       });
     }
-  }, [evaluacionExistente]);
 
-  useEffect(() => {
     cargarCatalogos();
-  }, []);
+  }, [preregistro, evaluacionExistente]);
 
+  // ========== NUEVO: Cargar SOLO desde la base de datos ==========
   async function cargarCatalogos() {
     setCargando(true);
     
-    // ========== NUEVO: Cargar SOLO los jefes de departamento ==========
-    // Buscar docentes que tengan "jefe" en su cargo o departamento
-    const { data: jefes } = await supabase
-      .from('docentes')
-      .select('nombre_completo, departamento, email')
-      .eq('activo', true)
-      .order('nombre_completo');
+    try {
+      // ========== 1. Cargar TODOS los docentes activos ==========
+      const { data: docentes, error: errorDocentes } = await supabase
+        .from('docentes')
+        .select('nombre_completo, departamento, email')
+        .eq('activo', true)
+        .order('nombre_completo');
 
-    if (jefes) {
-      // Filtrar posibles jefes (por nombre o porque están en departamentos clave)
-      const posiblesJefes = jefes.filter(d => {
-        const nombre = d.nombre_completo.toUpperCase();
-        const depto = d.departamento?.toUpperCase() || '';
-        // Incluir jefes conocidos manualmente
-        const jefesConocidos = [
-          'ANÍBAL ROBERTO SAUCEDO ROSALES',
-          'JUAN VANEGAS RENTERÍA',
-          'LUIS CAMPA GALINDO',
-          'MÓNICA ROSALES PÉREZ',
-          'CÉLIDA CÓRDOVA NAVARRO',
-          'EUSEBIO MUÑOZ RÍOS',
-          'TANIA MONTOYA GARCÍA',
-          'HÉCTOR SOLÍS FLORES',
-          'ALMA CITLALI VÁSQUEZ MORENO',
-          'CARLOS GALEANA DÁVILA',
-          'AARÓN CUAUHTÉMOC VARGAS FIERRO'
+      if (errorDocentes) {
+        console.error('Error al cargar docentes:', errorDocentes);
+        throw errorDocentes;
+      }
+
+      if (docentes && docentes.length > 0) {
+        // ========== NUEVO: Usar TODOS los docentes, sin filtrar ==========
+        // Solo extraer el nombre completo, sin paréntesis
+        const nombres = docentes.map(d => d.nombre_completo);
+        setJefesDepartamento(nombres);
+        console.log(`✅ ${nombres.length} docentes cargados para autocompletado`);
+      }
+
+      // ========== 2. Cargar cargos desde la base de datos ==========
+      // Opción A: Cargar cargos únicos de la tabla docentes
+      const { data: cargosData, error: errorCargos } = await supabase
+        .from('docentes')
+        .select('departamento')
+        .not('departamento', 'is', null)
+        .eq('activo', true);
+
+      if (!errorCargos && cargosData) {
+        // Extraer cargos únicos de los departamentos
+        const cargosUnicos = [...new Set(
+          cargosData
+            .map(d => d.departamento)
+            .filter(Boolean)
+        )];
+        
+        // Agregar algunos cargos base que no están en la tabla
+        const cargosBase = [
+          'Jefe(a) de Departamento',
+          'Subdirector(a) Académico',
+          'Director(a) del Instituto Tecnológico de Durango',
+          'Coordinador(a) de Actualización Docente'
         ];
-        return jefesConocidos.some(j => nombre.includes(j)) || 
-               depto.includes('JEFE') ||
-               depto.includes('DIRECTOR');
-      });
+        
+        const cargosCompletos = [...cargosUnicos, ...cargosBase].sort();
+        setCargos(cargosCompletos);
+        console.log(`✅ ${cargosCompletos.length} cargos cargados`);
+      } else {
+        // Fallback: cargos predefinidos solo si no hay datos
+        setCargos([
+          'Jefe(a) de Departamento',
+          'Subdirector(a) Académico',
+          'Director(a) del Instituto Tecnológico de Durango',
+          'Coordinador(a) de Actualización Docente'
+        ]);
+      }
       
-      // Si no se encontraron jefes, usar todos los docentes como fallback
-      const listaJefes = posiblesJefes.length > 0 ? posiblesJefes : jefes;
-      
-      // Formatear nombres con departamento para mejor identificación
-      const nombresFormateados = listaJefes.map(d => 
-        d.departamento 
-          ? `${d.nombre_completo} (${d.departamento})`
-          : d.nombre_completo
-      );
-      
-      setJefesDepartamento(nombresFormateados);
+    } catch (err) {
+      console.error('Error al cargar catálogos:', err);
+      setError('No se pudieron cargar los datos. Intenta de nuevo.');
+    } finally {
+      setCargando(false);
     }
-
-    // Cargos predefinidos
-    const cargosPredefinidos = [
-      'Jefe(a) del Departamento de Ciencias Básicas',
-      'Jefe(a) del Departamento de Ciencias Económico Administrativas',
-      'Jefe(a) del Departamento de Ingenierías Eléctrica - Electrónica',
-      'Jefe(a) del Departamento de Ingeniería Industrial',
-      'Jefe(a) del Departamento Metal-Mecánica',
-      'Jefe(a) del Departamento de Ingenierías Química-Bioquímica',
-      'Jefe(a) del Departamento de Sistemas y Computación',
-      'Jefe(a) del Departamento de Ciencias de la Tierra',
-      'Jefe(a) de la División de Estudios de Posgrado e Investigación',
-      'Jefe(a) del Departamento de Desarrollo Académico',
-      'Subdirector(a) Académico',
-      'Director(a) del Instituto Tecnológico de Durango'
-    ];
-    setCargos(cargosPredefinidos);
-    setCargando(false);
   }
 
   function handleChange(campo, valor) {
@@ -283,18 +296,18 @@ export default function EvaluacionInstructor({
   }
 
   function calcularTotal() {
-    const total = [1,2,3,4,5].reduce((sum, i) => {
-      return sum + (parseInt(evaluacion[`criterio_${i}`]) || 0);
+    const total = [1, 2, 3, 4, 5].reduce((sum, i) => {
+      const val = parseInt(evaluacion[`criterio_${i}`]) || 0;
+      return sum + val;
     }, 0);
     return total;
   }
 
-  // ========== NUEVO: Función para extraer solo el nombre sin departamento ==========
-  function extraerNombreCompleto(texto) {
+  // Función para limpiar el nombre (quitar paréntesis)
+  function limpiarNombre(texto) {
     if (!texto) return '';
-    // Si tiene paréntesis, extraer solo la parte antes del paréntesis
     const match = texto.match(/^([^(]+)/);
-    return match ? match[0].trim() : texto;
+    return match ? match[0].trim() : texto.trim();
   }
 
   async function handleSubmit(e) {
@@ -304,71 +317,77 @@ export default function EvaluacionInstructor({
 
     // Validaciones
     const camposRequeridos = ['instructor_nombre', 'fecha_evaluacion', 'curso_nombre', 'jefe_departamento', 'cargo_evaluador'];
-    for (const campo of camposRequeridos) {
-      if (!evaluacion[campo]) {
-        setError(`El campo "${campo.replace('_', ' ')}" es obligatorio.`);
-        return;
-      }
+    const faltantes = camposRequeridos.filter(campo => !evaluacion[campo]);
+    
+    if (faltantes.length > 0) {
+      setError(`Faltan campos obligatorios: ${faltantes.join(', ')}`);
+      return;
     }
 
     // Validar que todos los criterios estén calificados
+    const criteriosFaltantes = [];
     for (let i = 1; i <= 5; i++) {
       if (evaluacion[`criterio_${i}`] === null || evaluacion[`criterio_${i}`] === undefined) {
-        setError(`El criterio ${i} debe ser evaluado.`);
-        return;
+        criteriosFaltantes.push(i);
       }
+    }
+    
+    if (criteriosFaltantes.length > 0) {
+      setError(`Faltan calificar los criterios: ${criteriosFaltantes.join(', ')}`);
+      return;
     }
 
     setGuardando(true);
 
     try {
-      // Preparar datos para guardar
+      const jefeLimpio = limpiarNombre(evaluacion.jefe_departamento);
+
       const dataToSave = {
         preregistro_id: preregistro?.id || null,
         docente_id: docente.id,
-        instructor_nombre: evaluacion.instructor_nombre.toUpperCase(),
+        instructor_nombre: evaluacion.instructor_nombre.trim().toUpperCase(),
         fecha_evaluacion: evaluacion.fecha_evaluacion,
-        curso_nombre: evaluacion.curso_nombre.toUpperCase(),
-        empresa_plantel: evaluacion.empresa_plantel?.toUpperCase() || 'ITD',
-        criterio_1: evaluacion.criterio_1,
-        criterio_2: evaluacion.criterio_2,
-        criterio_3: evaluacion.criterio_3,
-        criterio_4: evaluacion.criterio_4,
-        criterio_5: evaluacion.criterio_5,
+        curso_nombre: evaluacion.curso_nombre.trim().toUpperCase(),
+        empresa_plantel: evaluacion.empresa_plantel?.trim().toUpperCase() || 'ITD',
+        criterio_1: parseInt(evaluacion.criterio_1),
+        criterio_2: parseInt(evaluacion.criterio_2),
+        criterio_3: parseInt(evaluacion.criterio_3),
+        criterio_4: parseInt(evaluacion.criterio_4),
+        criterio_5: parseInt(evaluacion.criterio_5),
         puntuacion_total: calcularTotal(),
-        aceptado: evaluacion.aceptado,
-        // ========== NUEVO: Guardar solo el nombre sin el departamento entre paréntesis ==========
-        jefe_departamento: extraerNombreCompleto(evaluacion.jefe_departamento),
-        cargo_evaluador: evaluacion.cargo_evaluador
+        aceptado: evaluacion.aceptado === true,
+        jefe_departamento: jefeLimpio,
+        cargo_evaluador: evaluacion.cargo_evaluador.trim()
       };
+
+      console.log('📤 Datos a guardar:', dataToSave);
 
       let result;
       
-      if (evaluacionExistente) {
-        // Actualizar evaluación existente
+      if (evaluacionExistente && evaluacionExistente.id) {
         result = await supabase
           .from('evaluaciones_instructores')
           .update(dataToSave)
           .eq('id', evaluacionExistente.id)
-          .select()
-          .single();
+          .select();
       } else {
-        // Insertar nueva evaluación
         result = await supabase
           .from('evaluaciones_instructores')
           .insert(dataToSave)
-          .select()
-          .single();
+          .select();
       }
 
-      const { data, error: dbError } = result;
-      if (dbError) throw dbError;
+      if (result.error) {
+        console.error('❌ Error de Supabase:', result.error);
+        throw new Error(result.error.message);
+      }
+
+      const data = result.data?.[0] || result.data;
 
       // Generar PDF
       const pdfUrl = await generarPDFCriterios({
         ...evaluacion,
-        // ========== NUEVO: Usar nombre limpio para el PDF ==========
-        jefe_departamento: extraerNombreCompleto(evaluacion.jefe_departamento),
+        jefe_departamento: jefeLimpio,
         puntuacion_total: calcularTotal(),
         fecha_generacion: new Date().toLocaleDateString('es-MX', {
           year: 'numeric',
@@ -379,19 +398,17 @@ export default function EvaluacionInstructor({
 
       setSuccess(true);
       
-      // Notificar éxito
       if (onEvaluacionGuardada) {
         onEvaluacionGuardada(data, pdfUrl);
       }
 
-      // Descargar PDF automáticamente después de 1 segundo
       setTimeout(() => {
         window.open(pdfUrl, '_blank');
       }, 1000);
 
     } catch (err) {
-      console.error('Error al guardar evaluación:', err);
-      setError('No se pudo guardar la evaluación. Intenta de nuevo.');
+      console.error('❌ Error al guardar evaluación:', err);
+      setError(`No se pudo guardar la evaluación: ${err.message || 'Intenta de nuevo.'}`);
     } finally {
       setGuardando(false);
     }
@@ -498,7 +515,6 @@ export default function EvaluacionInstructor({
               Evaluación por Criterios
             </h3>
             
-            {/* Escala de referencia */}
             <div className="flex flex-wrap gap-2 bg-itd-sand/50 rounded-lg p-3">
               <span className="text-sm font-semibold text-itd-navyDark/70">Escala:</span>
               {ESCALA.map((item) => (
@@ -511,7 +527,6 @@ export default function EvaluacionInstructor({
               ))}
             </div>
 
-            {/* Tabla */}
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead>
@@ -591,7 +606,6 @@ export default function EvaluacionInstructor({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* ========== NUEVO: Campo de autocompletado para Jefe ========== */}
               <div>
                 <AutocompleteInput
                   value={evaluacion.jefe_departamento}
