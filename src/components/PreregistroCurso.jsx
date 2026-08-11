@@ -1,7 +1,9 @@
+// src/components/PreregistroCurso.jsx
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { formatearRangoFechas } from '../lib/formatoFechas'
 import { descargarOficioRegistro } from '../lib/oficio'
+import EvaluacionInstructor from './EvaluacionInstructor' // <-- NUEVO IMPORT
 
 const DEPARTAMENTOS = [
   'DEPARTAMENTO DE CIENCIAS BÁSICAS',
@@ -19,9 +21,7 @@ const DEPARTAMENTOS = [
 const MODALIDADES = ['Presencial', 'Virtual', 'Mixta']
 const HORARIOS = ['09:00 A 15:00 HRS', '15:00 A 20:00 HRS']
 
-// Prefijos aceptados para "Lugar" cuando la modalidad no es Virtual --
-// evita respuestas genéricas como "ITD" o "Instituto Tecnológico de
-// Durango" que no dicen en qué espacio específico será el curso.
+// Prefijos aceptados para "Lugar" cuando la modalidad no es Virtual
 const PREFIJOS_LUGAR_VALIDOS = ['AULA', 'TALLER', 'SALA', 'LABORATORIO', 'EDIFICIO DE']
 
 function formVacio() {
@@ -51,24 +51,23 @@ function etiquetaPeriodo(p) {
   return p
 }
 
-// Todo se guarda en MAYÚSCULAS (así aparece tal cual en constancias y
-// reconocimientos) excepto el objetivo, que se deja como el docente lo
-// escriba -- ahí sí puede ir en minúsculas.
 function aMayusculas(texto) {
   return texto.toUpperCase()
 }
 
-// Formulario para que el propio docente proponga un curso a impartir
-// (nombre, objetivo, periodo, etc.). La Coordinación revisa esto en
-// Administración -> Preregistro, y ahí asigna si es tipo Docente o
-// Profesional antes de darlo de alta formalmente en Convocatorias.
 export default function PreregistroCurso({ docente }) {
   const [misPreregistros, setMisPreregistros] = useState(null)
   const [formAbierto, setFormAbierto] = useState(false)
   const [form, setForm] = useState(formVacio())
   const [guardando, setGuardando] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const [convocatoria, setConvocatoria] = useState(null) // para mostrar fechas de cada periodo
+  const [convocatoria, setConvocatoria] = useState(null)
+
+  // ========== NUEVO: Estado para Evaluación de Instructor ==========
+  const [mostrarEvaluacion, setMostrarEvaluacion] = useState(false)
+  const [preregistroSeleccionado, setPreregistroSeleccionado] = useState(null)
+  const [evaluacionesExistentes, setEvaluacionesExistentes] = useState({})
+  const [cargandoEvaluaciones, setCargandoEvaluaciones] = useState(false)
 
   useEffect(() => {
     cargar()
@@ -78,10 +77,35 @@ export default function PreregistroCurso({ docente }) {
   async function cargar() {
     const { data } = await supabase
       .from('preregistro_cursos')
-      .select('*')
+      .select('*, docentes(nombre_completo, email, departamento)')
       .eq('docente_id', docente.id)
       .order('created_at', { ascending: false })
     setMisPreregistros(data || [])
+    
+    // Cargar evaluaciones existentes para estos preregistros
+    if (data && data.length > 0) {
+      cargarEvaluacionesParaPreregistros(data.map(item => item.id))
+    }
+  }
+
+  // ========== NUEVO: Cargar evaluaciones existentes ==========
+  async function cargarEvaluacionesParaPreregistros(preregistroIds) {
+    if (preregistroIds.length === 0) return
+    
+    setCargandoEvaluaciones(true)
+    const { data } = await supabase
+      .from('evaluaciones_instructores')
+      .select('*')
+      .in('preregistro_id', preregistroIds)
+    
+    if (data) {
+      const mapa = {}
+      data.forEach(evalItem => {
+        mapa[evalItem.preregistro_id] = evalItem
+      })
+      setEvaluacionesExistentes(mapa)
+    }
+    setCargandoEvaluaciones(false)
   }
 
   async function cargarConvocatoria() {
@@ -97,7 +121,7 @@ export default function PreregistroCurso({ docente }) {
   }
 
   function validarLugar(lugar, modalidad) {
-    if (modalidad === 'Virtual') return true // no aplica si es en línea
+    if (modalidad === 'Virtual') return true
     const l = lugar.trim().toUpperCase()
     return PREFIJOS_LUGAR_VALIDOS.some((prefijo) => l.startsWith(prefijo))
   }
@@ -106,7 +130,6 @@ export default function PreregistroCurso({ docente }) {
     e.preventDefault()
     setErrorMsg('')
 
-    // Todos los campos son obligatorios (lugar solo si no es virtual).
     const faltantes = []
     if (!form.curso.trim()) faltantes.push('Nombre del curso')
     if (!form.objetivo.trim()) faltantes.push('Objetivo')
@@ -128,7 +151,7 @@ export default function PreregistroCurso({ docente }) {
     if (!validarLugar(form.lugar, form.modalidad)) {
       setErrorMsg(
         'El "Lugar" debe indicar el espacio específico: Aula, Taller, Sala, Laboratorio o Edificio de... ' +
-          '(no se acepta solo "ITD" o el nombre del instituto). Si es virtual, deja el campo vacío y elige modalidad Virtual.'
+        '(no se acepta solo "ITD" o el nombre del instituto). Si es virtual, deja el campo vacío y elige modalidad Virtual.'
       )
       return
     }
@@ -147,6 +170,33 @@ export default function PreregistroCurso({ docente }) {
     setForm(formVacio())
     setFormAbierto(false)
     cargar()
+  }
+
+  // ========== NUEVO: Manejar apertura de evaluación ==========
+  function abrirEvaluacion(item) {
+    setPreregistroSeleccionado(item)
+    setMostrarEvaluacion(true)
+  }
+
+  // ========== NUEVO: Manejar cierre de evaluación ==========
+  function cerrarEvaluacion() {
+    setMostrarEvaluacion(false)
+    setPreregistroSeleccionado(null)
+  }
+
+  // ========== NUEVO: Manejar evaluación guardada ==========
+  async function handleEvaluacionGuardada(data, pdfUrl) {
+    // Actualizar el mapa de evaluaciones existentes
+    setEvaluacionesExistentes(prev => ({
+      ...prev,
+      [data.preregistro_id]: data
+    }))
+    
+    // Cerrar modal
+    cerrarEvaluacion()
+    
+    // Recargar la lista para actualizar estados
+    await cargar()
   }
 
   const fechasPeriodo1 = convocatoria?.periodo1_inicio && convocatoria?.periodo1_fin
@@ -322,17 +372,55 @@ export default function PreregistroCurso({ docente }) {
           <div className="space-y-3">
             {misPreregistros.map((item) => {
               const estado = ESTADO_LABEL[item.estado] || ESTADO_LABEL.pendiente
+              const evaluacion = evaluacionesExistentes[item.id]
+              
               return (
                 <div key={item.id} className="rounded-xl border border-itd-navy/10 p-4">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
+                    <div className="flex-1">
                       <p className="font-semibold text-itd-navyDark">{item.curso}</p>
                       <p className="text-xs text-itd-navyDark/50 mt-1">{etiquetaPeriodo(item.periodo)}</p>
+                      {item.docentes && (
+                        <p className="text-xs text-itd-navyDark/50">
+                          Propuesto por: {item.docentes.nombre_completo}
+                        </p>
+                      )}
                     </div>
-                    <span className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${estado.clase}`}>
-                      {estado.texto}
-                    </span>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${estado.clase}`}>
+                        {estado.texto}
+                      </span>
+                      
+                      {/* ========== NUEVO: Botón Evaluar Instructor ========== */}
+                      {item.estado === 'pendiente' && (
+                        <button
+                          onClick={() => abrirEvaluacion(item)}
+                          className="text-xs font-medium text-purple-700 border border-purple-300 rounded-lg px-3 py-1.5 hover:bg-purple-50 transition-colors flex items-center gap-1"
+                        >
+                          {evaluacion ? (
+                            <>
+                              <span>✅</span> Ver Evaluación
+                            </>
+                          ) : (
+                            <>
+                              <span>📋</span> Evaluar Instructor
+                            </>
+                          )}
+                        </button>
+                      )}
+                      
+                      {/* Mostrar resumen de evaluación si existe */}
+                      {evaluacion && (
+                        <div className="text-xs text-itd-navyDark/60 flex items-center gap-2">
+                          <span>📊 {evaluacion.puntuacion_total}/25</span>
+                          <span className={`px-1.5 py-0.5 rounded ${evaluacion.aceptado ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {evaluacion.aceptado ? '✅ Aceptado' : '❌ Rechazado'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  
                   {item.oficio_no && (
                     <button
                       onClick={() => descargarOficioRegistro(item, convocatoria)}
@@ -347,6 +435,17 @@ export default function PreregistroCurso({ docente }) {
           </div>
         )}
       </div>
+
+      {/* ========== NUEVO: Modal de Evaluación ========== */}
+      {mostrarEvaluacion && preregistroSeleccionado && (
+        <EvaluacionInstructor
+          preregistro={preregistroSeleccionado}
+          docente={docente}
+          onCerrar={cerrarEvaluacion}
+          onEvaluacionGuardada={handleEvaluacionGuardada}
+          evaluacionExistente={evaluacionesExistentes[preregistroSeleccionado.id] || null}
+        />
+      )}
     </div>
   )
 }
