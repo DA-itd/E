@@ -28,6 +28,7 @@ export async function generarPDFCriterios(datos) {
     const gris = rgb(0.4, 0.4, 0.4);
     const verde = rgb(0, 0.5, 0);
     const rojo = rgb(0.8, 0, 0);
+    const blanco = rgb(1, 1, 1);
     
     // Función auxiliar para dibujar texto
     function text(texto, x, y, tam = 10, font = fontNormal, color = negro, align = 'left') {
@@ -126,18 +127,18 @@ export async function generarPDFCriterios(datos) {
     
     headers.forEach((h, i) => {
       const x = i === 0 ? colX[i] : colX[i] + 10;
-      text(h, x, yPos + 5, 9, fontBold, rgb(1, 1, 1), 'center');
+      text(h, x, yPos + 5, 9, fontBold, blanco, 'center');
     });
     
     yPos += 30;
     
     // Filas de criterios
     const criterios = [
-      { id: 1, label: '1. Formación profesional relacionada a la capacitación a impartir.' },
-      { id: 2, label: '2. Experiencia en capacitación y en la temática a impartir.' },
-      { id: 3, label: '3. Materiales didácticos a utilizar.' },
+      { id: 1, label: '1. Formacion profesional relacionada a la capacitacion a impartir.' },
+      { id: 2, label: '2. Experiencia en capacitacion y en la tematica a impartir.' },
+      { id: 3, label: '3. Materiales didacticos a utilizar.' },
       { id: 4, label: '4. Empresas diferentes en las que ha participado como instructor(a).' },
-      { id: 5, label: '5. Certificaciones y acreditaciones relacionadas al área de capacitación.' }
+      { id: 5, label: '5. Certificaciones y acreditaciones relacionadas al area de capacitacion.' }
     ];
     
     criterios.forEach((c, idx) => {
@@ -194,13 +195,14 @@ export async function generarPDFCriterios(datos) {
     yPos += 35;
     
     // ===== RESULTADO =====
-    text('RESULTADO DE EVALUACIÓN', 50, yPos, 12, fontBold, azul);
+    text('RESULTADO DE EVALUACION', 50, yPos, 12, fontBold, azul);
     yPos += 25;
     
     text('¿Instructor Aceptado?', 50, yPos, 10, fontBold);
-    const aceptado = datos.aceptado ? 'SÍ' : 'NO';
+    // ===== CORREGIDO: Usar "SI" y "NO" en lugar de símbolos =====
+    const aceptado = datos.aceptado ? 'SI' : 'NO';
     const colorAceptado = datos.aceptado ? verde : rojo;
-    text('✓ ' + aceptado, 220, yPos, 12, fontBold, colorAceptado);
+    text(aceptado, 220, yPos, 12, fontBold, colorAceptado);
     
     yPos += 35;
     
@@ -208,7 +210,7 @@ export async function generarPDFCriterios(datos) {
     text('DATOS DEL EVALUADOR', 50, yPos, 12, fontBold, azul);
     yPos += 25;
     
-    text('Jefe(a) de Departamento que Evalúa:', 50, yPos, 10, fontBold);
+    text('Jefe(a) de Departamento que Evalua:', 50, yPos, 10, fontBold);
     text(limpiarNombre(datos.jefe_departamento || 'No especificado'), 280, yPos, 10, fontNormal, azul);
     
     yPos += 25;
@@ -219,9 +221,9 @@ export async function generarPDFCriterios(datos) {
     yPos += 40;
     
     // ===== NOTA IMPORTANTE =====
-    text('⚠️ Este documento se generará en PDF para su descarga.', 50, yPos, 9, fontOblique, guinda);
+    text('Este documento se generara en PDF para su descarga.', 50, yPos, 9, fontOblique, guinda);
     yPos += 18;
-    text('Recuerda imprimir y entregar firmado este documento en Coordinación de Actualización Docente', 50, yPos, 8, fontOblique, gris);
+    text('Recuerda imprimir y entregar firmado este documento en Coordinacion de Actualizacion Docente', 50, yPos, 8, fontOblique, gris);
     
     // ===== FOOTER =====
     const fechaGen = new Date().toLocaleDateString('es-MX', {
@@ -232,14 +234,14 @@ export async function generarPDFCriterios(datos) {
     
     text('DA ' + fechaGen, 550, 780, 7, fontNormal, gris, 'right');
     
-    text('© 2026 Coordinación de Actualización Docente', 612/2, 780, 7, fontNormal, gris, 'center');
+    text('2026 Coordinacion de Actualizacion Docente', 612/2, 780, 7, fontNormal, gris, 'center');
     
     // ===== GUARDAR PDF =====
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     
-    console.log('✅ PDF generado exitosamente desde código');
+    console.log('✅ PDF generado exitosamente desde codigo');
     return url;
     
   } catch (error) {
