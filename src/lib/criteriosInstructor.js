@@ -1,310 +1,249 @@
 // src/lib/criteriosInstructor.js
-import { PDFDocument, rgb } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 
-// ========== NUEVO: Detectar entorno (local vs producción) ==========
-const isProduction = import.meta.env.PROD;
-const BASE_URL = isProduction ? '/A/' : '/';
-
-console.log('🌍 Entorno:', isProduction ? 'Producción' : 'Desarrollo');
-console.log('📁 BASE_URL:', BASE_URL);
-
-// ========== NUEVO: Buscar la plantilla en múltiples ubicaciones ==========
-const PLANTILLAS = [
-  // Para producción (GitHub Pages)
-  `${BASE_URL}ITD-AD-FO-06%20Formatos%20de%20Criterios%20para%20Seleccionar%20Instructores.pdf`,
-  `${BASE_URL}ITD-AD-FO-06-Formatos-de-Criterios-para-Seleccionar-Instructores.pdf`,
-  // Para desarrollo local
-  `/ITD-AD-FO-06%20Formatos%20de%20Criterios%20para%20Seleccionar%20Instructores.pdf`,
-  `/ITD-AD-FO-06-Formatos-de-Criterios-para-Seleccionar-Instructores.pdf`,
-  // Fallback: sin espacios
-  `/ITD-AD-FO-06.pdf`,
-  // En la carpeta plantillas
-  `/plantillas/ITD-AD-FO-06.pdf`,
-  `/plantillas/criterios_instructor_base.pdf`,
-];
-
-console.log('🔍 Intentando cargar plantilla desde:', PLANTILLAS[0]);
-
+/**
+ * Genera el PDF de evaluación de instructor completamente desde código
+ * SIN depender de plantillas externas
+ */
 export async function generarPDFCriterios(datos) {
-  console.log('📝 Generando PDF con datos:', datos);
-  
-  let plantillaBytes = null;
-  let plantillaUrl = null;
-  
-  // ========== 1. Intentar cargar la plantilla desde múltiples ubicaciones ==========
-  for (const url of PLANTILLAS) {
-    try {
-      console.log(`🔍 Intentando: ${url}`);
-      const response = await fetch(url);
-      
-      if (response.ok) {
-        const bytes = await response.arrayBuffer();
-        if (bytes.byteLength > 1000) { // Verificar que no esté vacío
-          plantillaBytes = bytes;
-          plantillaUrl = url;
-          console.log(`✅ Plantilla encontrada en: ${url}, tamaño: ${bytes.byteLength} bytes`);
-          break;
-        } else {
-          console.warn(`⚠️ Archivo muy pequeño en ${url}: ${bytes.byteLength} bytes`);
-        }
-      }
-    } catch (e) {
-      console.warn(`❌ Error en ${url}:`, e.message);
-    }
-  }
-  
-  // ========== 2. Si no se encuentra la plantilla, generar PDF desde cero ==========
-  if (!plantillaBytes) {
-    console.warn('⚠️ No se encontró plantilla, generando PDF desde cero...');
-    return generarPDFDesdeCero(datos);
-  }
+  console.log('📝 Generando PDF de evaluación...');
   
   try {
-    // ========== 3. Cargar el PDF y fuentes ==========
-    const pdfDoc = await PDFDocument.load(plantillaBytes);
-    pdfDoc.registerFontkit(fontkit);
+    // Crear nuevo documento PDF
+    const pdfDoc = await PDFDocument.create();
     
-    let fontNormal, fontBold;
-    try {
-      const [regularBytes, boldBytes] = await Promise.all([
-        fetch(`${BASE_URL}fuentes/Roboto-Regular.ttf`).then(r => r.arrayBuffer()),
-        fetch(`${BASE_URL}fuentes/Roboto-Bold.ttf`).then(r => r.arrayBuffer())
-      ]);
-      fontNormal = await pdfDoc.embedFont(regularBytes);
-      fontBold = await pdfDoc.embedFont(boldBytes);
-    } catch (e) {
-      console.warn('⚠️ No se pudieron cargar fuentes externas, usando fuentes estándar');
-      fontNormal = await pdfDoc.embedFont('Helvetica');
-      fontBold = await pdfDoc.embedFont('Helvetica-Bold');
-    }
+    // Usar fuentes estándar (no necesita archivos externos)
+    const fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
     
-    const page = pdfDoc.getPages()[0];
-    const { width, height } = page.getSize();
+    // Agregar página (tamaño carta: 612 x 792)
+    const page = pdfDoc.addPage([612, 792]);
+    const { height } = page.getSize();
     
-    const colorAzul = rgb(0.106, 0.224, 0.416);
-    const colorNegro = rgb(0.1, 0.1, 0.1);
-    const colorRojo = rgb(0.8, 0, 0);
-    const colorVerde = rgb(0, 0.5, 0);
+    // Colores
+    const azul = rgb(0.106, 0.224, 0.416);  // #1B396A
+    const guinda = rgb(0.616, 0.141, 0.286); // #9D2449
+    const negro = rgb(0.1, 0.1, 0.1);
+    const gris = rgb(0.4, 0.4, 0.4);
+    const verde = rgb(0, 0.5, 0);
+    const rojo = rgb(0.8, 0, 0);
     
-    function drawText(texto, x, y, tam = 10, font = fontNormal, color = colorNegro) {
+    // Función auxiliar para dibujar texto
+    function text(texto, x, y, tam = 10, font = fontNormal, color = negro, align = 'left') {
       if (!texto) return;
-      try {
-        page.drawText(String(texto), {
-          x,
-          y: height - y,
-          size: tam,
-          font,
-          color
-        });
-      } catch (e) {
-        console.warn('⚠️ Error al dibujar texto:', e.message);
+      let posX = x;
+      if (align === 'center') {
+        const ancho = font.widthOfTextAtSize(texto, tam);
+        posX = (612 - ancho) / 2;
+      } else if (align === 'right') {
+        const ancho = font.widthOfTextAtSize(texto, tam);
+        posX = 612 - x - ancho;
       }
+      page.drawText(String(texto), {
+        x: posX,
+        y: height - y,
+        size: tam,
+        font,
+        color
+      });
     }
     
+    // Función para limpiar nombre (quitar paréntesis)
     function limpiarNombre(texto) {
       if (!texto) return '';
       const match = texto.match(/^([^(]+)/);
       return match ? match[0].trim() : texto.trim();
     }
     
-    // ========== 4. Dibujar datos sobre el PDF ==========
-    console.log('✏️ Dibujando datos en el PDF...');
-    
-    // Nombre del instructor
-    drawText(datos.instructor_nombre || 'No especificado', 220, 115, 10, fontBold, colorAzul);
-    
-    // Fecha de evaluación
-    const fecha = datos.fecha_evaluacion ? new Date(datos.fecha_evaluacion) : new Date();
-    const fechaStr = fecha.toLocaleDateString('es-MX', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
+    // ===== HEADER =====
+    // Línea decorativa superior
+    page.drawRectangle({
+      x: 40,
+      y: height - 35,
+      width: 532,
+      height: 4,
+      color: guinda
     });
-    drawText(fechaStr, 200, 140, 10, fontNormal);
     
-    // Nombre del curso
-    drawText(datos.curso_nombre || 'No especificado', 220, 165, 10, fontNormal, colorAzul);
+    // Título principal
+    text('INSTITUTO TECNOLÓGICO DE DURANGO', 612/2, 55, 14, fontBold, azul, 'center');
+    text('Coordinación de Actualización Docente', 612/2, 72, 10, fontNormal, gris, 'center');
     
-    // Empresa/Plantel
-    drawText(datos.empresa_plantel || 'ITD', 220, 190, 10, fontNormal);
+    // Título del documento
+    text('CRITERIOS PARA SELECCIONAR INSTRUCTOR (A)', 612/2, 100, 16, fontBold, azul, 'center');
     
-    // Criterios (puntuaciones)
-    const yCriterios = 260;
-    for (let i = 1; i <= 5; i++) {
-      const valor = datos[`criterio_${i}`] || '-';
-      drawText(String(valor), 460, yCriterios + (i - 1) * 28, 11, fontBold, colorAzul);
-    }
+    // Línea decorativa
+    page.drawRectangle({
+      x: 80,
+      y: height - 115,
+      width: 452,
+      height: 2,
+      color: azul
+    });
     
-    // Total
-    const total = datos.puntuacion_total || 0;
-    drawText(String(total), 510, 420, 14, fontBold, colorAzul);
+    // ===== DATOS DEL INSTRUCTOR =====
+    let yPos = 140;
     
-    // Aceptado
-    const aceptado = datos.aceptado ? 'SI' : 'NO';
-    drawText(aceptado, 180, 460, 11, fontBold, datos.aceptado ? colorVerde : colorRojo);
+    // Nombre
+    text('Nombre del instructor (a):', 50, yPos, 10, fontBold);
+    text(datos.instructor_nombre || 'No especificado', 220, yPos, 10, fontBold, azul);
     
-    // Jefe de departamento
-    const jefeLimpio = limpiarNombre(datos.jefe_departamento || 'No especificado');
-    drawText(jefeLimpio, 140, 505, 10, fontNormal);
+    yPos += 25;
     
-    // Cargo del evaluador
-    drawText(datos.cargo_evaluador || 'No especificado', 140, 525, 9, fontNormal);
+    // Fecha
+    const fecha = datos.fecha_evaluacion ? new Date(datos.fecha_evaluacion) : new Date();
+    text('Fecha de evaluación:', 50, yPos, 10, fontBold);
+    text(fecha.toLocaleDateString('es-MX'), 200, yPos, 10, fontNormal);
     
-    // Fecha de generación
+    yPos += 25;
+    
+    // Curso
+    text('Nombre del curso a impartir:', 50, yPos, 10, fontBold);
+    text(datos.curso_nombre || 'No especificado', 220, yPos, 10, fontNormal, azul);
+    
+    yPos += 25;
+    
+    // Empresa
+    text('Nombre de la empresa o plantel:', 50, yPos, 10, fontBold);
+    text(datos.empresa_plantel || 'ITD', 220, yPos, 10, fontNormal);
+    
+    yPos += 35;
+    
+    // ===== TABLA DE CRITERIOS =====
+    // Encabezados
+    const colX = [50, 120, 180, 240, 300, 360, 440];
+    const headers = ['CRITERIO', '1', '2', '3', '4', '5', 'TOTAL'];
+    
+    // Fondo del encabezado
+    page.drawRectangle({
+      x: colX[0] - 5,
+      y: height - yPos - 5,
+      width: 510,
+      height: 30,
+      color: azul
+    });
+    
+    headers.forEach((h, i) => {
+      const x = i === 0 ? colX[i] : colX[i] + 10;
+      text(h, x, yPos + 5, 9, fontBold, rgb(1, 1, 1), 'center');
+    });
+    
+    yPos += 30;
+    
+    // Filas de criterios
+    const criterios = [
+      { id: 1, label: '1. Formación profesional relacionada a la capacitación a impartir.' },
+      { id: 2, label: '2. Experiencia en capacitación y en la temática a impartir.' },
+      { id: 3, label: '3. Materiales didácticos a utilizar.' },
+      { id: 4, label: '4. Empresas diferentes en las que ha participado como instructor(a).' },
+      { id: 5, label: '5. Certificaciones y acreditaciones relacionadas al área de capacitación.' }
+    ];
+    
+    criterios.forEach((c, idx) => {
+      const yFila = yPos + (idx * 25);
+      const alternar = idx % 2 === 0;
+      
+      // Fondo alternado
+      if (alternar) {
+        page.drawRectangle({
+          x: colX[0] - 5,
+          y: height - yFila - 5,
+          width: 510,
+          height: 25,
+          color: rgb(0.95, 0.95, 0.95)
+        });
+      }
+      
+      // Texto del criterio
+      text(c.label, colX[0], yFila + 3, 8, fontNormal);
+      
+      // Puntuaciones
+      for (let i = 1; i <= 5; i++) {
+        const val = datos[`criterio_${i}`] || '-';
+        const x = colX[i] + 15;
+        text(String(val), x, yFila + 3, 10, fontBold, azul, 'center');
+      }
+      
+      // Total por criterio
+      const total = datos[`criterio_${c.id}`] || '-';
+      text(String(total), colX[6] + 15, yFila + 3, 10, fontBold, azul, 'center');
+    });
+    
+    yPos += criterios.length * 25 + 15;
+    
+    // TOTAL GENERAL
+    page.drawRectangle({
+      x: colX[0] - 5,
+      y: height - yPos - 5,
+      width: 510,
+      height: 30,
+      color: rgb(0.95, 0.95, 0.95)
+    });
+    
+    text('TOTAL GENERAL', colX[0], yPos + 5, 12, fontBold, azul);
+    text(String(datos.puntuacion_total || 0), colX[6] + 15, yPos + 5, 16, fontBold, guinda, 'center');
+    
+    yPos += 40;
+    
+    // ===== ESCALA =====
+    text('Nota: Evaluar considerando la siguiente escala', 50, yPos, 9, fontOblique, gris);
+    yPos += 18;
+    text('1 = Malo    2 = Regular    3 = Bien    4 = Muy bien    5 = Excelente', 50, yPos, 9, fontNormal);
+    
+    yPos += 35;
+    
+    // ===== RESULTADO =====
+    text('RESULTADO DE EVALUACIÓN', 50, yPos, 12, fontBold, azul);
+    yPos += 25;
+    
+    text('¿Instructor Aceptado?', 50, yPos, 10, fontBold);
+    const aceptado = datos.aceptado ? 'SÍ' : 'NO';
+    const colorAceptado = datos.aceptado ? verde : rojo;
+    text('✓ ' + aceptado, 220, yPos, 12, fontBold, colorAceptado);
+    
+    yPos += 35;
+    
+    // ===== EVALUADOR =====
+    text('DATOS DEL EVALUADOR', 50, yPos, 12, fontBold, azul);
+    yPos += 25;
+    
+    text('Jefe(a) de Departamento que Evalúa:', 50, yPos, 10, fontBold);
+    text(limpiarNombre(datos.jefe_departamento || 'No especificado'), 280, yPos, 10, fontNormal, azul);
+    
+    yPos += 25;
+    
+    text('Cargo del Evaluador:', 50, yPos, 10, fontBold);
+    text(datos.cargo_evaluador || 'No especificado', 200, yPos, 10, fontNormal);
+    
+    yPos += 40;
+    
+    // ===== NOTA IMPORTANTE =====
+    text('⚠️ Este documento se generará en PDF para su descarga.', 50, yPos, 9, fontOblique, guinda);
+    yPos += 18;
+    text('Recuerda imprimir y entregar firmado este documento en Coordinación de Actualización Docente', 50, yPos, 8, fontOblique, gris);
+    
+    // ===== FOOTER =====
     const fechaGen = new Date().toLocaleDateString('es-MX', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
-    drawText('DA ' + fechaGen, 420, 680, 8, fontNormal);
     
-    // ========== 5. Guardar PDF ==========
+    text('DA ' + fechaGen, 550, 780, 7, fontNormal, gris, 'right');
+    
+    text('© 2026 Coordinación de Actualización Docente', 612/2, 780, 7, fontNormal, gris, 'center');
+    
+    // ===== GUARDAR PDF =====
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     
-    console.log('✅ PDF generado exitosamente');
+    console.log('✅ PDF generado exitosamente desde código');
     return url;
     
   } catch (error) {
     console.error('❌ Error al generar PDF:', error);
-    // Si falla, generar PDF desde cero
-    return generarPDFDesdeCero(datos);
-  }
-}
-
-// ========== NUEVO: Generar PDF desde cero (sin plantilla) ==========
-async function generarPDFDesdeCero(datos) {
-  console.log('🔄 Generando PDF desde cero...');
-  
-  try {
-    const pdfDoc = await PDFDocument.create();
-    pdfDoc.registerFontkit(fontkit);
-    
-    let fontNormal, fontBold;
-    try {
-      const [regularBytes, boldBytes] = await Promise.all([
-        fetch(`${BASE_URL}fuentes/Roboto-Regular.ttf`).then(r => r.arrayBuffer()),
-        fetch(`${BASE_URL}fuentes/Roboto-Bold.ttf`).then(r => r.arrayBuffer())
-      ]);
-      fontNormal = await pdfDoc.embedFont(regularBytes);
-      fontBold = await pdfDoc.embedFont(boldBytes);
-    } catch (e) {
-      fontNormal = await pdfDoc.embedFont('Helvetica');
-      fontBold = await pdfDoc.embedFont('Helvetica-Bold');
-    }
-    
-    const page = pdfDoc.addPage([612, 792]);
-    const { height } = page.getSize();
-    const colorAzul = rgb(0.106, 0.224, 0.416);
-    const colorNegro = rgb(0.1, 0.1, 0.1);
-    const colorRojo = rgb(0.8, 0, 0);
-    const colorVerde = rgb(0, 0.5, 0);
-    
-    function drawText(texto, x, y, tam = 10, font = fontNormal, color = colorNegro) {
-      if (!texto) return;
-      page.drawText(String(texto), { x, y: height - y, size: tam, font, color });
-    }
-    
-    function limpiarNombre(texto) {
-      if (!texto) return '';
-      const match = texto.match(/^([^(]+)/);
-      return match ? match[0].trim() : texto.trim();
-    }
-    
-    // Título
-    drawText('CRITERIOS PARA SELECCIONAR INSTRUCTOR(A)', 50, 50, 16, fontBold, colorAzul);
-    
-    // Datos del instructor
-    let y = 100;
-    drawText('Nombre del instructor (a):', 50, y, 10, fontBold);
-    drawText(datos.instructor_nombre || 'No especificado', 250, y, 10, fontNormal, colorAzul);
-    
-    y += 25;
-    const fecha = datos.fecha_evaluacion ? new Date(datos.fecha_evaluacion) : new Date();
-    drawText('Fecha de evaluación:', 50, y, 10, fontBold);
-    drawText(fecha.toLocaleDateString('es-MX'), 200, y, 10, fontNormal);
-    
-    y += 25;
-    drawText('Nombre del curso a impartir:', 50, y, 10, fontBold);
-    drawText(datos.curso_nombre || 'No especificado', 250, y, 10, fontNormal, colorAzul);
-    
-    y += 25;
-    drawText('Nombre de la empresa o plantel:', 50, y, 10, fontBold);
-    drawText(datos.empresa_plantel || 'ITD', 250, y, 10, fontNormal);
-    
-    // Tabla de criterios
-    y += 40;
-    drawText('EVALUACIÓN POR CRITERIOS', 50, y, 12, fontBold, colorAzul);
-    y += 25;
-    
-    const headers = ['Criterio', '1', '2', '3', '4', '5', 'Total'];
-    const colX = [50, 200, 250, 300, 350, 400, 470];
-    headers.forEach((h, i) => {
-      drawText(h, colX[i], y, 9, fontBold);
-    });
-    
-    y += 20;
-    const criterios = [
-      { id: 1, label: 'Formación profesional relacionada a la capacitación' },
-      { id: 2, label: 'Experiencia en capacitación y en la temática' },
-      { id: 3, label: 'Materiales didácticos a utilizar' },
-      { id: 4, label: 'Empresas diferentes como instructor(a)' },
-      { id: 5, label: 'Certificaciones y acreditaciones' }
-    ];
-    
-    criterios.forEach((c, idx) => {
-      drawText(c.label, colX[0], y + (idx * 22), 8, fontNormal);
-      for (let i = 1; i <= 5; i++) {
-        const val = datos[`criterio_${i}`] || '-';
-        drawText(String(val), colX[i] + 15, y + (idx * 22), 9, fontBold, colorAzul);
-      }
-      drawText('', colX[6] + 15, y + (idx * 22), 9, fontBold);
-    });
-    
-    // Total
-    y += criterios.length * 22 + 15;
-    drawText('TOTAL GENERAL:', 50, y, 11, fontBold);
-    drawText(String(datos.puntuacion_total || 0), 470, y, 14, fontBold, colorAzul);
-    
-    // Resultado
-    y += 30;
-    drawText('¿INSTRUCTOR ACEPTADO?', 50, y, 10, fontBold);
-    const aceptado = datos.aceptado ? 'SI ✓' : 'NO ✗';
-    drawText(aceptado, 250, y, 10, fontBold, datos.aceptado ? colorVerde : colorRojo);
-    
-    // Evaluador
-    y += 35;
-    drawText('Jefe(a) de Departamento que Evalúa:', 50, y, 10, fontBold);
-    drawText(limpiarNombre(datos.jefe_departamento || 'No especificado'), 300, y, 10, fontNormal);
-    
-    y += 25;
-    drawText('Cargo del Evaluador:', 50, y, 10, fontBold);
-    drawText(datos.cargo_evaluador || 'No especificado', 250, y, 10, fontNormal);
-    
-    // Pie de página
-    y += 40;
-    drawText('Este documento se generó en PDF para su descarga.', 50, y, 9, fontNormal);
-    y += 15;
-    drawText('Recuerda imprimir y entregar firmado este documento en Coordinación de Actualización Docente.', 50, y, 8, fontNormal);
-    
-    const fechaGen = new Date().toLocaleDateString('es-MX', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-    drawText('Generado: ' + fechaGen, 400, 750, 8, fontNormal);
-    
-    const pdfBytes = await pdfDoc.save();
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    
-    console.log('✅ PDF generado desde cero exitosamente');
-    return url;
-    
-  } catch (error) {
-    console.error('❌ Error al generar PDF desde cero:', error);
-    throw new Error('No se pudo generar el PDF. Intenta de nuevo.');
+    throw new Error('No se pudo generar el PDF: ' + error.message);
   }
 }
