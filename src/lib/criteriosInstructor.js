@@ -1,81 +1,27 @@
 // src/lib/criteriosInstructor.js
-import { PDFDocument, rgb } from 'pdf-lib';
-import fontkit from '@pdf-lib/fontkit';
-
-// ========== IMPORTANTE: Fuentes Unicode desde CDN ==========
-const FONT_URL = 'https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-regular.ttf';
-const FONT_BOLD_URL = 'https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-bold.ttf';
+import html2pdf from 'html2pdf.js';
 
 /**
- * Genera el PDF de evaluación de instructor con fuentes Unicode
+ * Genera el PDF de evaluación de instructor usando HTML + html2pdf.js
+ * Esta es la solución más confiable y sin problemas de codificación
  */
 export async function generarPDFCriterios(datos) {
-  console.log('📝 Generando PDF de evaluación...');
+  console.log('📝 Generando PDF de evaluación con html2pdf...');
   
   try {
-    // Crear nuevo documento PDF
-    const pdfDoc = await PDFDocument.create();
-    pdfDoc.registerFontkit(fontkit);
+    // ===== 1. Crear el HTML del documento =====
+    const fecha = datos.fecha_evaluacion ? new Date(datos.fecha_evaluacion) : new Date();
+    const fechaStr = fecha.toLocaleDateString('es-MX', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
     
-    // ===== Cargar fuentes Unicode =====
-    console.log('🔤 Cargando fuentes Unicode...');
-    
-    let fontNormal, fontBold;
-    try {
-      const [regularBytes, boldBytes] = await Promise.all([
-        fetch(FONT_URL).then(r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.arrayBuffer();
-        }),
-        fetch(FONT_BOLD_URL).then(r => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return r.arrayBuffer();
-        })
-      ]);
-      
-      fontNormal = await pdfDoc.embedFont(regularBytes);
-      fontBold = await pdfDoc.embedFont(boldBytes);
-      console.log('✅ Fuentes Unicode cargadas correctamente');
-    } catch (e) {
-      console.warn('⚠️ No se pudieron cargar fuentes desde CDN, usando fuentes estándar:', e.message);
-      // Fallback a fuentes estándar
-      const { StandardFonts } = await import('pdf-lib');
-      fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
-      fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    }
-    
-    // Agregar página (tamaño carta: 612 x 792)
-    const page = pdfDoc.addPage([612, 792]);
-    const { height } = page.getSize();
-    
-    // Colores
-    const azul = rgb(0.106, 0.224, 0.416);
-    const guinda = rgb(0.616, 0.141, 0.286);
-    const negro = rgb(0.1, 0.1, 0.1);
-    const gris = rgb(0.4, 0.4, 0.4);
-    const verde = rgb(0, 0.5, 0);
-    const rojo = rgb(0.8, 0, 0);
-    const blanco = rgb(1, 1, 1);
-    
-    // Función auxiliar para dibujar texto
-    function text(texto, x, y, tam = 10, font = fontNormal, color = negro, align = 'left') {
-      if (!texto) return;
-      let posX = x;
-      if (align === 'center') {
-        const ancho = font.widthOfTextAtSize(texto, tam);
-        posX = (612 - ancho) / 2;
-      } else if (align === 'right') {
-        const ancho = font.widthOfTextAtSize(texto, tam);
-        posX = 612 - x - ancho;
-      }
-      page.drawText(String(texto), {
-        x: posX,
-        y: height - y,
-        size: tam,
-        font,
-        color
-      });
-    }
+    const fechaGen = new Date().toLocaleDateString('es-MX', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
     
     // Función para limpiar nombre (quitar paréntesis)
     function limpiarNombre(texto) {
@@ -84,186 +30,359 @@ export async function generarPDFCriterios(datos) {
       return match ? match[0].trim() : texto.trim();
     }
     
-    // ===== HEADER =====
-    // Línea decorativa superior
-    page.drawRectangle({
-      x: 40,
-      y: height - 35,
-      width: 532,
-      height: 4,
-      color: guinda
-    });
+    // ===== 2. Construir el HTML =====
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 40px;
+            background: white;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 3px solid #9D2449;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+          }
+          .header h1 {
+            color: #1B396A;
+            font-size: 18px;
+            letter-spacing: 1px;
+          }
+          .header h2 {
+            color: #6b7280;
+            font-size: 12px;
+            font-weight: normal;
+          }
+          .header h3 {
+            color: #1B396A;
+            font-size: 16px;
+            margin-top: 10px;
+          }
+          .section {
+            margin-bottom: 20px;
+          }
+          .section-title {
+            color: #1B396A;
+            font-size: 14px;
+            font-weight: bold;
+            border-bottom: 2px solid #1B396A;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+          }
+          .field-row {
+            display: flex;
+            margin-bottom: 6px;
+          }
+          .field-label {
+            font-weight: bold;
+            width: 200px;
+            font-size: 11px;
+            color: #374151;
+          }
+          .field-value {
+            font-size: 11px;
+            color: #1B396A;
+            font-weight: bold;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            margin: 10px 0;
+          }
+          table th {
+            background: #1B396A;
+            color: white;
+            padding: 6px 4px;
+            text-align: center;
+            font-size: 9px;
+          }
+          table td {
+            padding: 5px 4px;
+            border-bottom: 1px solid #e5e7eb;
+          }
+          table tr:nth-child(even) {
+            background: #f9fafb;
+          }
+          .table-criterio {
+            font-weight: 500;
+          }
+          .table-score {
+            text-align: center;
+            font-weight: bold;
+            color: #1B396A;
+          }
+          .table-total {
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: #9D2449;
+          }
+          .total-row {
+            background: #f3f4f6 !important;
+            font-weight: bold;
+          }
+          .total-row td {
+            padding: 8px 4px;
+          }
+          .escala {
+            background: #f9fafb;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 10px;
+            margin: 10px 0;
+          }
+          .resultado {
+            margin: 15px 0;
+            padding: 10px;
+            background: #f0fdf4;
+            border-radius: 4px;
+          }
+          .resultado-no {
+            background: #fef2f2;
+          }
+          .aceptado-si {
+            color: #16a34a;
+            font-weight: bold;
+            font-size: 14px;
+          }
+          .aceptado-no {
+            color: #dc2626;
+            font-weight: bold;
+            font-size: 14px;
+          }
+          .nota {
+            background: #fffbeb;
+            border-left: 4px solid #f59e0b;
+            padding: 10px 12px;
+            margin: 15px 0;
+            font-size: 9px;
+            color: #92400e;
+          }
+          .footer {
+            margin-top: 30px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            font-size: 8px;
+            color: #9ca3af;
+          }
+          .firma {
+            margin-top: 30px;
+            display: flex;
+            justify-content: space-around;
+          }
+          .firma-item {
+            text-align: center;
+          }
+          .firma-linea {
+            width: 180px;
+            border-top: 1px solid #374151;
+            margin: 30px 0 5px 0;
+          }
+          .firma-nombre {
+            font-weight: bold;
+            font-size: 10px;
+          }
+          .firma-cargo {
+            font-size: 9px;
+            color: #6b7280;
+          }
+        </style>
+      </head>
+      <body>
+        <!-- HEADER -->
+        <div class="header">
+          <h1>INSTITUTO TECNOLÓGICO DE DURANGO</h1>
+          <h2>Coordinación de Actualización Docente</h2>
+          <h3>CRITERIOS PARA SELECCIONAR INSTRUCTOR (A)</h3>
+        </div>
+        
+        <!-- DATOS DEL INSTRUCTOR -->
+        <div class="section">
+          <div class="section-title">DATOS DEL INSTRUCTOR</div>
+          <div class="field-row">
+            <span class="field-label">Nombre del instructor (a):</span>
+            <span class="field-value">${datos.instructor_nombre || 'No especificado'}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Fecha de evaluación:</span>
+            <span class="field-value">${fechaStr}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Nombre del curso a impartir:</span>
+            <span class="field-value">${datos.curso_nombre || 'No especificado'}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Nombre de la empresa o plantel:</span>
+            <span class="field-value">${datos.empresa_plantel || 'ITD'}</span>
+          </div>
+        </div>
+        
+        <!-- TABLA DE CRITERIOS -->
+        <div class="section">
+          <div class="section-title">EVALUACIÓN POR CRITERIOS</div>
+          
+          <div class="escala">
+            <strong>Escala:</strong> 1 = Malo &nbsp;|&nbsp; 2 = Regular &nbsp;|&nbsp; 3 = Bien &nbsp;|&nbsp; 4 = Muy bien &nbsp;|&nbsp; 5 = Excelente
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:left;width:50%;">CRITERIO</th>
+                <th style="width:8%;">1</th>
+                <th style="width:8%;">2</th>
+                <th style="width:8%;">3</th>
+                <th style="width:8%;">4</th>
+                <th style="width:8%;">5</th>
+                <th style="width:10%;">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="table-criterio">1. Formación profesional relacionada a la capacitación a impartir.</td>
+                <td class="table-score">${datos.criterio_1 === 1 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_1 === 2 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_1 === 3 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_1 === 4 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_1 === 5 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_1 || '-'}</td>
+              </tr>
+              <tr>
+                <td class="table-criterio">2. Experiencia en capacitación y en la temática a impartir.</td>
+                <td class="table-score">${datos.criterio_2 === 1 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_2 === 2 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_2 === 3 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_2 === 4 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_2 === 5 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_2 || '-'}</td>
+              </tr>
+              <tr>
+                <td class="table-criterio">3. Materiales didácticos a utilizar.</td>
+                <td class="table-score">${datos.criterio_3 === 1 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_3 === 2 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_3 === 3 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_3 === 4 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_3 === 5 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_3 || '-'}</td>
+              </tr>
+              <tr>
+                <td class="table-criterio">4. Empresas diferentes en las que ha participado como instructor(a).</td>
+                <td class="table-score">${datos.criterio_4 === 1 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_4 === 2 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_4 === 3 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_4 === 4 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_4 === 5 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_4 || '-'}</td>
+              </tr>
+              <tr>
+                <td class="table-criterio">5. Certificaciones y acreditaciones relacionadas al área de capacitación.</td>
+                <td class="table-score">${datos.criterio_5 === 1 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_5 === 2 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_5 === 3 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_5 === 4 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_5 === 5 ? '✓' : ''}</td>
+                <td class="table-score">${datos.criterio_5 || '-'}</td>
+              </tr>
+              <tr class="total-row">
+                <td><strong>TOTAL GENERAL</strong></td>
+                <td colspan="5"></td>
+                <td class="table-total">${datos.puntuacion_total || 0}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <!-- RESULTADO -->
+        <div class="section">
+          <div class="section-title">RESULTADO DE EVALUACIÓN</div>
+          <div class="field-row">
+            <span class="field-label">¿Instructor Aceptado?</span>
+            <span class="${datos.aceptado ? 'aceptado-si' : 'aceptado-no'}">
+              ${datos.aceptado ? 'SÍ ✓' : 'NO ✗'}
+            </span>
+          </div>
+        </div>
+        
+        <!-- EVALUADOR -->
+        <div class="section">
+          <div class="section-title">DATOS DEL EVALUADOR</div>
+          <div class="field-row">
+            <span class="field-label">Jefe(a) de Departamento que Evalúa:</span>
+            <span class="field-value">${limpiarNombre(datos.jefe_departamento || 'No especificado')}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">Cargo del Evaluador:</span>
+            <span class="field-value">${datos.cargo_evaluador || 'No especificado'}</span>
+          </div>
+        </div>
+        
+        <!-- NOTA -->
+        <div class="nota">
+          <strong>⚠️ IMPORTANTE:</strong> Este documento se generará en PDF para su descarga.<br>
+          Recuerda imprimir y entregar firmado este documento en Coordinación de Actualización Docente para que tenga validez.
+        </div>
+        
+        <!-- FIRMAS -->
+        <div class="firma">
+          <div class="firma-item">
+            <div class="firma-linea"></div>
+            <div class="firma-nombre">${limpiarNombre(datos.jefe_departamento || '_________________________')}</div>
+            <div class="firma-cargo">${datos.cargo_evaluador || 'Evaluador'}</div>
+          </div>
+          <div class="firma-item">
+            <div class="firma-linea"></div>
+            <div class="firma-nombre">_________________________</div>
+            <div class="firma-cargo">Vo. Bo. Subdirección Académica</div>
+          </div>
+        </div>
+        
+        <!-- FOOTER -->
+        <div class="footer">
+          DA ${fechaGen} &nbsp;·&nbsp; © 2026 Coordinación de Actualización Docente
+        </div>
+      </body>
+      </html>
+    `;
     
-    // Título principal
-    text('INSTITUTO TECNOLÓGICO DE DURANGO', 612/2, 55, 14, fontBold, azul, 'center');
-    text('Coordinación de Actualización Docente', 612/2, 72, 10, fontNormal, gris, 'center');
+    // ===== 3. Crear un elemento contenedor =====
+    const container = document.createElement('div');
+    container.innerHTML = htmlContent;
+    document.body.appendChild(container);
     
-    // Título del documento
-    text('CRITERIOS PARA SELECCIONAR INSTRUCTOR (A)', 612/2, 100, 16, fontBold, azul, 'center');
+    // ===== 4. Generar PDF con html2pdf =====
+    const opt = {
+      margin: 10,
+      filename: `Evaluacion_Instructor_${datos.instructor_nombre?.replace(/\s+/g, '_') || 'sin_nombre'}.pdf`,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: { 
+        scale: 2,
+        useCORS: true,
+        letterRendering: true
+      },
+      jsPDF: { 
+        unit: 'mm', 
+        format: 'letter', 
+        orientation: 'portrait' 
+      },
+      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+    };
     
-    // Línea decorativa
-    page.drawRectangle({
-      x: 80,
-      y: height - 115,
-      width: 452,
-      height: 2,
-      color: azul
-    });
+    // Generar y descargar
+    await html2pdf().set(opt).from(container).save();
     
-    // ===== DATOS DEL INSTRUCTOR =====
-    let yPos = 140;
+    // Limpiar
+    document.body.removeChild(container);
     
-    // Nombre
-    text('Nombre del instructor (a):', 50, yPos, 10, fontBold);
-    text(datos.instructor_nombre || 'No especificado', 220, yPos, 10, fontBold, azul);
-    
-    yPos += 25;
-    
-    // Fecha
-    const fecha = datos.fecha_evaluacion ? new Date(datos.fecha_evaluacion) : new Date();
-    text('Fecha de evaluación:', 50, yPos, 10, fontBold);
-    text(fecha.toLocaleDateString('es-MX'), 200, yPos, 10, fontNormal);
-    
-    yPos += 25;
-    
-    // Curso
-    text('Nombre del curso a impartir:', 50, yPos, 10, fontBold);
-    text(datos.curso_nombre || 'No especificado', 220, yPos, 10, fontNormal, azul);
-    
-    yPos += 25;
-    
-    // Empresa
-    text('Nombre de la empresa o plantel:', 50, yPos, 10, fontBold);
-    text(datos.empresa_plantel || 'ITD', 220, yPos, 10, fontNormal);
-    
-    yPos += 35;
-    
-    // ===== TABLA DE CRITERIOS =====
-    const colX = [50, 120, 180, 240, 300, 360, 440];
-    const headers = ['CRITERIO', '1', '2', '3', '4', '5', 'TOTAL'];
-    
-    // Fondo del encabezado
-    page.drawRectangle({
-      x: colX[0] - 5,
-      y: height - yPos - 5,
-      width: 510,
-      height: 30,
-      color: azul
-    });
-    
-    headers.forEach((h, i) => {
-      const x = i === 0 ? colX[i] : colX[i] + 10;
-      text(h, x, yPos + 5, 9, fontBold, blanco, 'center');
-    });
-    
-    yPos += 30;
-    
-    // Filas de criterios
-    const criterios = [
-      { id: 1, label: '1. Formación profesional relacionada a la capacitación a impartir.' },
-      { id: 2, label: '2. Experiencia en capacitación y en la temática a impartir.' },
-      { id: 3, label: '3. Materiales didácticos a utilizar.' },
-      { id: 4, label: '4. Empresas diferentes en las que ha participado como instructor(a).' },
-      { id: 5, label: '5. Certificaciones y acreditaciones relacionadas al área de capacitación.' }
-    ];
-    
-    criterios.forEach((c, idx) => {
-      const yFila = yPos + (idx * 25);
-      const alternar = idx % 2 === 0;
-      
-      if (alternar) {
-        page.drawRectangle({
-          x: colX[0] - 5,
-          y: height - yFila - 5,
-          width: 510,
-          height: 25,
-          color: rgb(0.95, 0.95, 0.95)
-        });
-      }
-      
-      text(c.label, colX[0], yFila + 3, 8, fontNormal);
-      
-      for (let i = 1; i <= 5; i++) {
-        const val = datos[`criterio_${i}`] || '-';
-        const x = colX[i] + 15;
-        text(String(val), x, yFila + 3, 10, fontBold, azul, 'center');
-      }
-      
-      const total = datos[`criterio_${c.id}`] || '-';
-      text(String(total), colX[6] + 15, yFila + 3, 10, fontBold, azul, 'center');
-    });
-    
-    yPos += criterios.length * 25 + 15;
-    
-    // TOTAL GENERAL
-    page.drawRectangle({
-      x: colX[0] - 5,
-      y: height - yPos - 5,
-      width: 510,
-      height: 30,
-      color: rgb(0.95, 0.95, 0.95)
-    });
-    
-    text('TOTAL GENERAL', colX[0], yPos + 5, 12, fontBold, azul);
-    text(String(datos.puntuacion_total || 0), colX[6] + 15, yPos + 5, 16, fontBold, guinda, 'center');
-    
-    yPos += 40;
-    
-    // ===== ESCALA =====
-    text('Nota: Evaluar considerando la siguiente escala', 50, yPos, 9, fontNormal, gris);
-    yPos += 18;
-    text('1 = Malo    2 = Regular    3 = Bien    4 = Muy bien    5 = Excelente', 50, yPos, 9, fontNormal);
-    
-    yPos += 35;
-    
-    // ===== RESULTADO =====
-    text('RESULTADO DE EVALUACIÓN', 50, yPos, 12, fontBold, azul);
-    yPos += 25;
-    
-    text('¿Instructor Aceptado?', 50, yPos, 10, fontBold);
-    const aceptado = datos.aceptado ? 'SÍ' : 'NO';
-    const colorAceptado = datos.aceptado ? verde : rojo;
-    text(aceptado, 220, yPos, 12, fontBold, colorAceptado);
-    
-    yPos += 35;
-    
-    // ===== EVALUADOR =====
-    text('DATOS DEL EVALUADOR', 50, yPos, 12, fontBold, azul);
-    yPos += 25;
-    
-    text('Jefe(a) de Departamento que Evalúa:', 50, yPos, 10, fontBold);
-    text(limpiarNombre(datos.jefe_departamento || 'No especificado'), 280, yPos, 10, fontNormal, azul);
-    
-    yPos += 25;
-    
-    text('Cargo del Evaluador:', 50, yPos, 10, fontBold);
-    text(datos.cargo_evaluador || 'No especificado', 200, yPos, 10, fontNormal);
-    
-    yPos += 40;
-    
-    // ===== NOTA IMPORTANTE =====
-    text('⚠️ Este documento se generará en PDF para su descarga.', 50, yPos, 9, fontNormal, guinda);
-    yPos += 18;
-    text('Recuerda imprimir y entregar firmado este documento en Coordinación de Actualización Docente', 50, yPos, 8, fontNormal, gris);
-    
-    // ===== FOOTER =====
-    const fechaGen = new Date().toLocaleDateString('es-MX', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-    
-    text('DA ' + fechaGen, 550, 780, 7, fontNormal, gris, 'right');
-    text('© 2026 Coordinación de Actualización Docente', 612/2, 780, 7, fontNormal, gris, 'center');
-    
-    // ===== GUARDAR PDF =====
-    console.log('💾 Guardando PDF...');
-    const pdfBytes = await pdfDoc.save();
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    
-    console.log('✅ PDF generado exitosamente');
-    return url;
+    console.log('✅ PDF generado exitosamente con html2pdf');
+    return true;
     
   } catch (error) {
     console.error('❌ Error al generar PDF:', error);
