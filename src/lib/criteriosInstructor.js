@@ -1,9 +1,13 @@
 // src/lib/criteriosInstructor.js
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+
+// ========== IMPORTANTE: Fuentes Unicode desde CDN ==========
+const FONT_URL = 'https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-regular.ttf';
+const FONT_BOLD_URL = 'https://cdn.jsdelivr.net/npm/roboto-font@0.1.0/fonts/Roboto/roboto-bold.ttf';
 
 /**
- * Genera el PDF de evaluación de instructor completamente desde código
- * SIN depender de plantillas externas
+ * Genera el PDF de evaluación de instructor con fuentes Unicode
  */
 export async function generarPDFCriterios(datos) {
   console.log('📝 Generando PDF de evaluación...');
@@ -11,19 +15,42 @@ export async function generarPDFCriterios(datos) {
   try {
     // Crear nuevo documento PDF
     const pdfDoc = await PDFDocument.create();
+    pdfDoc.registerFontkit(fontkit);
     
-    // Usar fuentes estándar (no necesita archivos externos)
-    const fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const fontOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+    // ===== Cargar fuentes Unicode =====
+    console.log('🔤 Cargando fuentes Unicode...');
+    
+    let fontNormal, fontBold;
+    try {
+      const [regularBytes, boldBytes] = await Promise.all([
+        fetch(FONT_URL).then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.arrayBuffer();
+        }),
+        fetch(FONT_BOLD_URL).then(r => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.arrayBuffer();
+        })
+      ]);
+      
+      fontNormal = await pdfDoc.embedFont(regularBytes);
+      fontBold = await pdfDoc.embedFont(boldBytes);
+      console.log('✅ Fuentes Unicode cargadas correctamente');
+    } catch (e) {
+      console.warn('⚠️ No se pudieron cargar fuentes desde CDN, usando fuentes estándar:', e.message);
+      // Fallback a fuentes estándar
+      const { StandardFonts } = await import('pdf-lib');
+      fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    }
     
     // Agregar página (tamaño carta: 612 x 792)
     const page = pdfDoc.addPage([612, 792]);
     const { height } = page.getSize();
     
     // Colores
-    const azul = rgb(0.106, 0.224, 0.416);  // #1B396A
-    const guinda = rgb(0.616, 0.141, 0.286); // #9D2449
+    const azul = rgb(0.106, 0.224, 0.416);
+    const guinda = rgb(0.616, 0.141, 0.286);
     const negro = rgb(0.1, 0.1, 0.1);
     const gris = rgb(0.4, 0.4, 0.4);
     const verde = rgb(0, 0.5, 0);
@@ -112,7 +139,6 @@ export async function generarPDFCriterios(datos) {
     yPos += 35;
     
     // ===== TABLA DE CRITERIOS =====
-    // Encabezados
     const colX = [50, 120, 180, 240, 300, 360, 440];
     const headers = ['CRITERIO', '1', '2', '3', '4', '5', 'TOTAL'];
     
@@ -134,18 +160,17 @@ export async function generarPDFCriterios(datos) {
     
     // Filas de criterios
     const criterios = [
-      { id: 1, label: '1. Formacion profesional relacionada a la capacitacion a impartir.' },
-      { id: 2, label: '2. Experiencia en capacitacion y en la tematica a impartir.' },
-      { id: 3, label: '3. Materiales didacticos a utilizar.' },
+      { id: 1, label: '1. Formación profesional relacionada a la capacitación a impartir.' },
+      { id: 2, label: '2. Experiencia en capacitación y en la temática a impartir.' },
+      { id: 3, label: '3. Materiales didácticos a utilizar.' },
       { id: 4, label: '4. Empresas diferentes en las que ha participado como instructor(a).' },
-      { id: 5, label: '5. Certificaciones y acreditaciones relacionadas al area de capacitacion.' }
+      { id: 5, label: '5. Certificaciones y acreditaciones relacionadas al área de capacitación.' }
     ];
     
     criterios.forEach((c, idx) => {
       const yFila = yPos + (idx * 25);
       const alternar = idx % 2 === 0;
       
-      // Fondo alternado
       if (alternar) {
         page.drawRectangle({
           x: colX[0] - 5,
@@ -156,17 +181,14 @@ export async function generarPDFCriterios(datos) {
         });
       }
       
-      // Texto del criterio
       text(c.label, colX[0], yFila + 3, 8, fontNormal);
       
-      // Puntuaciones
       for (let i = 1; i <= 5; i++) {
         const val = datos[`criterio_${i}`] || '-';
         const x = colX[i] + 15;
         text(String(val), x, yFila + 3, 10, fontBold, azul, 'center');
       }
       
-      // Total por criterio
       const total = datos[`criterio_${c.id}`] || '-';
       text(String(total), colX[6] + 15, yFila + 3, 10, fontBold, azul, 'center');
     });
@@ -188,19 +210,18 @@ export async function generarPDFCriterios(datos) {
     yPos += 40;
     
     // ===== ESCALA =====
-    text('Nota: Evaluar considerando la siguiente escala', 50, yPos, 9, fontOblique, gris);
+    text('Nota: Evaluar considerando la siguiente escala', 50, yPos, 9, fontNormal, gris);
     yPos += 18;
     text('1 = Malo    2 = Regular    3 = Bien    4 = Muy bien    5 = Excelente', 50, yPos, 9, fontNormal);
     
     yPos += 35;
     
     // ===== RESULTADO =====
-    text('RESULTADO DE EVALUACION', 50, yPos, 12, fontBold, azul);
+    text('RESULTADO DE EVALUACIÓN', 50, yPos, 12, fontBold, azul);
     yPos += 25;
     
     text('¿Instructor Aceptado?', 50, yPos, 10, fontBold);
-    // ===== CORREGIDO: Usar "SI" y "NO" en lugar de símbolos =====
-    const aceptado = datos.aceptado ? 'SI' : 'NO';
+    const aceptado = datos.aceptado ? 'SÍ' : 'NO';
     const colorAceptado = datos.aceptado ? verde : rojo;
     text(aceptado, 220, yPos, 12, fontBold, colorAceptado);
     
@@ -210,7 +231,7 @@ export async function generarPDFCriterios(datos) {
     text('DATOS DEL EVALUADOR', 50, yPos, 12, fontBold, azul);
     yPos += 25;
     
-    text('Jefe(a) de Departamento que Evalua:', 50, yPos, 10, fontBold);
+    text('Jefe(a) de Departamento que Evalúa:', 50, yPos, 10, fontBold);
     text(limpiarNombre(datos.jefe_departamento || 'No especificado'), 280, yPos, 10, fontNormal, azul);
     
     yPos += 25;
@@ -221,9 +242,9 @@ export async function generarPDFCriterios(datos) {
     yPos += 40;
     
     // ===== NOTA IMPORTANTE =====
-    text('Este documento se generara en PDF para su descarga.', 50, yPos, 9, fontOblique, guinda);
+    text('⚠️ Este documento se generará en PDF para su descarga.', 50, yPos, 9, fontNormal, guinda);
     yPos += 18;
-    text('Recuerda imprimir y entregar firmado este documento en Coordinacion de Actualizacion Docente', 50, yPos, 8, fontOblique, gris);
+    text('Recuerda imprimir y entregar firmado este documento en Coordinación de Actualización Docente', 50, yPos, 8, fontNormal, gris);
     
     // ===== FOOTER =====
     const fechaGen = new Date().toLocaleDateString('es-MX', {
@@ -233,15 +254,15 @@ export async function generarPDFCriterios(datos) {
     });
     
     text('DA ' + fechaGen, 550, 780, 7, fontNormal, gris, 'right');
-    
-    text('2026 Coordinacion de Actualizacion Docente', 612/2, 780, 7, fontNormal, gris, 'center');
+    text('© 2026 Coordinación de Actualización Docente', 612/2, 780, 7, fontNormal, gris, 'center');
     
     // ===== GUARDAR PDF =====
+    console.log('💾 Guardando PDF...');
     const pdfBytes = await pdfDoc.save();
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     
-    console.log('✅ PDF generado exitosamente desde codigo');
+    console.log('✅ PDF generado exitosamente');
     return url;
     
   } catch (error) {
