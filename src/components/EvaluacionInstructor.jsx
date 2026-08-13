@@ -4,11 +4,11 @@ import { supabase } from '../lib/supabaseClient';
 import { generarPDFCriterios } from '../lib/criteriosInstructor';
 
 const CRITERIOS = [
-  { id: 1, label: 'Formación profesional relacionada a la capacitación a impartir.' },
-  { id: 2, label: 'Experiencia en capacitación y en la temática a impartir.' },
-  { id: 3, label: 'Materiales didácticos a utilizar.' },
-  { id: 4, label: 'Empresas diferentes en las que ha participado como instructor(a).' },
-  { id: 5, label: 'Certificaciones y acreditaciones relacionadas al área de capacitación.' }
+  { id: 1, label: '1. Formación profesional relacionada a la capacitación a impartir.' },
+  { id: 2, label: '2. Experiencia en capacitación y en la temática a impartir.' },
+  { id: 3, label: '3. Materiales didácticos a utilizar.' },
+  { id: 4, label: '4. Empresas diferentes en las que ha participado como instructor(a).' },
+  { id: 5, label: '5. Certificaciones y acreditaciones relacionadas al área de capacitación.' }
 ];
 
 const ESCALA = [
@@ -19,7 +19,7 @@ const ESCALA = [
   { value: 5, label: 'Excelente' }
 ];
 
-// ========== COMPONENTE DE AUTOCOMPLETADO ==========
+// ===== COMPONENTE DE AUTOCOMPLETADO =====
 function AutocompleteInput({ 
   value, 
   onChange, 
@@ -35,14 +35,11 @@ function AutocompleteInput({
   const [filteredOptions, setFilteredOptions] = useState([]);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const wrapperRef = useRef(null);
-  const inputRef = useRef(null);
 
-  // Actualizar searchTerm cuando value cambia desde fuera
   useEffect(() => {
     setSearchTerm(value || '');
   }, [value]);
 
-  // Filtrar opciones cuando cambia el término de búsqueda
   useEffect(() => {
     if (searchTerm.trim().length > 0) {
       const filtered = options.filter(opt => 
@@ -55,7 +52,6 @@ function AutocompleteInput({
     setHighlightedIndex(-1);
   }, [searchTerm, options]);
 
-  // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
     function handleClickOutside(event) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
@@ -71,7 +67,6 @@ function AutocompleteInput({
     setSearchTerm(val);
     onChange(val);
     setIsOpen(true);
-    
     if (val.trim() === '') {
       onSelect('');
     }
@@ -110,7 +105,6 @@ function AutocompleteInput({
         </label>
       )}
       <input
-        ref={inputRef}
         type="text"
         value={searchTerm}
         onChange={handleInputChange}
@@ -150,6 +144,7 @@ function AutocompleteInput({
   );
 }
 
+// ===== COMPONENTE PRINCIPAL =====
 export default function EvaluacionInstructor({ 
   preregistro, 
   docente, 
@@ -181,7 +176,6 @@ export default function EvaluacionInstructor({
 
   // Cargar datos iniciales
   useEffect(() => {
-    // Si hay preregistro, autocompletar
     if (preregistro) {
       setEvaluacion(prev => ({
         ...prev,
@@ -190,7 +184,6 @@ export default function EvaluacionInstructor({
       }));
     }
 
-    // Si hay evaluación existente, cargarla
     if (evaluacionExistente) {
       setEvaluacion({
         instructor_nombre: evaluacionExistente.instructor_nombre || '',
@@ -211,48 +204,37 @@ export default function EvaluacionInstructor({
     cargarCatalogos();
   }, [preregistro, evaluacionExistente]);
 
-  // ========== NUEVO: Cargar SOLO desde la base de datos ==========
   async function cargarCatalogos() {
     setCargando(true);
     
     try {
-      // ========== 1. Cargar TODOS los docentes activos ==========
-      const { data: docentes, error: errorDocentes } = await supabase
+      // Cargar todos los docentes activos
+      const { data: docentes } = await supabase
         .from('docentes')
         .select('nombre_completo, departamento, email')
         .eq('activo', true)
         .order('nombre_completo');
 
-      if (errorDocentes) {
-        console.error('Error al cargar docentes:', errorDocentes);
-        throw errorDocentes;
-      }
-
       if (docentes && docentes.length > 0) {
-        // ========== NUEVO: Usar TODOS los docentes, sin filtrar ==========
-        // Solo extraer el nombre completo, sin paréntesis
         const nombres = docentes.map(d => d.nombre_completo);
         setJefesDepartamento(nombres);
         console.log(`✅ ${nombres.length} docentes cargados para autocompletado`);
       }
 
-      // ========== 2. Cargar cargos desde la base de datos ==========
-      // Opción A: Cargar cargos únicos de la tabla docentes
-      const { data: cargosData, error: errorCargos } = await supabase
+      // Cargar cargos desde la base de datos
+      const { data: cargosData } = await supabase
         .from('docentes')
         .select('departamento')
         .not('departamento', 'is', null)
         .eq('activo', true);
 
-      if (!errorCargos && cargosData) {
-        // Extraer cargos únicos de los departamentos
+      if (cargosData) {
         const cargosUnicos = [...new Set(
           cargosData
             .map(d => d.departamento)
             .filter(Boolean)
         )];
         
-        // Agregar algunos cargos base que no están en la tabla
         const cargosBase = [
           'Jefe(a) de Departamento',
           'Subdirector(a) Académico',
@@ -263,19 +245,10 @@ export default function EvaluacionInstructor({
         const cargosCompletos = [...cargosUnicos, ...cargosBase].sort();
         setCargos(cargosCompletos);
         console.log(`✅ ${cargosCompletos.length} cargos cargados`);
-      } else {
-        // Fallback: cargos predefinidos solo si no hay datos
-        setCargos([
-          'Jefe(a) de Departamento',
-          'Subdirector(a) Académico',
-          'Director(a) del Instituto Tecnológico de Durango',
-          'Coordinador(a) de Actualización Docente'
-        ]);
       }
       
     } catch (err) {
       console.error('Error al cargar catálogos:', err);
-      setError('No se pudieron cargar los datos. Intenta de nuevo.');
     } finally {
       setCargando(false);
     }
@@ -303,7 +276,6 @@ export default function EvaluacionInstructor({
     return total;
   }
 
-  // Función para limpiar el nombre (quitar paréntesis)
   function limpiarNombre(texto) {
     if (!texto) return '';
     const match = texto.match(/^([^(]+)/);
@@ -324,7 +296,6 @@ export default function EvaluacionInstructor({
       return;
     }
 
-    // Validar que todos los criterios estén calificados
     const criteriosFaltantes = [];
     for (let i = 1; i <= 5; i++) {
       if (evaluacion[`criterio_${i}`] === null || evaluacion[`criterio_${i}`] === undefined) {
@@ -384,16 +355,10 @@ export default function EvaluacionInstructor({
 
       const data = result.data?.[0] || result.data;
 
-      // Generar PDF
+      // ===== GENERAR PDF =====
       const pdfUrl = await generarPDFCriterios({
         ...evaluacion,
-        jefe_departamento: jefeLimpio,
-        puntuacion_total: calcularTotal(),
-        fecha_generacion: new Date().toLocaleDateString('es-MX', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        })
+        puntuacion_total: calcularTotal()
       });
 
       setSuccess(true);
@@ -402,9 +367,10 @@ export default function EvaluacionInstructor({
         onEvaluacionGuardada(data, pdfUrl);
       }
 
-      setTimeout(() => {
+      // Descargar PDF automáticamente
+      if (pdfUrl) {
         window.open(pdfUrl, '_blank');
-      }, 1000);
+      }
 
     } catch (err) {
       console.error('❌ Error al guardar evaluación:', err);

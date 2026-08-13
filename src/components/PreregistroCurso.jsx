@@ -1,3 +1,66 @@
+// ===== AL PRINCIPIO DEL ARCHIVO, AGREGAR EL IMPORT =====
+import EvaluacionInstructor from './EvaluacionInstructor';
+
+// ===== DENTRO DEL COMPONENTE, AGREGAR ESTOS ESTADOS =====
+const [mostrarEvaluacion, setMostrarEvaluacion] = useState(false);
+const [preregistroSeleccionado, setPreregistroSeleccionado] = useState(null);
+const [evaluacionesExistentes, setEvaluacionesExistentes] = useState({});
+
+// ===== FUNCIONES PARA MANEJAR EVALUACIONES =====
+async function cargarEvaluacionesParaPreregistros(preregistroIds) {
+  if (preregistroIds.length === 0) return;
+  
+  const { data } = await supabase
+    .from('evaluaciones_instructores')
+    .select('*')
+    .in('preregistro_id', preregistroIds);
+  
+  if (data) {
+    const mapa = {};
+    data.forEach(evalItem => {
+      mapa[evalItem.preregistro_id] = evalItem;
+    });
+    setEvaluacionesExistentes(mapa);
+  }
+}
+
+function abrirEvaluacion(item) {
+  setPreregistroSeleccionado(item);
+  setMostrarEvaluacion(true);
+}
+
+function cerrarEvaluacion() {
+  setMostrarEvaluacion(false);
+  setPreregistroSeleccionado(null);
+}
+
+async function handleEvaluacionGuardada(data, pdfUrl) {
+  setEvaluacionesExistentes(prev => ({
+    ...prev,
+    [data.preregistro_id]: data
+  }));
+  cerrarEvaluacion();
+  await cargar();
+}
+
+// ===== EN EL RENDER, DENTRO DE CADA ITEM, AGREGAR EL BOTÓN =====
+{/* Dentro del div de cada preregistro, agregar: */}
+{item.estado === 'pendiente' && (
+  <button
+    onClick={() => abrirEvaluacion(item)}
+    className="text-xs font-medium text-purple-700 border border-purple-300 rounded-lg px-3 py-1.5 hover:bg-purple-50 transition-colors flex items-center gap-1"
+  >
+    {evaluacionesExistentes[item.id] ? (
+      <>✅ Ver Evaluación</>
+    ) : (
+      <>📋 Evaluar Instructor</>
+    )}
+  </button>
+)}
+
+{/* Mostrar resumen de evaluación si existe */}
+{evaluacionesExistentes[item.id] && (
+  <div
 // src/components/PreregistroCurso.jsx
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
