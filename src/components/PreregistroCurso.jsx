@@ -1,72 +1,9 @@
-// ===== AL PRINCIPIO DEL ARCHIVO, AGREGAR EL IMPORT =====
-import EvaluacionInstructor from './EvaluacionInstructor';
-
-// ===== DENTRO DEL COMPONENTE, AGREGAR ESTOS ESTADOS =====
-const [mostrarEvaluacion, setMostrarEvaluacion] = useState(false);
-const [preregistroSeleccionado, setPreregistroSeleccionado] = useState(null);
-const [evaluacionesExistentes, setEvaluacionesExistentes] = useState({});
-
-// ===== FUNCIONES PARA MANEJAR EVALUACIONES =====
-async function cargarEvaluacionesParaPreregistros(preregistroIds) {
-  if (preregistroIds.length === 0) return;
-  
-  const { data } = await supabase
-    .from('evaluaciones_instructores')
-    .select('*')
-    .in('preregistro_id', preregistroIds);
-  
-  if (data) {
-    const mapa = {};
-    data.forEach(evalItem => {
-      mapa[evalItem.preregistro_id] = evalItem;
-    });
-    setEvaluacionesExistentes(mapa);
-  }
-}
-
-function abrirEvaluacion(item) {
-  setPreregistroSeleccionado(item);
-  setMostrarEvaluacion(true);
-}
-
-function cerrarEvaluacion() {
-  setMostrarEvaluacion(false);
-  setPreregistroSeleccionado(null);
-}
-
-async function handleEvaluacionGuardada(data, pdfUrl) {
-  setEvaluacionesExistentes(prev => ({
-    ...prev,
-    [data.preregistro_id]: data
-  }));
-  cerrarEvaluacion();
-  await cargar();
-}
-
-// ===== EN EL RENDER, DENTRO DE CADA ITEM, AGREGAR EL BOTÓN =====
-{/* Dentro del div de cada preregistro, agregar: */}
-{item.estado === 'pendiente' && (
-  <button
-    onClick={() => abrirEvaluacion(item)}
-    className="text-xs font-medium text-purple-700 border border-purple-300 rounded-lg px-3 py-1.5 hover:bg-purple-50 transition-colors flex items-center gap-1"
-  >
-    {evaluacionesExistentes[item.id] ? (
-      <>✅ Ver Evaluación</>
-    ) : (
-      <>📋 Evaluar Instructor</>
-    )}
-  </button>
-)}
-
-{/* Mostrar resumen de evaluación si existe */}
-{evaluacionesExistentes[item.id] && (
-  <div
 // src/components/PreregistroCurso.jsx
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { formatearRangoFechas } from '../lib/formatoFechas'
-import { descargarOficioRegistro } from '../lib/oficio'
-import EvaluacionInstructor from './EvaluacionInstructor' // <-- NUEVO IMPORT
+import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
+import { formatearRangoFechas } from '../lib/formatoFechas';
+import { descargarOficioRegistro } from '../lib/oficio';
+import EvaluacionInstructor from './EvaluacionInstructor';
 
 const DEPARTAMENTOS = [
   'DEPARTAMENTO DE CIENCIAS BÁSICAS',
@@ -79,13 +16,17 @@ const DEPARTAMENTOS = [
   'DEPARTAMENTO CIENCIAS DE LA TIERRA',
   'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION',
   'DEPARTAMENTO DESARROLLO ACADÉMICO',
-]
+];
 
-const MODALIDADES = ['Presencial', 'Virtual', 'Mixta']
-const HORARIOS = ['09:00 A 15:00 HRS', '15:00 A 20:00 HRS']
+const MODALIDADES = ['Presencial', 'Virtual', 'Mixta'];
+const HORARIOS = ['09:00 A 15:00 HRS', '15:00 A 20:00 HRS'];
 
-// Prefijos aceptados para "Lugar" cuando la modalidad no es Virtual
-const PREFIJOS_LUGAR_VALIDOS = ['AULA', 'TALLER', 'SALA', 'LABORATORIO', 'EDIFICIO DE']
+const PREFIJOS_LUGAR_VALIDOS = ['AULA', 'TALLER', 'SALA', 'LABORATORIO', 'EDIFICIO DE'];
+
+const ESTADO_LABEL = {
+  pendiente: { texto: 'En revisión', clase: 'bg-amber-100 text-amber-700' },
+  aprobado: { texto: 'Aprobado', clase: 'bg-green-100 text-green-700' },
+};
 
 function formVacio() {
   return {
@@ -100,75 +41,65 @@ function formVacio() {
     nombre_jefe: '',
     jefatura_cargo: '',
     oficio_no: '',
-  }
-}
-
-const ESTADO_LABEL = {
-  pendiente: { texto: 'En revisión', clase: 'bg-amber-100 text-amber-700' },
-  aprobado: { texto: 'Aprobado', clase: 'bg-green-100 text-green-700' },
+  };
 }
 
 function etiquetaPeriodo(p) {
-  if (p === 'PERIODO_1') return 'Periodo 1'
-  if (p === 'PERIODO_2') return 'Periodo 2'
-  return p
+  if (p === 'PERIODO_1') return 'Periodo 1';
+  if (p === 'PERIODO_2') return 'Periodo 2';
+  return p || 'Sin periodo';
 }
 
 function aMayusculas(texto) {
-  return texto.toUpperCase()
+  return texto.toUpperCase();
 }
 
 export default function PreregistroCurso({ docente }) {
-  const [misPreregistros, setMisPreregistros] = useState(null)
-  const [formAbierto, setFormAbierto] = useState(false)
-  const [form, setForm] = useState(formVacio())
-  const [guardando, setGuardando] = useState(false)
-  const [errorMsg, setErrorMsg] = useState('')
-  const [convocatoria, setConvocatoria] = useState(null)
+  const [misPreregistros, setMisPreregistros] = useState(null);
+  const [formAbierto, setFormAbierto] = useState(false);
+  const [form, setForm] = useState(formVacio());
+  const [guardando, setGuardando] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [convocatoria, setConvocatoria] = useState(null);
 
-  // ========== NUEVO: Estado para Evaluación de Instructor ==========
-  const [mostrarEvaluacion, setMostrarEvaluacion] = useState(false)
-  const [preregistroSeleccionado, setPreregistroSeleccionado] = useState(null)
-  const [evaluacionesExistentes, setEvaluacionesExistentes] = useState({})
-  const [cargandoEvaluaciones, setCargandoEvaluaciones] = useState(false)
+  // ===== ESTADOS PARA EVALUACIÓN =====
+  const [mostrarEvaluacion, setMostrarEvaluacion] = useState(false);
+  const [preregistroSeleccionado, setPreregistroSeleccionado] = useState(null);
+  const [evaluacionesExistentes, setEvaluacionesExistentes] = useState({});
 
   useEffect(() => {
-    cargar()
-    cargarConvocatoria()
-  }, [])
+    cargar();
+    cargarConvocatoria();
+  }, []);
 
   async function cargar() {
     const { data } = await supabase
       .from('preregistro_cursos')
       .select('*, docentes(nombre_completo, email, departamento)')
       .eq('docente_id', docente.id)
-      .order('created_at', { ascending: false })
-    setMisPreregistros(data || [])
-    
-    // Cargar evaluaciones existentes para estos preregistros
+      .order('created_at', { ascending: false });
+    setMisPreregistros(data || []);
+
     if (data && data.length > 0) {
-      cargarEvaluacionesParaPreregistros(data.map(item => item.id))
+      cargarEvaluaciones(data.map(item => item.id));
     }
   }
 
-  // ========== NUEVO: Cargar evaluaciones existentes ==========
-  async function cargarEvaluacionesParaPreregistros(preregistroIds) {
-    if (preregistroIds.length === 0) return
-    
-    setCargandoEvaluaciones(true)
+  async function cargarEvaluaciones(preregistroIds) {
+    if (preregistroIds.length === 0) return;
+
     const { data } = await supabase
       .from('evaluaciones_instructores')
       .select('*')
-      .in('preregistro_id', preregistroIds)
-    
+      .in('preregistro_id', preregistroIds);
+
     if (data) {
-      const mapa = {}
+      const mapa = {};
       data.forEach(evalItem => {
-        mapa[evalItem.preregistro_id] = evalItem
-      })
-      setEvaluacionesExistentes(mapa)
+        mapa[evalItem.preregistro_id] = evalItem;
+      });
+      setEvaluacionesExistentes(mapa);
     }
-    setCargandoEvaluaciones(false)
   }
 
   async function cargarConvocatoria() {
@@ -179,95 +110,90 @@ export default function PreregistroCurso({ docente }) {
       .not('periodo1_inicio', 'is', null)
       .order('fecha_inicio', { ascending: true })
       .limit(1)
-      .maybeSingle()
-    setConvocatoria(data)
+      .maybeSingle();
+    setConvocatoria(data);
   }
 
   function validarLugar(lugar, modalidad) {
-    if (modalidad === 'Virtual') return true
-    const l = lugar.trim().toUpperCase()
-    return PREFIJOS_LUGAR_VALIDOS.some((prefijo) => l.startsWith(prefijo))
+    if (modalidad === 'Virtual') return true;
+    const l = lugar.trim().toUpperCase();
+    return PREFIJOS_LUGAR_VALIDOS.some((prefijo) => l.startsWith(prefijo));
   }
 
   async function guardar(e) {
-    e.preventDefault()
-    setErrorMsg('')
+    e.preventDefault();
+    setErrorMsg('');
 
-    const faltantes = []
-    if (!form.curso.trim()) faltantes.push('Nombre del curso')
-    if (!form.objetivo.trim()) faltantes.push('Objetivo')
-    if (!form.periodo) faltantes.push('Periodo')
-    if (!form.horario) faltantes.push('Horario')
-    if (!form.duracion_horas) faltantes.push('Duración')
-    if (!form.modalidad) faltantes.push('Modalidad')
-    if (form.modalidad !== 'Virtual' && !form.lugar.trim()) faltantes.push('Lugar')
-    if (!form.dirigido_a) faltantes.push('Departamento')
-    if (!form.nombre_jefe.trim()) faltantes.push('Nombre del jefe(a) de departamento')
-    if (!form.jefatura_cargo.trim()) faltantes.push('Cargo del jefe(a) de departamento')
-    if (!form.oficio_no.trim()) faltantes.push('Número de oficio')
+    const faltantes = [];
+    if (!form.curso.trim()) faltantes.push('Nombre del curso');
+    if (!form.objetivo.trim()) faltantes.push('Objetivo');
+    if (!form.periodo) faltantes.push('Periodo');
+    if (!form.horario) faltantes.push('Horario');
+    if (!form.duracion_horas) faltantes.push('Duración');
+    if (!form.modalidad) faltantes.push('Modalidad');
+    if (form.modalidad !== 'Virtual' && !form.lugar.trim()) faltantes.push('Lugar');
+    if (!form.dirigido_a) faltantes.push('Departamento');
+    if (!form.nombre_jefe.trim()) faltantes.push('Nombre del jefe(a) de departamento');
+    if (!form.jefatura_cargo.trim()) faltantes.push('Cargo del jefe(a) de departamento');
+    if (!form.oficio_no.trim()) faltantes.push('Número de oficio');
 
     if (faltantes.length) {
-      setErrorMsg('Faltan campos por llenar: ' + faltantes.join(', '))
-      return
+      setErrorMsg('Faltan campos por llenar: ' + faltantes.join(', '));
+      return;
     }
 
     if (!validarLugar(form.lugar, form.modalidad)) {
       setErrorMsg(
         'El "Lugar" debe indicar el espacio específico: Aula, Taller, Sala, Laboratorio o Edificio de... ' +
         '(no se acepta solo "ITD" o el nombre del instituto). Si es virtual, deja el campo vacío y elige modalidad Virtual.'
-      )
-      return
+      );
+      return;
     }
 
-    setGuardando(true)
+    setGuardando(true);
     const { error } = await supabase.from('preregistro_cursos').insert({
       ...form,
       docente_id: docente.id,
       duracion_horas: Number(form.duracion_horas),
-    })
-    setGuardando(false)
+    });
+    setGuardando(false);
+
     if (error) {
-      setErrorMsg(error.message)
-      return
+      setErrorMsg(error.message);
+      return;
     }
-    setForm(formVacio())
-    setFormAbierto(false)
-    cargar()
+
+    setForm(formVacio());
+    setFormAbierto(false);
+    cargar();
   }
 
-  // ========== NUEVO: Manejar apertura de evaluación ==========
+  // ===== FUNCIONES PARA EVALUACIÓN =====
   function abrirEvaluacion(item) {
-    setPreregistroSeleccionado(item)
-    setMostrarEvaluacion(true)
+    setPreregistroSeleccionado(item);
+    setMostrarEvaluacion(true);
   }
 
-  // ========== NUEVO: Manejar cierre de evaluación ==========
   function cerrarEvaluacion() {
-    setMostrarEvaluacion(false)
-    setPreregistroSeleccionado(null)
+    setMostrarEvaluacion(false);
+    setPreregistroSeleccionado(null);
   }
 
-  // ========== NUEVO: Manejar evaluación guardada ==========
-  async function handleEvaluacionGuardada(data, pdfUrl) {
-    // Actualizar el mapa de evaluaciones existentes
+  async function handleEvaluacionGuardada(data) {
     setEvaluacionesExistentes(prev => ({
       ...prev,
       [data.preregistro_id]: data
-    }))
-    
-    // Cerrar modal
-    cerrarEvaluacion()
-    
-    // Recargar la lista para actualizar estados
-    await cargar()
+    }));
+    cerrarEvaluacion();
+    await cargar();
   }
 
   const fechasPeriodo1 = convocatoria?.periodo1_inicio && convocatoria?.periodo1_fin
     ? formatearRangoFechas(convocatoria.periodo1_inicio, convocatoria.periodo1_fin)
-    : null
+    : null;
   const fechasPeriodo2 = convocatoria?.periodo2_inicio && convocatoria?.periodo2_fin
     ? formatearRangoFechas(convocatoria.periodo2_inicio, convocatoria.periodo2_fin)
-    : null
+    : null;
 
   return (
     <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8">
@@ -434,9 +360,9 @@ export default function PreregistroCurso({ docente }) {
         ) : (
           <div className="space-y-3">
             {misPreregistros.map((item) => {
-              const estado = ESTADO_LABEL[item.estado] || ESTADO_LABEL.pendiente
-              const evaluacion = evaluacionesExistentes[item.id]
-              
+              const estado = ESTADO_LABEL[item.estado] || ESTADO_LABEL.pendiente;
+              const evaluacion = evaluacionesExistentes[item.id];
+
               return (
                 <div key={item.id} className="rounded-xl border border-itd-navy/10 p-4">
                   <div className="flex items-start justify-between gap-4">
@@ -453,26 +379,20 @@ export default function PreregistroCurso({ docente }) {
                       <span className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${estado.clase}`}>
                         {estado.texto}
                       </span>
-                      
-                      {/* ========== NUEVO: Botón Evaluar Instructor ========== */}
+
                       {item.estado === 'pendiente' && (
                         <button
                           onClick={() => abrirEvaluacion(item)}
                           className="text-xs font-medium text-purple-700 border border-purple-300 rounded-lg px-3 py-1.5 hover:bg-purple-50 transition-colors flex items-center gap-1"
                         >
                           {evaluacion ? (
-                            <>
-                              <span>✅</span> Ver Evaluación
-                            </>
+                            <>✅ Ver Evaluación</>
                           ) : (
-                            <>
-                              <span>📋</span> Evaluar Instructor
-                            </>
+                            <>📋 Evaluar Instructor</>
                           )}
                         </button>
                       )}
-                      
-                      {/* Mostrar resumen de evaluación si existe */}
+
                       {evaluacion && (
                         <div className="text-xs text-itd-navyDark/60 flex items-center gap-2">
                           <span>📊 {evaluacion.puntuacion_total}/25</span>
@@ -483,7 +403,7 @@ export default function PreregistroCurso({ docente }) {
                       )}
                     </div>
                   </div>
-                  
+
                   {item.oficio_no && (
                     <button
                       onClick={() => descargarOficioRegistro(item, convocatoria)}
@@ -493,13 +413,12 @@ export default function PreregistroCurso({ docente }) {
                     </button>
                   )}
                 </div>
-              )
+              );
             })}
           </div>
         )}
       </div>
 
-      {/* ========== NUEVO: Modal de Evaluación ========== */}
       {mostrarEvaluacion && preregistroSeleccionado && (
         <EvaluacionInstructor
           preregistro={preregistroSeleccionado}
@@ -510,5 +429,5 @@ export default function PreregistroCurso({ docente }) {
         />
       )}
     </div>
-  )
+  );
 }
