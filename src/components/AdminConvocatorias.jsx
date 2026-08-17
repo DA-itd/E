@@ -34,6 +34,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
   const [convocatorias, setConvocatorias] = useState([])
   const [cargando, setCargando] = useState(true)
   const [expandidaId, setExpandidaId] = useState(null)
+  const [verInactivas, setVerInactivas] = useState(false)
   const [cursosPorConvocatoria, setCursosPorConvocatoria] = useState({})
 
   const [formConvocatoria, setFormConvocatoria] = useState(null) // null = cerrado; objeto = editando/creando
@@ -130,7 +131,11 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
     const { error } = await query
     setGuardando(false)
     if (error) {
-      setErrorMsg('No se pudo guardar la convocatoria: ' + error.message)
+      if (error.code === '23505') {
+        setErrorMsg(`Ya existe una convocatoria "${datos.nombre}" ${datos.anio} (puede estar dada de baja). Actívala en "Ver también las dadas de baja" y edítala, o usa un nombre distinto.`)
+      } else {
+        setErrorMsg('No se pudo guardar la convocatoria: ' + error.message)
+      }
       return
     }
     setFormConvocatoria(null)
@@ -218,9 +223,14 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
             + Nueva convocatoria
           </button>
         </div>
-        <p className="text-sm text-itd-navyDark/60 mb-4">
+        <p className="text-sm text-itd-navyDark/60 mb-1">
           Da de alta/baja convocatorias, agrega o edita cursos, y cierra inscripciones manualmente.
         </p>
+        <label className="flex items-center gap-2 text-xs text-itd-navyDark/50 mb-4 cursor-pointer w-fit">
+          <input type="checkbox" checked={verInactivas} onChange={(e) => setVerInactivas(e.target.checked)} />
+          Ver también las dadas de baja
+          <span className="text-itd-navyDark/35">(un nombre + año dado de baja sigue "ocupado": no puedes crear otra convocatoria igual sin reactivarla o borrarla primero)</span>
+        </label>
 
         {errorMsg && <p className="text-sm text-itd-guinda mb-4">{errorMsg}</p>}
 
@@ -316,20 +326,20 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
 
         <div className="space-y-3">
           {convocatorias
-            .filter((conv) => conv.activo)
+            .filter((conv) => conv.activo || verInactivas)
             .map((conv) => (
             <div key={conv.id} className="rounded-xl border border-itd-navy/10 overflow-hidden">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 bg-white">
-                <button onClick={() => alExpandir(conv.id)} className="text-left flex-1">
-                  <p className="font-medium text-sm text-itd-navyDark">
-                    {expandidaId === conv.id ? '▾' : '▸'} {conv.nombre}
+                <button onClick={() => alExpandir(conv.id)} className="text-left flex-1 group">
+                  <p className="font-semibold text-sm text-itd-navy group-hover:underline">
+                    {expandidaId === conv.id ? '▾ Ocultar cursos' : '▸ Ver / editar cursos'}
                     {!conv.activo && <span className="ml-2 text-xs text-itd-guinda">(inactiva)</span>}
                   </p>
                   <p className="text-xs text-itd-navyDark/60 mt-0.5">
-                    {conv.anio} · {conv.fecha_inicio} a {conv.fecha_fin}
+                    {conv.nombre} · {conv.anio} · {conv.fecha_inicio} a {conv.fecha_fin}
                   </p>
                 </button>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex items-center gap-3 shrink-0">
                   <button
                     onClick={() => setFormConvocatoria({
                       ...conv,
@@ -338,9 +348,10 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                       periodo2_inicio: conv.periodo2_inicio || '',
                       periodo2_fin: conv.periodo2_fin || '',
                     })}
-                    className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand"
+                    className="text-xs text-itd-navyDark/50 underline decoration-dotted hover:text-itd-navy"
+                    title="Solo para cambiar el nombre, año o fechas de periodo de la convocatoria (se hace pocas veces al año)"
                   >
-                    Editar
+                    Editar fechas de convocatoria
                   </button>
                   <button
                     onClick={() => alternarActivoConvocatoria(conv)}
@@ -436,6 +447,13 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                       <input required placeholder="Nombre del curso" value={formCurso.nombre} onChange={(e) => setFormCurso({ ...formCurso, nombre: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2" />
                       <input placeholder="Instructor" value={formCurso.instructor} onChange={(e) => setFormCurso({ ...formCurso, instructor: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
                       <input placeholder="Departamento" value={formCurso.departamento} onChange={(e) => setFormCurso({ ...formCurso, departamento: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <textarea
+                        placeholder="Objetivo del curso (aparece en el Programa Institucional)"
+                        value={formCurso.objetivo || ''}
+                        onChange={(e) => setFormCurso({ ...formCurso, objetivo: e.target.value })}
+                        rows={2}
+                        className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2"
+                      />
                       <label className="text-xs text-itd-navyDark/60">
                         Fecha inicio
                         <input required type="date" value={formCurso.fecha_inicio} onChange={(e) => setFormCurso({ ...formCurso, fecha_inicio: e.target.value })} className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1" />
@@ -473,7 +491,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                           {curso.cerrado_manualmente && <span className="ml-2 text-xs text-itd-guinda">(inscripciones cerradas)</span>}
                         </p>
                         <p className="text-xs text-itd-navyDark/60">
-                          Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · {curso.horario || 'sin horario'} · cupo {curso.cupo_max}
+                          Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · {curso.horario || 'sin horario'} · cupo <strong className="text-itd-navy">{curso.cupo_max}</strong>
                         </p>
                       </div>
                       <div className="flex gap-2 shrink-0">

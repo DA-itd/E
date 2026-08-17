@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { formatearRangoFechas } from '../lib/formatoFechas';
 import { descargarOficioRegistro } from '../lib/oficio';
 import EvaluacionInstructor from './EvaluacionInstructor';
+import AutocompleteInput from './AutocompleteInput';
 
 const DEPARTAMENTOS = [
   'DEPARTAMENTO DE CIENCIAS BÁSICAS',
@@ -21,7 +22,14 @@ const DEPARTAMENTOS = [
 const MODALIDADES = ['Presencial', 'Virtual', 'Mixta'];
 const HORARIOS = ['09:00 A 15:00 HRS', '15:00 A 20:00 HRS'];
 
-const PREFIJOS_LUGAR_VALIDOS = ['AULA', 'TALLER', 'SALA', 'LABORATORIO', 'EDIFICIO DE'];
+const PREFIJOS_LUGAR_VALIDOS = ['AULA', 'TALLER', 'SALA', 'LABORATORIO', 'EDIFICIO DE', 'AUDIOVISUAL'];
+
+// Sugerencias para "Cargo del jefe(a)": Jefe/Jefa + cada departamento,
+// para que al escribir "JEFE DEL" o "JEFA DEL" aparezcan ya completas.
+const CARGOS_JEFATURA_SUGERIDOS = DEPARTAMENTOS.flatMap((d) => [
+  `JEFE DEL ${d}`,
+  `JEFA DEL ${d}`,
+]);
 
 const ESTADO_LABEL = {
   pendiente: { texto: 'En revisión', clase: 'bg-amber-100 text-amber-700' },
@@ -61,6 +69,7 @@ export default function PreregistroCurso({ docente }) {
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [convocatoria, setConvocatoria] = useState(null);
+  const [alcanceDirigido, setAlcanceDirigido] = useState('MISMO'); // 'MISMO' | 'TODO_ITD'
 
   // ===== ESTADOS PARA EVALUACIÓN =====
   const [mostrarEvaluacion, setMostrarEvaluacion] = useState(false);
@@ -144,15 +153,17 @@ export default function PreregistroCurso({ docente }) {
 
     if (!validarLugar(form.lugar, form.modalidad)) {
       setErrorMsg(
-        'El "Lugar" debe indicar el espacio específico: Aula, Taller, Sala, Laboratorio o Edificio de... ' +
+        'El "Lugar" debe indicar el espacio específico: Aula, Taller, Sala, Laboratorio, Audiovisual o Edificio de... ' +
         '(no se acepta solo "ITD" o el nombre del instituto). Si es virtual, deja el campo vacío y elige modalidad Virtual.'
       );
       return;
     }
 
     setGuardando(true);
+    const dirigidoAFinal = alcanceDirigido === 'TODO_ITD' ? 'INSTITUTO TECNOLÓGICO DE DURANGO' : form.dirigido_a;
     const { error } = await supabase.from('preregistro_cursos').insert({
       ...form,
+      dirigido_a: dirigidoAFinal,
       docente_id: docente.id,
       duracion_horas: Number(form.duracion_horas),
     });
@@ -164,6 +175,7 @@ export default function PreregistroCurso({ docente }) {
     }
 
     setForm(formVacio());
+    setAlcanceDirigido('MISMO');
     setFormAbierto(false);
     cargar();
   }
@@ -207,13 +219,23 @@ export default function PreregistroCurso({ docente }) {
         </div>
         <button
           onClick={() => setFormAbierto((v) => !v)}
-          className="shrink-0 rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark"
+          disabled={!convocatoria}
+          title={!convocatoria ? 'No hay convocatoria activa con fechas de periodo publicadas todavía' : undefined}
+          className="shrink-0 rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-itd-navy"
         >
           {formAbierto ? 'Cancelar' : '+ Proponer curso'}
         </button>
       </div>
 
-      {formAbierto && (
+      {!convocatoria && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+          Por ahora no hay una convocatoria activa con fechas de periodo publicadas, así que todavía no
+          se pueden proponer cursos nuevos. En cuanto la Coordinación abra la siguiente convocatoria,
+          este botón se habilita solo.
+        </p>
+      )}
+
+      {formAbierto && convocatoria && (
         <form onSubmit={guardar} className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-itd-navy/10 pt-6">
           <div className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
             ⚠️ Cuida la ortografía y los acentos: lo que captures aquí aparecerá <strong>tal cual</strong> en
@@ -249,11 +271,6 @@ export default function PreregistroCurso({ docente }) {
               <option value="PERIODO_1">Periodo 1{fechasPeriodo1 ? ` (${fechasPeriodo1})` : ''}</option>
               <option value="PERIODO_2">Periodo 2{fechasPeriodo2 ? ` (${fechasPeriodo2})` : ''}</option>
             </select>
-            {!convocatoria && (
-              <p className="text-[11px] text-itd-navyDark/40 mt-1">
-                Aún no hay fechas de periodo publicadas para el siguiente trimestre.
-              </p>
-            )}
           </div>
 
           <select
@@ -301,14 +318,27 @@ export default function PreregistroCurso({ docente }) {
             <p className="text-[11px] text-itd-navyDark/40 mt-1">
               {form.modalidad === 'Virtual'
                 ? 'No aplica en modalidad Virtual.'
-                : 'Indica Aula, Taller, Sala, Laboratorio o Edificio de… (no se acepta solo "ITD").'}
+                : 'Indica Aula, Taller, Sala, Laboratorio, Audiovisual o Edificio de… (no se acepta solo "ITD").'}
             </p>
           </div>
 
           <select
             required
             value={form.dirigido_a}
-            onChange={(e) => setForm({ ...form, dirigido_a: e.target.value })}
+            onChange={(e) => {
+              const depto = e.target.value;
+              setForm((prev) => ({
+                ...prev,
+                dirigido_a: depto,
+                // Autocompleta el cargo si el usuario todavía no ha escrito nada,
+                // o si lo que hay coincide con la sugerencia del departamento anterior
+                // (para que al cambiar de departamento se actualice junto con él).
+                jefatura_cargo:
+                  !prev.jefatura_cargo || CARGOS_JEFATURA_SUGERIDOS.includes(prev.jefatura_cargo)
+                    ? (depto ? `JEFE DEL ${depto}` : '')
+                    : prev.jefatura_cargo,
+              }));
+            }}
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
           >
             <option value="">Departamento…</option>
@@ -316,6 +346,28 @@ export default function PreregistroCurso({ docente }) {
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
+
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-itd-navyDark/70 mb-1">Dirigido a</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  checked={alcanceDirigido === 'MISMO'}
+                  onChange={() => setAlcanceDirigido('MISMO')}
+                />
+                Personal del mismo departamento
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  checked={alcanceDirigido === 'TODO_ITD'}
+                  onChange={() => setAlcanceDirigido('TODO_ITD')}
+                />
+                Todo el personal del ITD
+              </label>
+            </div>
+          </div>
 
           <input
             required
@@ -325,21 +377,34 @@ export default function PreregistroCurso({ docente }) {
             className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm uppercase"
           />
 
-          <input
-            required
-            placeholder="Cargo del jefe(a), ej. Jefe(a) del Departamento de Sistemas y Computación"
-            value={form.jefatura_cargo}
-            onChange={(e) => setForm({ ...form, jefatura_cargo: e.target.value })}
-            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-          />
+          <div className="sm:col-span-2">
+            <AutocompleteInput
+              value={form.jefatura_cargo}
+              onChange={(v) => setForm({ ...form, jefatura_cargo: aMayusculas(v) })}
+              sugerencias={CARGOS_JEFATURA_SUGERIDOS}
+              placeholder="Cargo del jefe(a), ej. Jefe(a) del Departamento de Sistemas y Computación"
+              className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+              required
+            />
+            <p className="text-[11px] text-itd-navyDark/40 mt-1">
+              Se autocompletó con el departamento de arriba — ajusta "Jefe"/"Jefa" si hace falta.
+            </p>
+          </div>
 
-          <input
-            required
-            placeholder="No. de oficio de tu departamento (solo el número, ej. 123)"
-            value={form.oficio_no}
-            onChange={(e) => setForm({ ...form, oficio_no: e.target.value })}
-            className="sm:col-span-2 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-          />
+          <div className="sm:col-span-2">
+            <div className="flex items-stretch rounded-lg border border-itd-navy/20 overflow-hidden">
+              <input
+                required
+                placeholder="No. de oficio de tu departamento (solo el número, ej. 123)"
+                value={form.oficio_no}
+                onChange={(e) => setForm({ ...form, oficio_no: e.target.value.replace(/[^0-9]/g, '') })}
+                className="flex-1 px-3 py-2 text-sm outline-none"
+              />
+              <span className="flex items-center px-3 text-sm text-itd-navyDark/50 bg-itd-sand/40 border-l border-itd-navy/10">
+                /{new Date().getFullYear()}
+              </span>
+            </div>
+          </div>
 
           <button
             type="submit"
@@ -409,7 +474,7 @@ export default function PreregistroCurso({ docente }) {
                       onClick={() => descargarOficioRegistro(item, convocatoria)}
                       className="mt-3 text-xs font-medium text-itd-navy border border-itd-navy/20 rounded-lg px-3 py-1.5 hover:bg-itd-sand"
                     >
-                      📄 Descargar oficio de registro (No. {item.oficio_no}/{new Date(item.created_at).getFullYear()})
+                      📄 Descargar oficio de registro (No. {String(item.oficio_no).split('/')[0].trim()}/{new Date(item.created_at).getFullYear()})
                     </button>
                   )}
                 </div>

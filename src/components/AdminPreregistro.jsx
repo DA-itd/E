@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { descargarCriteriosInstructor } from '../lib/criteriosInstructor'
 
 function etiquetaPeriodo(p) {
   if (p === 'PERIODO_1') return 'Periodo 1'
@@ -18,6 +19,7 @@ export default function AdminPreregistro({ onAprobar }) {
   const [anioFolio, setAnioFolio] = useState(new Date().getFullYear())
   const [mostrarAnioFolio, setMostrarAnioFolio] = useState(false)
   const [verAprobados, setVerAprobados] = useState(false)
+  const [evaluaciones, setEvaluaciones] = useState({}) // preregistro_id -> evaluación
 
   useEffect(() => {
     // Octubre a diciembre se lanza la convocatoria de enero del año siguiente,
@@ -40,6 +42,11 @@ export default function AdminPreregistro({ onAprobar }) {
       .select('*, docentes(nombre_completo, email, departamento)')
       .order('created_at', { ascending: false })
     setLista(data || [])
+
+    const { data: evalData } = await supabase.from('evaluaciones_instructores').select('*')
+    const mapa = {}
+    ;(evalData || []).forEach((ev) => { mapa[ev.preregistro_id] = ev })
+    setEvaluaciones(mapa)
   }
 
   // Sugiere folios consecutivos para los pendientes visibles, sin pisar los
@@ -101,6 +108,7 @@ export default function AdminPreregistro({ onAprobar }) {
       folio,
       semana: item.periodo || '',
       nombre: item.curso,
+      objetivo: item.objetivo || '',
       instructor: item.docentes?.nombre_completo || '',
       departamento: item.dirigido_a || item.docentes?.departamento || '',
       fecha_inicio: fechaInicio || null,
@@ -173,6 +181,16 @@ export default function AdminPreregistro({ onAprobar }) {
                 Propuesto por: <strong>{item.docentes?.nombre_completo || 'Desconocido'}</strong>
                 {item.docentes?.departamento && ` (${item.docentes.departamento})`}
               </p>
+
+              {evaluaciones[item.id] && (
+                <button
+                  onClick={() => descargarCriteriosInstructor(evaluaciones[item.id])}
+                  className="mt-2 text-xs font-medium text-itd-navy border border-itd-navy/20 rounded-lg px-3 py-1.5 hover:bg-itd-sand"
+                >
+                  📄 Descargar Criterios de Instructor
+                  {' '}({evaluaciones[item.id].aceptado ? '✅ Aceptado' : '❌ Rechazado'})
+                </button>
+              )}
 
               <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-itd-navy/5">
                 <select
