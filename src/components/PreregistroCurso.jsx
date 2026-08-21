@@ -5,16 +5,17 @@ import { formatearRangoFechas } from '../lib/formatoFechas';
 import { descargarOficioRegistro } from '../lib/oficio';
 import EvaluacionInstructor from './EvaluacionInstructor';
 import AutocompleteInput from './AutocompleteInput';
+import GenerarListaAsistencia from './GenerarListaAsistencia';
 
 const DEPARTAMENTOS = [
   'DEPARTAMENTO DE CIENCIAS BÁSICAS',
-  'DEPARTAMENTO CIENCIAS ECONÓMICO ADMINISTRATIVAS',
-  'DEPARTAMENTO INGENIERÍAS ELÉCTRICA - ELECTRÓNICA',
+  'DEPARTAMENTO DE CIENCIAS ECONÓMICO ADMINISTRATIVAS',
+  'DEPARTAMENTO DE INGENIERÍAS ELÉCTRICA - ELECTRÓNICA',
   'DEPARTAMENTO DE INGENIERÍA INDUSTRIAL',
-  'DEPARTAMENTO METAL-MECÁNICA',
+  'DEPARTAMENTO DE METAL-MECÁNICA',
   'DEPARTAMENTO DE INGENIERÍAS QUÍMICA-BIOQUÍMICA',
-  'DEPARTAMENTO SISTEMAS Y COMPUTACION',
-  'DEPARTAMENTO CIENCIAS DE LA TIERRA',
+  'DEPARTAMENTO DE SISTEMAS Y COMPUTACION',
+  'DEPARTAMENTO DE CIENCIAS DE LA TIERRA',
   'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION',
   'DEPARTAMENTO DESARROLLO ACADÉMICO',
 ];
@@ -24,8 +25,7 @@ const HORARIOS = ['09:00 A 15:00 HRS', '15:00 A 20:00 HRS'];
 
 const PREFIJOS_LUGAR_VALIDOS = ['AULA', 'TALLER', 'SALA', 'LABORATORIO', 'EDIFICIO DE', 'AUDIOVISUAL'];
 
-// Sugerencias para "Cargo del jefe(a)": Jefe/Jefa + cada departamento,
-// para que al escribir "JEFE DEL" o "JEFA DEL" aparezcan ya completas.
+// Sugerencias para "Cargo del jefe(a)": Jefe/Jefa + cada departamento
 const CARGOS_JEFATURA_SUGERIDOS = DEPARTAMENTOS.flatMap((d) => [
   `JEFE DEL ${d}`,
   `JEFA DEL ${d}`,
@@ -69,17 +69,32 @@ export default function PreregistroCurso({ docente }) {
   const [guardando, setGuardando] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [convocatoria, setConvocatoria] = useState(null);
-  const [alcanceDirigido, setAlcanceDirigido] = useState('MISMO'); // 'MISMO' | 'TODO_ITD'
+  const [alcanceDirigido, setAlcanceDirigido] = useState('MISMO');
 
   // ===== ESTADOS PARA EVALUACIÓN =====
   const [mostrarEvaluacion, setMostrarEvaluacion] = useState(false);
   const [preregistroSeleccionado, setPreregistroSeleccionado] = useState(null);
   const [evaluacionesExistentes, setEvaluacionesExistentes] = useState({});
 
+  // ===== NUEVO: ESTADOS PARA LISTA DE ASISTENCIA =====
+  const [esAdmin, setEsAdmin] = useState(false);
+  const [mostrarListaAsistencia, setMostrarListaAsistencia] = useState(false);
+  const [cursoParaLista, setCursoParaLista] = useState(null);
+
   useEffect(() => {
     cargar();
     cargarConvocatoria();
+    verificarAdmin();
   }, []);
+
+  // ===== NUEVO: Verificar si el usuario es administrador =====
+  async function verificarAdmin() {
+    const { data } = await supabase
+      .from('administradores')
+      .select('email')
+      .ilike('email', docente.email);
+    setEsAdmin((data || []).length > 0);
+  }
 
   async function cargar() {
     const { data } = await supabase
@@ -198,6 +213,16 @@ export default function PreregistroCurso({ docente }) {
     }));
     cerrarEvaluacion();
     await cargar();
+  }
+
+  // ===== NUEVO: FUNCIÓN PARA ABRIR LISTA DE ASISTENCIA =====
+  function abrirListaAsistencia(item) {
+    if (item.curso_id) {
+      setCursoParaLista({ id: item.curso_id });
+      setMostrarListaAsistencia(true);
+    } else {
+      alert('⚠️ Este curso aún no tiene una lista de asistencia generada. Asegúrate de que el curso haya sido aprobado y tenga inscripciones activas.');
+    }
   }
 
   const fechasPeriodo1 = convocatoria?.periodo1_inicio && convocatoria?.periodo1_fin
@@ -330,9 +355,6 @@ export default function PreregistroCurso({ docente }) {
               setForm((prev) => ({
                 ...prev,
                 dirigido_a: depto,
-                // Autocompleta el cargo si el usuario todavía no ha escrito nada,
-                // o si lo que hay coincide con la sugerencia del departamento anterior
-                // (para que al cambiar de departamento se actualice junto con él).
                 jefatura_cargo:
                   !prev.jefatura_cargo || CARGOS_JEFATURA_SUGERIDOS.includes(prev.jefatura_cargo)
                     ? (depto ? `JEFE DEL ${depto}` : '')
@@ -469,6 +491,16 @@ export default function PreregistroCurso({ docente }) {
                     </div>
                   </div>
 
+                  {/* ===== BOTÓN LISTA DE ASISTENCIA ===== */}
+                  {item.estado === 'aprobado' && esAdmin && (
+                    <button
+                      onClick={() => abrirListaAsistencia(item)}
+                      className="mt-3 text-xs font-medium text-itd-navy border border-itd-navy/20 rounded-lg px-3 py-1.5 hover:bg-itd-sand transition-colors flex items-center gap-1"
+                    >
+                      📋 Lista de Asistencia
+                    </button>
+                  )}
+
                   {item.oficio_no && (
                     <button
                       onClick={() => descargarOficioRegistro(item, convocatoria)}
@@ -491,6 +523,17 @@ export default function PreregistroCurso({ docente }) {
           onCerrar={cerrarEvaluacion}
           onEvaluacionGuardada={handleEvaluacionGuardada}
           evaluacionExistente={evaluacionesExistentes[preregistroSeleccionado.id] || null}
+        />
+      )}
+
+      {/* ===== MODAL LISTA DE ASISTENCIA ===== */}
+      {mostrarListaAsistencia && cursoParaLista && (
+        <GenerarListaAsistencia
+          cursoId={cursoParaLista.id}
+          onClose={() => {
+            setMostrarListaAsistencia(false);
+            setCursoParaLista(null);
+          }}
         />
       )}
     </div>

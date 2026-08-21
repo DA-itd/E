@@ -17,6 +17,7 @@ import AdminBuscarDocente from './components/AdminBuscarDocente'
 import HistorialCursos from './components/HistorialCursos'
 import PreregistroCurso from './components/PreregistroCurso'
 import ValidarConstancia from './components/ValidarConstancia'
+import AdminProyectosDocencia from './components/AdminProyectosDocencia'
 
 export default function App() {
   const parametros = new URLSearchParams(window.location.search)
@@ -217,6 +218,7 @@ export default function App() {
             titulo="Administración"
             subTabs={[
               { id: 'asistencia', label: 'Asistencia' },
+              { id: 'proyectos-docencia', label: 'Proyectos Docencia' },
               { id: 'preregistro', label: 'Preregistro' },
               { id: 'convocatorias', label: 'Convocatorias y cursos' },
               { id: 'buscar-docente', label: 'Buscar docente' },
