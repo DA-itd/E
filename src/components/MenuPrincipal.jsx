@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
+import { supabase, obtenerDepartamentoAsignadoUsuario } from '../lib/supabaseClient'
 import EncabezadoInstitucional from './EncabezadoInstitucional'
 import PieDerechos from './PieDerechos'
 
@@ -10,17 +10,21 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
     cargarProximosCursos()
   }, [])
 
-  // Cursos ya aprobados (creados en Convocatorias y cursos) pero que el admin
-  // todavía no publica para inscripción: se muestran como adelanto.
+  // Cursos ya aprobados pero que aún no se publican para inscripción
   async function cargarProximosCursos() {
-    const { data } = await supabase
-      .from('cursos')
-      .select('nombre, horas, horario, departamento, convocatorias(nombre)')
-      .eq('status', 'borrador')
-      .order('nombre')
-    setProximosCursos(data || [])
+    try {
+      const { data } = await supabase
+        .from('cursos')
+        .select('nombre, horas, horario, departamento, convocatorias(nombre)')
+        .eq('status', 'borrador')
+        .order('nombre')
+      setProximosCursos(data || [])
+    } catch (e) {
+      console.warn('No se pudieron cargar los próximos cursos:', e)
+    }
   }
 
+  // Opciones base para todos los docentes
   const opciones = [
     {
       id: 'inscripcion',
@@ -48,6 +52,23 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
     },
   ]
 
+  // Verificar si el usuario tiene permiso departamental para ver Listas de Asistencia
+  const emailDocente = docente?.email || ''
+  const deptoAsignado = emailDocente ? obtenerDepartamentoAsignadoUsuario(emailDocente) : null
+
+  // Si es Administrador o Jefe/Responsable con departamento asignado:
+  if (esAdmin || deptoAsignado) {
+    opciones.push({
+      id: 'proyectos-docencia',
+      titulo: 'Listas de Asistencia',
+      descripcion: esAdmin
+        ? 'Gestión de listas oficiales y asignación de permisos por departamento.'
+        : `Consulta y descarga las listas oficiales del depto. de ${deptoAsignado}.`,
+      icono: '📋',
+    })
+  }
+
+  // Tarjeta de Administración general para el administrador
   if (esAdmin) {
     opciones.push({
       id: 'administracion',
@@ -63,7 +84,7 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
         <div className="text-center mb-10">
           <EncabezadoInstitucional />
           <h2 className="font-display text-xl font-semibold text-itd-navy mt-2">
-            Hola, {docente.nombre_completo?.split(' ')[0]}
+            Hola, {docente?.nombre_completo?.split(' ')[0] || 'Docente'}
           </h2>
           <p className="text-sm text-itd-navyDark/60 mt-1">¿Qué necesitas hacer hoy?</p>
         </div>

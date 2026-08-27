@@ -1,6 +1,6 @@
 import React from 'react';
 import { Curso, Participante, FormatoConfig } from '../types';
-import LogoITD from './LogoITD';
+import LogoITD from '../LogoITD';
 
 interface Props {
   curso: Curso;
@@ -30,33 +30,38 @@ export const FormatoImpresionOficial: React.FC<Props> = ({
   const rows = Array.from({ length: rowCount }, (_, i) => participantes[i] || null);
 
   return (
-    <div className="bg-white text-black p-6 md:p-8 max-w-[216mm] mx-auto border border-gray-300 shadow-sm print:p-0 print:border-none print:shadow-none print:max-w-none print:w-full font-sans text-xs leading-tight">
+    <div className="bg-white text-black p-6 md:p-8 max-w-[279mm] w-full mx-auto border border-gray-300 shadow-sm print:p-0 print:border-none print:shadow-none print:max-w-none print:w-full font-sans text-xs leading-tight">
       {/* 1. Official Header */}
       <div className="border border-black flex items-stretch mb-2">
         {/* Left: Crest/Logo */}
-        <div className="w-24 border-r border-black p-1 flex flex-col items-center justify-center text-center bg-gray-50 print:bg-transparent">
+        <div
+          className="w-36 sm:w-44 border-r-2 border-black p-1.5 flex items-center justify-center text-center bg-white shrink-0"
+          style={{ borderRight: '1.5px solid black' }}
+        >
           <img
-            src="https://raw.githubusercontent.com/DA-itd/E/main/logo%20itd%20original.jpg"
-            alt="Logo ITD"
-            className="w-14 h-14 object-contain"
+            src="https://raw.githubusercontent.com/DA-itd/E/main/LOGO_tecnm.jpg"
+            alt="Logo TecNM / ITD"
+            className="w-auto h-14 max-h-[54px] max-w-[145px] object-contain"
+            referrerPolicy="no-referrer"
             onError={(e) => {
               // fallback if offline
               e.currentTarget.style.display = 'none';
             }}
           />
-          <LogoITD className="w-10 h-10 hidden" />
-          <span className="text-[7.5px] font-bold text-[#1B396A] mt-0.5">TecNM</span>
         </div>
 
         {/* Center: Title and references */}
         <div className="flex-1 p-2 text-center flex flex-col justify-center">
-          <h1 className="font-bold text-sm tracking-wide text-gray-900">{config.institucion}</h1>
-          <p className="text-[11px] font-semibold text-gray-800 mt-0.5">{config.nombreDocumento}</p>
-          <p className="text-[9px] text-gray-600 mt-0.5">{config.referenciaNorma}</p>
+          <h1 className="font-bold text-sm sm:text-base tracking-wide text-gray-900">{config.institucion}</h1>
+          <p className="text-[11px] sm:text-xs font-semibold text-gray-800 mt-0.5">{config.nombreDocumento}</p>
+          <p className="text-[9px] sm:text-[10px] text-gray-600 mt-0.5">{config.referenciaNorma}</p>
         </div>
 
         {/* Right: ISO Code Box */}
-        <div className="w-44 border-l border-black text-[9px]">
+        <div
+          className="w-44 border-l-2 border-black text-[9px] shrink-0"
+          style={{ borderLeft: '1.5px solid black' }}
+        >
           <div className="border-b border-black px-2 py-1 flex justify-between">
             <span className="font-semibold">Código:</span>
             <span>{config.codigo}</span>
@@ -241,8 +246,8 @@ export const FormatoImpresionOficial: React.FC<Props> = ({
         <div className="text-center">
           <div className="border-t border-black w-4/5 mx-auto mb-1"></div>
           <p className="font-bold">Nombre y firma del coordinador (a)</p>
-          <p className="font-medium text-gray-800 text-[9px] mt-0.5">{coordinadorNombre || config.coordinadorNombre}</p>
-          <p className="text-[8.5px] text-gray-600 mt-1">{config.coordinadorPuesto}</p>
+          <p className="font-bold text-gray-900 text-[10px] mt-0.5">{coordinadorNombre || 'Alejandro Calderón Rentería'}</p>
+          <p className="font-medium text-gray-800 text-[9px] mt-0.5">{config.coordinadorPuesto || 'Coordinador de Actualización Docente'}</p>
         </div>
       </div>
 

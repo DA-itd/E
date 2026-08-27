@@ -5,19 +5,20 @@ interface LogoProps {
   showBorder?: boolean;
 }
 
+export const LOGO_TECNM_URL = 'https://raw.githubusercontent.com/DA-itd/E/main/LOGO_tecnm.jpg';
+
 export default function LogoITD({ className = 'w-12 h-12', showBorder = false }: LogoProps) {
   const [srcIndex, setSrcIndex] = useState(0);
   const [useVectorFallback, setUseVectorFallback] = useState(false);
 
   const rutas = [
-    encodeURI('/logos/logo-itd original.jpg'),
+    LOGO_TECNM_URL,
+    'https://raw.githubusercontent.com/DA-itd/E/main/logo%20itd%20original.jpg',
     '/logos/logo-itd original.jpg',
     '/logos/logo-itd.jpg',
     '/logos/logo-itd.png',
-    encodeURI('/logo-itd original.jpg'),
     '/logo-itd original.jpg',
     '/logo-itd.jpg',
-    '/logo-itd.png',
   ];
 
   if (useVectorFallback) {
@@ -85,8 +86,9 @@ export default function LogoITD({ className = 'w-12 h-12', showBorder = false }:
           setUseVectorFallback(true);
         }
       }}
-      alt="Logo ITD"
+      alt="Logo TecNM / ITD"
       className={`${className} object-contain`}
+      referrerPolicy="no-referrer"
     />
   );
 }

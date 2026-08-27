@@ -1,92 +1,180 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import LogoITD from './LogoITD';
+import { getPermisosDepartamentos } from '../lib/supabaseClient';
 
-interface LogoProps {
-  className?: string;
-  showBorder?: boolean;
+interface Props {
+  vistaActiva: 'listas' | 'nuevo_curso' | 'instructivo';
+  onCambiarVista: (vista: 'listas' | 'nuevo_curso' | 'instructivo') => void;
+  onAbrirConfiguracion: () => void;
+  usuarioEmail: string;
+  departamentoAsignado?: string;
+  esAdmin: boolean;
+  onCambiarUsuario: (email: string) => void;
 }
 
-export default function LogoITD({ className = 'w-12 h-12', showBorder = false }: LogoProps) {
-  const [srcIndex, setSrcIndex] = useState(0);
-  const [useVectorFallback, setUseVectorFallback] = useState(false);
+export default function Navbar({
+  vistaActiva,
+  onCambiarVista,
+  onAbrirConfiguracion,
+  usuarioEmail,
+  departamentoAsignado,
+  esAdmin,
+  onCambiarUsuario,
+}: Props) {
+  const [mostrarMenuUsuario, setMostrarMenuUsuario] = useState(false);
+  const [permisos, setPermisos] = useState<any[]>([]);
 
-  const rutas = [
-    encodeURI('/logos/logo-itd original.jpg'),
-    '/logos/logo-itd original.jpg',
-    '/logos/logo-itd.jpg',
-    '/logos/logo-itd.png',
-    encodeURI('/logo-itd original.jpg'),
-    '/logo-itd original.jpg',
-    '/logo-itd.jpg',
-    '/logo-itd.png',
-  ];
-
-  if (useVectorFallback) {
-    return (
-      <svg viewBox="0 0 200 200" className={`${className} object-contain`} xmlns="http://www.w3.org/2000/svg">
-        {/* Doble aro guinda ITD */}
-        <circle cx="100" cy="100" r="95" fill="#ffffff" stroke="#800020" strokeWidth="6" />
-        <circle cx="100" cy="100" r="82" fill="#ffffff" stroke="#800020" strokeWidth="2.5" />
-        <circle cx="100" cy="100" r="67" fill="#ffffff" stroke="#800020" strokeWidth="3" />
-        
-        {/* Texto circular superior */}
-        <path id="itdCurvaTextoNav" d="M 28,100 A 72,72 0 1,1 172,100" fill="none" />
-        <text fill="#800020" fontSize="12.5" fontWeight="900" letterSpacing="2.2" fontFamily="Arial, sans-serif">
-          <textPath href="#itdCurvaTextoNav" startOffset="50%" textAnchor="middle">
-            TECNOLOGICO DE DURANGO
-          </textPath>
-        </text>
-        
-        {/* Año 1948 */}
-        <text x="100" y="188" fill="#800020" fontSize="16" fontWeight="900" textAnchor="middle" letterSpacing="4" fontFamily="Arial, sans-serif">
-          1948
-        </text>
-
-        {/* Águila del ITD y Escudo */}
-        <g transform="translate(38, 40) scale(0.62)">
-          {/* Alas doradas/marrón */}
-          <path d="M 20 60 C -10 20, 40 -10, 80 15 C 65 35, 50 60, 20 60 Z" fill="#996515" stroke="#5c3d0c" strokeWidth="2"/>
-          <path d="M 180 60 C 210 20, 160 -10, 120 15 C 135 35, 150 60, 180 60 Z" fill="#996515" stroke="#5c3d0c" strokeWidth="2"/>
-          <path d="M 30 75 C 5 45, 50 25, 80 35 C 70 55, 55 75, 30 75 Z" fill="#b8860b" />
-          <path d="M 170 75 C 195 45, 150 25, 120 35 C 130 55, 145 75, 170 75 Z" fill="#b8860b" />
-          
-          {/* Cabeza */}
-          <ellipse cx="100" cy="40" rx="16" ry="18" fill="#8b5a2b" stroke="#5c3d0c" strokeWidth="2" />
-          <path d="M 100 32 Q 118 36 112 46 Q 104 42 100 42 Z" fill="#ffd700" stroke="#b8860b" strokeWidth="1" />
-          <circle cx="96" cy="36" r="3" fill="#ffffff" />
-          <circle cx="96" cy="36" r="1.5" fill="#000000" />
-          
-          {/* Cola */}
-          <path d="M 80 145 L 70 185 L 100 195 L 130 185 L 120 145 Z" fill="#8b5a2b" stroke="#5c3d0c" strokeWidth="2" />
-          {/* Garras */}
-          <ellipse cx="75" cy="140" rx="10" ry="7" fill="#ffd700" stroke="#b8860b" strokeWidth="1.5" />
-          <ellipse cx="125" cy="140" rx="10" ry="7" fill="#ffd700" stroke="#b8860b" strokeWidth="1.5" />
-          
-          {/* Escudo Guinda Central */}
-          <rect x="58" y="55" width="84" height="92" rx="6" fill="#ffffff" stroke="#800020" strokeWidth="7" />
-          <text x="100" y="85" fill="#800020" fontSize="22" fontWeight="900" textAnchor="middle" fontFamily="Arial Black, sans-serif">
-            ITD
-          </text>
-          
-          {/* Engrane y Matraz */}
-          <circle cx="100" cy="115" r="14" fill="#a0a0a0" stroke="#606060" strokeWidth="2" strokeDasharray="5,3" />
-          <polygon points="95,95 105,95 108,122 92,122" fill="#2563eb" opacity="0.85" />
-        </g>
-      </svg>
-    );
-  }
+  useEffect(() => {
+    setPermisos(getPermisosDepartamentos());
+  }, [mostrarMenuUsuario]);
 
   return (
-    <img
-      src={rutas[srcIndex]}
-      onError={() => {
-        if (srcIndex < rutas.length - 1) {
-          setSrcIndex(srcIndex + 1);
-        } else {
-          setUseVectorFallback(true);
-        }
-      }}
-      alt="Logo ITD"
-      className={`${className} object-contain`}
-    />
+    <header style={{ backgroundColor: '#1B396A' }} className="text-white shadow-md sticky top-0 z-30 print:hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between h-16">
+          {/* Logo e Institución */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center p-0.5 shadow-sm border border-amber-400 overflow-hidden shrink-0">
+              <LogoITD className="w-full h-full" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm sm:text-base text-white tracking-tight">
+                  Instituto Tecnológico de Durango
+                </span>
+                <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded bg-white/20 text-white font-mono font-semibold">
+                  ITD-AD-FO-8
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-200 hidden sm:block">
+                {esAdmin
+                  ? 'Coordinación de Actualización Docente · Desarrollo Académico'
+                  : `Portal de Listas de Asistencia · ${departamentoAsignado || 'Departamento'}`}
+              </p>
+            </div>
+          </div>
+
+          {/* Menú de Navegación */}
+          <nav className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              onClick={() => onCambiarVista('listas')}
+              style={vistaActiva === 'listas' ? { backgroundColor: '#ffffff', color: '#1B396A' } : { backgroundColor: 'rgba(255, 255, 255, 0.12)', color: '#ffffff' }}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+            >
+              <span>📋</span>
+              <span>Listas de Asistencia</span>
+            </button>
+
+            {/* Solo Admin puede ver "Nuevo Curso" */}
+            {esAdmin && (
+              <button
+                onClick={() => onCambiarVista('nuevo_curso')}
+                style={vistaActiva === 'nuevo_curso' ? { backgroundColor: '#ffffff', color: '#1B396A' } : { backgroundColor: 'rgba(255, 255, 255, 0.12)', color: '#ffffff' }}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+              >
+                <span>➕</span>
+                <span>Nuevo Curso</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => onCambiarVista('instructivo')}
+              style={vistaActiva === 'instructivo' ? { backgroundColor: '#ffffff', color: '#1B396A' } : { backgroundColor: 'rgba(255, 255, 255, 0.12)', color: '#ffffff' }}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs"
+            >
+              <span>ℹ️</span>
+              <span className="hidden sm:inline">Guía de Formato</span>
+            </button>
+
+            {/* Configuración solo para Admin */}
+            {esAdmin && (
+              <button
+                onClick={onAbrirConfiguracion}
+                style={{ backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
+                className="p-2 rounded-xl text-white hover:bg-white/20 transition-colors text-sm"
+                title="Configuración de Formato y Firmas"
+              >
+                ⚙️
+              </button>
+            )}
+
+            <div className="h-6 w-px bg-white/30 mx-1 hidden sm:block"></div>
+
+            {/* Selector de Usuario / Sesión Activa */}
+            <div className="relative">
+              <button
+                onClick={() => setMostrarMenuUsuario(!mostrarMenuUsuario)}
+                style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)', borderColor: 'rgba(255, 255, 255, 0.35)' }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold text-white transition-colors"
+                title="Cambiar de usuario o departamento para probar"
+              >
+                <span>👤</span>
+                <span className="max-w-[120px] sm:max-w-[170px] truncate text-left">
+                  {esAdmin ? '👑 Admin (Coordinador)' : `🏢 ${departamentoAsignado || usuarioEmail}`}
+                </span>
+                <span className="text-[10px] text-white/80">▼</span>
+              </button>
+
+              {mostrarMenuUsuario && (
+                <div 
+                  style={{ backgroundColor: '#ffffff', color: '#1e293b' }}
+                  className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-300 p-4 z-50 animate-in fade-in"
+                >
+                  <div className="border-b border-slate-200 pb-2.5 mb-2.5">
+                    <p style={{ color: '#64748b' }} className="text-[11px] font-bold uppercase tracking-wider">Usuario y Rol Activo</p>
+                    <p style={{ color: '#1B396A' }} className="text-xs font-bold truncate mt-0.5">{usuarioEmail}</p>
+                    <p style={{ color: '#475569' }} className="text-[11px] mt-0.5">
+                      {esAdmin ? '👑 Administrador Global (Todos los departamentos)' : `🏢 Departamento: ${departamentoAsignado}`}
+                    </p>
+                  </div>
+
+                  <p style={{ color: '#475569' }} className="text-[11px] font-bold mb-1.5 px-1">Cambiar de cuenta / Probar vista:</p>
+                  <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                    {/* Opción Admin */}
+                    <button
+                      onClick={() => {
+                        onCambiarUsuario('coord_actualizaciondocente@itdurango.edu.mx');
+                        setMostrarMenuUsuario(false);
+                      }}
+                      style={esAdmin ? { backgroundColor: '#eff6ff', borderColor: '#bfdbfe', color: '#1e3a8a' } : { backgroundColor: '#f8fafc', color: '#334155' }}
+                      className="w-full text-left p-2.5 rounded-xl text-xs transition flex items-center justify-between border border-slate-200 hover:border-slate-400"
+                    >
+                      <div>
+                        <p style={{ color: '#1e3a8a' }} className="font-bold text-xs">👑 Coordinador (Admin Global)</p>
+                        <p style={{ color: '#64748b' }} className="text-[10px] font-mono mt-0.5">coord_actualizaciondocente@itdurango.edu.mx</p>
+                      </div>
+                      {esAdmin && <span style={{ color: '#1d4ed8' }} className="font-bold text-sm">✓</span>}
+                    </button>
+
+                    {/* Usuarios dados de alta en departamentos */}
+                    {permisos.map((p) => {
+                      const esSeleccionado = usuarioEmail.toLowerCase() === p.email.toLowerCase();
+                      return (
+                        <button
+                          key={p.id || p.email}
+                          onClick={() => {
+                            onCambiarUsuario(p.email);
+                            setMostrarMenuUsuario(false);
+                          }}
+                          style={esSeleccionado ? { backgroundColor: '#fffbeb', borderColor: '#fde68a', color: '#78350f' } : { backgroundColor: '#f8fafc', color: '#334155' }}
+                          className="w-full text-left p-2.5 rounded-xl text-xs transition flex items-center justify-between border border-slate-200 hover:border-slate-400"
+                        >
+                          <div className="min-w-0 pr-2">
+                            <p style={{ color: '#1e293b' }} className="font-bold text-xs truncate">🏢 {p.nombre_completo || p.departamento}</p>
+                            <p style={{ color: '#92400e' }} className="text-[10px] font-semibold truncate mt-0.5">{p.departamento}</p>
+                            <p style={{ color: '#64748b' }} className="text-[10px] font-mono truncate">{p.email}</p>
+                          </div>
+                          {esSeleccionado && <span style={{ color: '#b45309' }} className="font-bold text-sm">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </nav>
+        </div>
+      </div>
+    </header>
   );
 }

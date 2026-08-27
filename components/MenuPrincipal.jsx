@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabaseClient'
 import EncabezadoInstitucional from './EncabezadoInstitucional'
 import PieDerechos from './PieDerechos'
+import { obtenerDepartamentoAsignadoUsuario } from '../lib/supabaseClient'
 
 export default function MenuPrincipal({ docente, esAdmin, onIr }) {
   const opciones = [
@@ -22,6 +23,20 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
       descripcion: 'Descarga tus constancias y reconocimientos ya validados.',
       icono: '📄',
     },
+    const deptoAsignado = obtenerDepartamentoAsignadoUsuario(docente.email);
+
+    // Si es admin global O tiene permiso asignado a su departamento:
+if (esAdmin || deptoAsignado) {
+  opciones.push({
+    id: 'proyectos-docencia',
+    titulo: 'Listas de Asistencia',
+    descripcion: esAdmin 
+      ? 'Gestión de listas oficiales y asignación de permisos.'
+      : `Consulta y descarga las listas oficiales del depto. de ${deptoAsignado}.`,
+    icono: '📋',
+  });
+}
+
   ]
 
   if (esAdmin) {
