@@ -695,3 +695,24 @@ export default function AdminProyectosDocencia({
     </div>
   );
 }
+function abrirFormato(curso: any) {
+  console.log("📋 Curso seleccionado:", curso);
+  if (!curso || !curso.id) {
+    console.error("❌ Error: curso sin ID");
+    alert("El curso no tiene un ID válido. Contacta al administrador.");
+    return;
+  }
+  setCursoParaLista(curso);
+  setMostrarListaAsistencia(true);
+}
+// Dentro del render de cada curso
+<button
+  onClick={() => {
+    console.log("🖱️ Click en botón de:", curso.nombre, "ID:", curso.id);
+    abrirFormato(curso);
+  }}
+  className="rounded-xl bg-itd-navy hover:bg-itd-navyDark text-white px-4 py-2.5 text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+>
+  <span>📄</span>
+  <span>Descargar Lista Oficial (PDF)</span>
+</button>
