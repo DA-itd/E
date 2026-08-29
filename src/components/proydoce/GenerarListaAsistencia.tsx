@@ -11,7 +11,8 @@ import {
   getLocalDocentes, 
   saveLocalDocentes 
 } from '../../lib/supabaseClient';
-import { DEPARTAMENTOS_ITD } from '../../data/mockData';
+// ✅ Después (correcto)
+import { DEPARTAMENTOS_ITD } from './AdminProyectosDocencia';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
