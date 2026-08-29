@@ -1,3 +1,4 @@
+// src/App.jsx
 import { useEffect, useState } from 'react'
 import { supabase, DOMINIO_PERMITIDO } from './lib/supabaseClient'
 import Login from './components/Login'
@@ -14,6 +15,7 @@ import AdminReportes from './components/AdminReportes'
 import AdminReporteRH from './components/AdminReporteRH'
 import AdminProgramaInstitucional from './components/AdminProgramaInstitucional'
 import AdminBuscarDocente from './components/AdminBuscarDocente'
+import AdminProyectosDocencia from './components/proydoce/AdminProyectosDocencia' // <-- NUEVO IMPORT
 import HistorialCursos from './components/HistorialCursos'
 import PreregistroCurso from './components/PreregistroCurso'
 import ValidarConstancia from './components/ValidarConstancia'
@@ -223,6 +225,7 @@ export default function App() {
               { id: 'reportes', label: 'Reportes' },
               { id: 'reporte-rh', label: 'Reporte RH' },
               { id: 'programa-institucional', label: 'Programa Institucional' },
+              { id: 'proyectos-docencia', label: '📋 Proyectos Docencia' }, // <-- NUEVA PESTAÑA
               { id: 'administradores', label: 'Administradores' },
             ]}
             tabActiva={subTabAdmin}
@@ -246,6 +249,9 @@ export default function App() {
             {subTabAdmin === 'reportes' && <AdminReportes />}
             {subTabAdmin === 'reporte-rh' && <AdminReporteRH />}
             {subTabAdmin === 'programa-institucional' && <AdminProgramaInstitucional />}
+            {subTabAdmin === 'proyectos-docencia' && (
+              <AdminProyectosDocencia userEmail={docente.email} esAdminGlobal={esAdmin} />
+            )}
             {subTabAdmin === 'administradores' && <AdminAdministradores />}
           </main>
         </>
