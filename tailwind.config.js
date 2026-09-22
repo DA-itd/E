@@ -8,6 +8,8 @@ export default {
           navy: '#1B396A',
           navyDark: '#122a4d',
           guinda: '#9D2449',
+          guindaDark: '#781834',
+          guindaDeep: '#531023',
           gold: '#C9A227',
           sand: '#F7F5F0',
         },

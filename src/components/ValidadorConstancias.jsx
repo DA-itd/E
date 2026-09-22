@@ -195,8 +195,8 @@ export default function ValidadorConstancias({ onVolver }) {
                 value={query.replace(/^TNM-054-/, '')}
                 onChange={(e) => setQuery(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === 'Enter' && buscar()}
-                placeholder="36-2026-01"
-                className="flex-1 px-3 py-2 text-sm outline-none uppercase min-w-0"
+                placeholder={`123-${new Date().getFullYear()}-123`}
+                className="flex-1 px-3 py-2 text-sm outline-none uppercase min-w-0 placeholder:text-slate-400 placeholder:normal-case text-slate-800"
                 autoFocus
               />
             </div>

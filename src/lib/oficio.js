@@ -205,5 +205,9 @@ export async function descargarOficioRegistro(item, convocatoria) {
   dibujarTexto(page, 'c.c.p Archivo', 56.7, 672.6, fontNormal, 8)
 
   const bytes = await pdfDoc.save()
+  
+  // Si pasaron la bandera "retornarBytes", lo devolvemos crudo para el ZIP
+  if (item.retornarBytes) return bytes; 
+  
   descargarBytes(bytes, `Oficio_registro_${oficioNoCompleto.replace('/', '-')}.pdf`)
 }

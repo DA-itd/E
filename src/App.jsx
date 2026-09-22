@@ -1,6 +1,9 @@
 // src/App.jsx
-import { useEffect, useState } from 'react'
+import AdminRespaldo from './components/AdminRespaldo'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, DOMINIO_PERMITIDO } from './lib/supabaseClient'
+import { obtenerConvocatoriaActivaId } from './lib/convocatorias'
+import { PESTANAS_ADMIN } from './lib/permisosAdmin'
 import Login from './components/Login'
 import MenuPrincipal from './components/MenuPrincipal'
 import BarraSeccion from './components/BarraSeccion'
@@ -19,6 +22,12 @@ import AdminProyectosDocencia from './components/proydoce/AdminProyectosDocencia
 import HistorialCursos from './components/HistorialCursos'
 import PreregistroCurso from './components/PreregistroCurso'
 import ValidarConstancia from './components/ValidarConstancia'
+import ValidadorConstancias from './components/ValidadorConstancias'
+import AdminAvisos from './components/AdminAvisos'
+import AdminAsistenciaHistorial from './components/AdminAsistenciaHistorial'
+import AdminDocentes from './components/AdminDocentes'
+import AdminFormatos from './components/AdminFormatos'
+import AdminRecordatorios from './components/AdminRecordatorios.jsx'
 
 export default function App() {
   const parametros = new URLSearchParams(window.location.search)
@@ -27,25 +36,68 @@ export default function App() {
   const [sesion, setSesion] = useState(undefined) // undefined = cargando, null = sin sesión
   const [docente, setDocente] = useState(undefined) // undefined = cargando, null = no encontrado
   const [errorDominio, setErrorDominio] = useState(false)
-  const [esAdmin, setEsAdmin] = useState(false)
+  // null = no es admin; objeto { email, es_superadmin, permisos } = sí es admin
+  const [adminInfo, setAdminInfo] = useState(null)
+
+  const esAdmin = !!adminInfo
+  const esSuperAdmin = !!adminInfo?.es_superadmin
+  const subTabsAdmin = useMemo(() => {
+    if (esSuperAdmin) return [...PESTANAS_ADMIN, { id: 'administradores', label: 'Administradores' }]
+    const permisos = adminInfo?.permisos || []
+    return PESTANAS_ADMIN.filter((t) => permisos.includes(t.id))
+  }, [esSuperAdmin, adminInfo])
 
   const [seccion, setSeccion] = useState('menu') // 'menu' | 'inscripcion' | 'historial' | 'preregistro' | 'constancias' | 'administracion'
   const [subTabInscripcion, setSubTabInscripcion] = useState('wizard') // 'wizard' | 'mis-cursos'
-  const [subTabAdmin, setSubTabAdmin] = useState('asistencia') // 'asistencia' | 'convocatorias' | 'buscar-docente' | 'reportes' | 'administradores'
+  const [subTabAdmin, setSubTabAdmin] = useState('') // se fija según subTabsAdmin una vez que carga
   const [prefillCurso, setPrefillCurso] = useState(null) // datos que "pasan" de Preregistro a Convocatorias
   const [pasoInicialWizard, setPasoInicialWizard] = useState(1)
+  const [hashActual, setHashActual] = useState(window.location.hash)
+  const [mostrarValidador, setMostrarValidador] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      manejarSesion(data.session)
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_evento, session) => {
-      manejarSesion(session)
-    })
-
-    return () => listener.subscription.unsubscribe()
+    function alCambiarHash() {
+      setHashActual(window.location.hash)
+    }
+    window.addEventListener('hashchange', alCambiarHash)
+    return () => {
+      window.removeEventListener('hashchange', alCambiarHash)
+    }
   }, [])
+
+  useEffect(() => {
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        manejarSesion(data?.session || null)
+      })
+      .catch((err) => {
+        console.warn('No se pudo obtener la sesión de Supabase:', err)
+        manejarSesion(null)
+      })
+
+    let subscription
+    try {
+      const { data: listener } = supabase.auth.onAuthStateChange((_evento, session) => {
+        manejarSesion(session)
+      })
+      subscription = listener?.subscription
+    } catch (err) {
+      console.warn('No se pudo suscribir a eventos de autenticación:', err)
+    }
+
+    return () => {
+      subscription?.unsubscribe?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (subTabsAdmin.length === 0) return
+    if (!subTabsAdmin.some((t) => t.id === subTabAdmin)) {
+      setSubTabAdmin(subTabsAdmin[0].id)
+    }
+
+  }, [subTabsAdmin])
 
   async function manejarSesion(session) {
     if (!session) {
@@ -73,12 +125,21 @@ export default function App() {
 
     setDocente(docenteData || null)
 
-    const { data: adminRows } = await supabase.from('administradores').select('email').ilike('email', email)
-    setEsAdmin((adminRows || []).length > 0)
+    const { data: adminRows } = await supabase
+      .from('administradores')
+      .select('email, es_superadmin, permisos')
+      .ilike('email', email)
+    setAdminInfo(adminRows && adminRows[0] ? adminRows[0] : null)
   }
 
   function irAMenu() {
     setSeccion('menu')
+  }
+
+  function irAValidador() {
+    setMostrarValidador(true)
+    window.location.hash = '#validar'
+    setHashActual('#validar')
   }
 
   function irASeccion(id) {
@@ -89,9 +150,34 @@ export default function App() {
     }
   }
 
-  function irAInscribirmeOtroCurso() {
-    setPasoInicialWizard(2)
+  // Al agregar un curso adicional desde "Mis cursos", solo nos saltamos la
+  // pantalla de Datos Personales si el docente ya la confirmó para la
+  // convocatoria que sigue vigente ahora mismo. Si cambió de convocatoria
+  // desde la última vez (o nunca la ha confirmado), lo mandamos primero a
+  // Datos Personales igual que a un docente nuevo.
+  async function irAInscribirmeOtroCurso() {
+    const convocatoriaActivaId = await obtenerConvocatoriaActivaId()
+    const yaConfirmoEstaConvocatoria =
+      convocatoriaActivaId && docente?.ultima_convocatoria_confirmada_id === convocatoriaActivaId
+
+    setPasoInicialWizard(yaConfirmoEstaConvocatoria ? 2 : 1)
     setSubTabInscripcion('wizard')
+  }
+
+  if (mostrarValidador || hashActual.startsWith('#validar')) {
+    return (
+      <ValidadorConstancias
+        onVolver={() => {
+          setMostrarValidador(false)
+          try {
+            history.pushState('', document.title, window.location.pathname + window.location.search)
+          } catch {
+            window.location.hash = ''
+          }
+          setHashActual('')
+        }}
+      />
+    )
   }
 
   if (folioAValidar) {
@@ -109,7 +195,7 @@ export default function App() {
   if (!sesion) {
     return (
       <>
-        <Login />
+        <Login onIrAValidar={irAValidador} />
         {errorDominio && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-itd-guinda text-white text-sm px-4 py-2 rounded-lg shadow-lg">
             Solo se permite el acceso con correo @{DOMINIO_PERMITIDO}
@@ -127,7 +213,13 @@ export default function App() {
     )
   }
 
-  if (!docente) {
+  const docenteEfectivo = docente || (esAdmin ? {
+    email: sesion?.user?.email,
+    nombre_completo: sesion?.user?.user_metadata?.full_name || 'Administrador',
+    departamento: 'Desarrollo Académico',
+  } : null)
+
+  if (!docente && !esAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="max-w-md text-center bg-white rounded-2xl shadow-lg border border-itd-navy/10 p-8">
@@ -135,7 +227,7 @@ export default function App() {
             Correo no encontrado en el catálogo
           </h2>
           <p className="text-sm text-itd-navyDark/70 mb-6">
-            Tu cuenta <strong>{sesion.user.email}</strong> inició sesión correctamente,
+            Tu cuenta <strong>{sesion?.user?.email}</strong> inició sesión correctamente,
             pero no está registrada en el catálogo de docentes/personal de Desarrollo
             Académico. Contacta a la Coordinación para darte de alta.
           </p>
@@ -151,7 +243,7 @@ export default function App() {
   }
 
   if (seccion === 'menu') {
-    return <MenuPrincipal docente={docente} esAdmin={esAdmin} onIr={irASeccion} />
+    return <MenuPrincipal docente={docenteEfectivo} esAdmin={esAdmin} onIr={irASeccion} />
   }
 
   return (
@@ -208,7 +300,7 @@ export default function App() {
         <>
           <BarraSeccion titulo="Descarga de Constancias" onMenu={irAMenu} />
           <main className="max-w-5xl mx-auto px-4 py-8">
-            <DescargaConstancias docente={docente} />
+            <DescargaConstancias docente={docente} esAdmin={esAdmin} />
           </main>
         </>
       )}
@@ -217,23 +309,16 @@ export default function App() {
         <>
           <BarraSeccion
             titulo="Administración"
-            subTabs={[
-              { id: 'asistencia', label: 'Asistencia' },
-              { id: 'preregistro', label: 'Preregistro' },
-              { id: 'convocatorias', label: 'Convocatorias y cursos' },
-              { id: 'buscar-docente', label: 'Buscar docente' },
-              { id: 'reportes', label: 'Reportes' },
-              { id: 'reporte-rh', label: 'Reporte RH' },
-              { id: 'programa-institucional', label: 'Programa Institucional' },
-              { id: 'proyectos-docencia', label: '📋 Proyectos Docencia' }, // <-- NUEVA PESTAÑA
-              { id: 'administradores', label: 'Administradores' },
-            ]}
+            subTabs={subTabsAdmin}
             tabActiva={subTabAdmin}
             onCambiarTab={setSubTabAdmin}
             onMenu={irAMenu}
           />
           <main className="max-w-5xl mx-auto px-4 py-8">
-            {subTabAdmin === 'asistencia' && <AdminAsistencia />}
+            {subTabAdmin === 'asistencia' && (
+              <AdminAsistencia esSuperAdmin={esSuperAdmin} miDepartamento={docente.departamento || ''} />
+            )}
+            {subTabAdmin === 'asistencia-historial' && <AdminAsistenciaHistorial />}
             {subTabAdmin === 'preregistro' && (
               <AdminPreregistro
                 onAprobar={(datos) => {
@@ -246,13 +331,24 @@ export default function App() {
               <AdminConvocatorias prefill={prefillCurso} onPrefillConsumido={() => setPrefillCurso(null)} />
             )}
             {subTabAdmin === 'buscar-docente' && <AdminBuscarDocente />}
+            {subTabAdmin === 'respaldo' && <AdminRespaldo />}
             {subTabAdmin === 'reportes' && <AdminReportes />}
             {subTabAdmin === 'reporte-rh' && <AdminReporteRH />}
             {subTabAdmin === 'programa-institucional' && <AdminProgramaInstitucional />}
+            {subTabAdmin === 'docentes' && <AdminDocentes />}
             {subTabAdmin === 'proyectos-docencia' && (
-              <AdminProyectosDocencia userEmail={docente.email} esAdminGlobal={esAdmin} />
+              <AdminProyectosDocencia
+                userEmail={docente.email}
+                esAdminGlobal={esSuperAdmin}
+                departamentoFijo={esSuperAdmin ? '' : docente.departamento || ''}
+              />
             )}
-            {subTabAdmin === 'administradores' && <AdminAdministradores />}
+            {subTabAdmin === 'avisos' && <AdminAvisos />}
+            {/* "administradores" solo se muestra como botón para el súper admin
+                (ver subTabsAdmin arriba), pero además se protege aquí por si acaso */}
+            {subTabAdmin === 'administradores' && esSuperAdmin && <AdminAdministradores />}
+            {subTabAdmin === 'formatos' && <AdminFormatos />}
+            {subTabAdmin === 'recordatorios' && <AdminRecordatorios />}
           </main>
         </>
       )}

@@ -4,11 +4,16 @@ import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ReportesGraficas from './ReportesGraficas'
+import ReporteEncuesta from './ReporteEncuesta'
+
+import { dibujarEncabezadoPDF } from '../lib/pdfEncabezado'
 
 const ANIO_ACTUAL = new Date().getFullYear()
 const ANIOS = Array.from({ length: 6 }, (_, i) => ANIO_ACTUAL - i)
 
 export default function AdminReportes() {
+  const [reporteActivo, setReporteActivo] = useState('inscripciones') // 'inscripciones' | 'encuesta'
+
   const [tipoPeriodo, setTipoPeriodo] = useState('actual') // 'actual' | 'trimestre' | 'anio'
   const [anio, setAnio] = useState(ANIO_ACTUAL)
   const [trimestre, setTrimestre] = useState(1)
@@ -125,21 +130,19 @@ export default function AdminReportes() {
     XLSX.writeFile(wb, `Participantes_${reporte.rango.inicio}_a_${reporte.rango.fin}${sufijo}.xlsx`)
   }
 
-  function exportarParticipantesPDF() {
+  async function exportarParticipantesPDF() {
     if (!reporte) return
     const lista = participantesFiltrados(reporte)
     const tituloDepto = filtroDepartamento || 'Todos los departamentos'
     const doc = new jsPDF()
-    doc.setFontSize(13)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Listado de Participantes', 14, 16)
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Departamento: ${tituloDepto}`, 14, 23)
-    doc.text(`Periodo: ${tituloPeriodo()} (${reporte.rango.inicio} a ${reporte.rango.fin})`, 14, 29)
+
+    const startY = await dibujarEncabezadoPDF(doc, 'Listado de Participantes', [
+      `Departamento: ${tituloDepto}`,
+      `Periodo: ${tituloPeriodo()} (${reporte.rango.inicio} a ${reporte.rango.fin})`,
+    ])
 
     autoTable(doc, {
-      startY: 35,
+      startY,
       head: [['Folio', 'Nombre', 'Curso', 'Departamento oferente']],
       body: lista.map((p) => [p.folio, p.nombre, p.curso, p.departamentoOferente]),
       styles: { fontSize: 8 },
@@ -163,18 +166,16 @@ export default function AdminReportes() {
     XLSX.writeFile(wb, `Reporte_${reporte.rango.inicio}_a_${reporte.rango.fin}.xlsx`)
   }
 
-  function exportarPDF() {
+  async function exportarPDF() {
     if (!reporte) return
     const doc = new jsPDF()
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Reporte Trimestral de Inscripciones', 14, 18)
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Periodo: ${reporte.rango.inicio} a ${reporte.rango.fin}`, 14, 26)
+
+    const startY = await dibujarEncabezadoPDF(doc, 'Reporte Trimestral de Inscripciones', [
+      `Periodo: ${reporte.rango.inicio} a ${reporte.rango.fin}`,
+    ])
 
     autoTable(doc, {
-      startY: 32,
+      startY,
       head: [['Indicador', 'Valor']],
       body: filasPlanas(reporte).map(([a, b]) => [a || '', b === undefined ? '' : String(b)]),
       styles: { fontSize: 9 },
@@ -189,212 +190,239 @@ export default function AdminReportes() {
       <div>
         <h2 className="font-display text-xl font-semibold text-itd-navy mb-1">Reportes</h2>
         <p className="text-sm text-itd-navyDark/60">
-          Estadísticas de inscripciones por periodo de capacitación.
+          {reporteActivo === 'inscripciones'
+            ? 'Estadísticas de inscripciones por periodo de capacitación.'
+            : 'Resultados de la encuesta de opinión (ITD-AD-FO-09) por periodo, curso y departamento.'}
         </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div>
-          <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Periodo</label>
-          <select
-            value={tipoPeriodo}
-            onChange={(e) => setTipoPeriodo(e.target.value)}
-            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-          >
-            <option value="actual">Periodo actual</option>
-            <option value="trimestre">Trimestre específico</option>
-            <option value="anio">Año completo</option>
-          </select>
-        </div>
-
-        {tipoPeriodo !== 'actual' && (
-          <div>
-            <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Año</label>
-            <select
-              value={anio}
-              onChange={(e) => setAnio(Number(e.target.value))}
-              className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-            >
-              {ANIOS.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {tipoPeriodo === 'trimestre' && (
-          <div>
-            <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Trimestre</label>
-            <select
-              value={trimestre}
-              onChange={(e) => setTrimestre(Number(e.target.value))}
-              className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-            >
-              <option value={1}>Trimestre 1 (Enero)</option>
-              <option value={2}>Trimestre 2 (Junio)</option>
-              <option value={3}>Trimestre 3 (Agosto)</option>
-            </select>
-          </div>
-        )}
-
+      <div className="flex rounded-lg border border-itd-navy/20 overflow-hidden w-fit">
         <button
-          onClick={generar}
-          disabled={cargando}
-          className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-50"
+          onClick={() => setReporteActivo('inscripciones')}
+          className={`px-4 py-2 text-sm font-medium ${
+            reporteActivo === 'inscripciones' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'
+          }`}
         >
-          {cargando ? 'Generando…' : 'Generar reporte'}
+          Inscripciones
+        </button>
+        <button
+          onClick={() => setReporteActivo('encuesta')}
+          className={`px-4 py-2 text-sm font-medium ${
+            reporteActivo === 'encuesta' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'
+          }`}
+        >
+          Encuesta de Opinión
         </button>
       </div>
 
-      {errorMsg && <p className="text-sm text-itd-guinda">{errorMsg}</p>}
-
-      {reporte && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-xl border border-itd-navy/10 p-4">
-              <p className="text-2xl font-bold text-itd-navy">{reporte.totalInscripciones}</p>
-              <p className="text-xs text-itd-navyDark/60">Total inscripciones</p>
-            </div>
-            <div className="rounded-xl border border-itd-navy/10 p-4">
-              <p className="text-2xl font-bold text-green-700">{reporte.docentesUnicos}</p>
-              <p className="text-xs text-itd-navyDark/60">Docentes únicos</p>
-            </div>
-            <div className="rounded-xl border border-itd-navy/10 p-4">
-              <p className="text-2xl font-bold text-amber-600">{reporte.porcentajeParticipacion}%</p>
-              <p className="text-xs text-itd-navyDark/60">Cobertura de plantilla</p>
-            </div>
-            <div className="rounded-xl border border-itd-navy/10 p-4">
-              <p className="text-2xl font-bold text-itd-guinda">{reporte.sinParticipar.total}</p>
-              <p className="text-xs text-itd-navyDark/60">
-                Sin participar (H:{reporte.sinParticipar.porGenero.Hombre} M:{reporte.sinParticipar.porGenero.Mujer})
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={exportarExcel}
-              className="rounded-lg bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
-            >
-              ⬇ Exportar Excel
-            </button>
-            <button
-              onClick={exportarPDF}
-              className="rounded-lg bg-itd-guinda text-white px-4 py-2 text-sm font-semibold hover:opacity-90"
-            >
-              ⬇ Exportar PDF (trimestral)
-            </button>
-            <div className="ml-auto flex rounded-lg border border-itd-navy/20 overflow-hidden">
-              <button
-                onClick={() => setVista('tabla')}
-                className={`px-4 py-2 text-sm font-medium ${vista === 'tabla' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+      {reporteActivo === 'encuesta' ? (
+        <ReporteEncuesta />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Periodo</label>
+              <select
+                value={tipoPeriodo}
+                onChange={(e) => setTipoPeriodo(e.target.value)}
+                className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
               >
-                Tabla
-              </button>
-              <button
-                onClick={() => setVista('graficas')}
-                className={`px-4 py-2 text-sm font-medium ${vista === 'graficas' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
-              >
-                Gráficas
-              </button>
-              <button
-                onClick={() => setVista('participantes')}
-                className={`px-4 py-2 text-sm font-medium ${vista === 'participantes' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
-              >
-                Participantes
-              </button>
+                <option value="actual">Periodo actual</option>
+                <option value="trimestre">Trimestre específico</option>
+                <option value="anio">Año completo</option>
+              </select>
             </div>
-          </div>
 
-          {vista === 'tabla' ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm border-collapse">
-                <tbody>
-                  {filasPlanas(reporte).map(([label, valor], i) => (
-                    <tr key={i} className={label ? 'border-b border-itd-navy/10' : ''}>
-                      <td className="py-1.5 pr-4 text-itd-navyDark/80">{label}</td>
-                      <td className="py-1.5 font-semibold text-itd-navyDark">{valor}</td>
-                    </tr>
+            {tipoPeriodo !== 'actual' && (
+              <div>
+                <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Año</label>
+                <select
+                  value={anio}
+                  onChange={(e) => setAnio(Number(e.target.value))}
+                  className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+                >
+                  {ANIOS.map((a) => (
+                    <option key={a} value={a}>{a}</option>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          ) : vista === 'graficas' ? (
-            <ReportesGraficas reporte={reporte} />
-          ) : (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-end gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Departamento</label>
-                  <select
-                    value={filtroDepartamento}
-                    onChange={(e) => setFiltroDepartamento(e.target.value)}
-                    className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm min-w-[220px]"
-                  >
-                    <option value="">Todos los departamentos</option>
-                    {reporte.porDepartamento.map((d) => (
-                      <option key={d.nombre} value={d.nombre}>{d.nombre}</option>
-                    ))}
-                  </select>
+                </select>
+              </div>
+            )}
+
+            {tipoPeriodo === 'trimestre' && (
+              <div>
+                <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Trimestre</label>
+                <select
+                  value={trimestre}
+                  onChange={(e) => setTrimestre(Number(e.target.value))}
+                  className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+                >
+                  <option value={1}>Trimestre 1 (Enero)</option>
+                  <option value={2}>Trimestre 2 (Junio)</option>
+                  <option value={3}>Trimestre 3 (Agosto)</option>
+                </select>
+              </div>
+            )}
+
+            <button
+              onClick={generar}
+              disabled={cargando}
+              className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-50"
+            >
+              {cargando ? 'Generando…' : 'Generar reporte'}
+            </button>
+          </div>
+
+          {errorMsg && <p className="text-sm text-itd-guinda">{errorMsg}</p>}
+
+          {reporte && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-xl border border-itd-navy/10 p-4">
+                  <p className="text-2xl font-bold text-itd-navy">{reporte.totalInscripciones}</p>
+                  <p className="text-xs text-itd-navyDark/60">Total inscripciones</p>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Buscar por nombre</label>
-                  <input
-                    type="text"
-                    value={busquedaNombre}
-                    onChange={(e) => setBusquedaNombre(e.target.value)}
-                    placeholder="Nombre del docente…"
-                    className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-                  />
+                <div className="rounded-xl border border-itd-navy/10 p-4">
+                  <p className="text-2xl font-bold text-green-700">{reporte.docentesUnicos}</p>
+                  <p className="text-xs text-itd-navyDark/60">Docentes únicos</p>
                 </div>
+                <div className="rounded-xl border border-itd-navy/10 p-4">
+                  <p className="text-2xl font-bold text-amber-600">{reporte.porcentajeParticipacion}%</p>
+                  <p className="text-xs text-itd-navyDark/60">Cobertura de plantilla</p>
+                </div>
+                <div className="rounded-xl border border-itd-navy/10 p-4">
+                  <p className="text-2xl font-bold text-itd-guinda">{reporte.sinParticipar.total}</p>
+                  <p className="text-xs text-itd-navyDark/60">
+                    Sin participar (H:{reporte.sinParticipar.porGenero.Hombre} M:{reporte.sinParticipar.porGenero.Mujer})
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={exportarParticipantesExcel}
+                  onClick={exportarExcel}
                   className="rounded-lg bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
                 >
-                  ⬇ Excel
+                  ⬇ Exportar Excel
                 </button>
                 <button
-                  onClick={exportarParticipantesPDF}
+                  onClick={exportarPDF}
                   className="rounded-lg bg-itd-guinda text-white px-4 py-2 text-sm font-semibold hover:opacity-90"
                 >
-                  ⬇ PDF
+                  ⬇ Exportar PDF (trimestral)
                 </button>
-                <p className="text-sm text-itd-navyDark/60 ml-auto">
-                  {participantesFiltrados(reporte).length} de {reporte.detalleParticipantes.length} registros
-                </p>
+                <div className="ml-auto flex rounded-lg border border-itd-navy/20 overflow-hidden">
+                  <button
+                    onClick={() => setVista('tabla')}
+                    className={`px-4 py-2 text-sm font-medium ${vista === 'tabla' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+                  >
+                    Tabla
+                  </button>
+                  <button
+                    onClick={() => setVista('graficas')}
+                    className={`px-4 py-2 text-sm font-medium ${vista === 'graficas' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+                  >
+                    Gráficas
+                  </button>
+                  <button
+                    onClick={() => setVista('participantes')}
+                    className={`px-4 py-2 text-sm font-medium ${vista === 'participantes' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+                  >
+                    Participantes
+                  </button>
+                </div>
               </div>
 
-              <p className="text-xs text-itd-navyDark/50">
-                Departamento: <strong>{filtroDepartamento || 'Todos los departamentos'}</strong> · Periodo: <strong>{tituloPeriodo()}</strong>
-              </p>
+              {vista === 'tabla' ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <tbody>
+                      {filasPlanas(reporte).map(([label, valor], i) => (
+                        <tr key={i} className={label ? 'border-b border-itd-navy/10' : ''}>
+                          <td className="py-1.5 pr-4 text-itd-navyDark/80">{label}</td>
+                          <td className="py-1.5 font-semibold text-itd-navyDark">{valor}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : vista === 'graficas' ? (
+                <ReportesGraficas reporte={reporte} />
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Departamento</label>
+                      <select
+                        value={filtroDepartamento}
+                        onChange={(e) => setFiltroDepartamento(e.target.value)}
+                        className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm min-w-[220px]"
+                      >
+                        <option value="">Todos los departamentos</option>
+                        {reporte.porDepartamento.map((d) => (
+                          <option key={d.nombre} value={d.nombre}>{d.nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Buscar por nombre</label>
+                      <input
+                        type="text"
+                        value={busquedaNombre}
+                        onChange={(e) => setBusquedaNombre(e.target.value)}
+                        placeholder="Nombre del docente…"
+                        className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={exportarParticipantesExcel}
+                      className="rounded-lg bg-green-700 text-white px-4 py-2 text-sm font-semibold hover:bg-green-800"
+                    >
+                      ⬇ Excel
+                    </button>
+                    <button
+                      onClick={exportarParticipantesPDF}
+                      className="rounded-lg bg-itd-guinda text-white px-4 py-2 text-sm font-semibold hover:opacity-90"
+                    >
+                      ⬇ PDF
+                    </button>
+                    <p className="text-sm text-itd-navyDark/60 ml-auto">
+                      {participantesFiltrados(reporte).length} de {reporte.detalleParticipantes.length} registros
+                    </p>
+                  </div>
 
-              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead className="sticky top-0 bg-white">
-                    <tr className="border-b border-itd-navy/20">
-                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Folio</th>
-                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Nombre</th>
-                      {!filtroDepartamento && <th className="text-left py-2 pr-4 text-itd-navyDark/70">Departamento (docente)</th>}
-                      <th className="text-left py-2 pr-4 text-itd-navyDark/70">Curso</th>
-                      <th className="text-left py-2 text-itd-navyDark/70">Departamento oferente</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {participantesFiltrados(reporte).map((p, i) => (
-                      <tr key={i} className="border-b border-itd-navy/10">
-                        <td className="py-1.5 pr-4 text-itd-navyDark/70 whitespace-nowrap">{p.folio}</td>
-                        <td className="py-1.5 pr-4 text-itd-navyDark">{p.nombre}</td>
-                        {!filtroDepartamento && <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.departamento}</td>}
-                        <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.curso}</td>
-                        <td className="py-1.5 text-itd-navyDark/70">{p.departamentoOferente}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  <p className="text-xs text-itd-navyDark/50">
+                    Departamento: <strong>{filtroDepartamento || 'Todos los departamentos'}</strong> · Periodo: <strong>{tituloPeriodo()}</strong>
+                  </p>
+
+                  <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="border-b border-itd-navy/20">
+                          <th className="text-left py-2 pr-4 text-itd-navyDark/70">Folio</th>
+                          <th className="text-left py-2 pr-4 text-itd-navyDark/70">Nombre</th>
+                          {!filtroDepartamento && <th className="text-left py-2 pr-4 text-itd-navyDark/70">Departamento (docente)</th>}
+                          <th className="text-left py-2 pr-4 text-itd-navyDark/70">Curso</th>
+                          <th className="text-left py-2 text-itd-navyDark/70">Departamento oferente</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {participantesFiltrados(reporte).map((p, i) => (
+                          <tr key={i} className="border-b border-itd-navy/10">
+                            <td className="py-1.5 pr-4 text-itd-navyDark/70 whitespace-nowrap">{p.folio}</td>
+                            <td className="py-1.5 pr-4 text-itd-navyDark">{p.nombre}</td>
+                            {!filtroDepartamento && <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.departamento}</td>}
+                            <td className="py-1.5 pr-4 text-itd-navyDark/70">{p.curso}</td>
+                            <td className="py-1.5 text-itd-navyDark/70">{p.departamentoOferente}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </>
       )}
     </div>
   )

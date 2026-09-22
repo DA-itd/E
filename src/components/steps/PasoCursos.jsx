@@ -14,6 +14,7 @@ export default function PasoCursos({ docente, onSiguiente, onRegresar }) {
   const [busqueda, setBusqueda] = useState('')
   const [avisoCupo, setAvisoCupo] = useState({})
   const [liberando, setLiberando] = useState(null)
+  const [debugError, setDebugError] = useState('')
 
   useEffect(() => {
     cargar()
@@ -23,16 +24,16 @@ export default function PasoCursos({ docente, onSiguiente, onRegresar }) {
     setCargando(true)
     const hoy = new Date().toISOString().slice(0, 10)
 
-    const { data: convData } = await supabase
+    const { data: convData, error: convError } = await supabase
       .from('convocatorias')
       .select('*')
       .eq('activo', true)
-      .gte('fecha_fin', hoy)
+      
       .order('fecha_inicio', { ascending: true })
 
     const convIds = (convData || []).map((c) => c.id)
 
-    const [{ data: cursosData }, { data: cupoData }, { data: misData }] = await Promise.all([
+    const [resCursos, resCupo, resMis] = await Promise.all([
       convIds.length
         ? supabase.from('cursos').select('*').in('convocatoria_id', convIds).eq('status', 'activo').order('semana')
         : Promise.resolve({ data: [] }),
@@ -43,6 +44,22 @@ export default function PasoCursos({ docente, onSiguiente, onRegresar }) {
         .eq('docente_id', docente.id)
         .eq('estado', 'activo'),
     ])
+    
+    if (convError) console.error("Error convocatorias:", convError)
+    if (resCursos.error) console.error("Error cursos:", resCursos.error)
+    if (resCupo.error) console.error("Error cupo (vista):", resCupo.error)
+    if (resMis.error) console.error("Error inscripciones:", resMis.error)
+    
+    let errorMsg = ''
+    if (convError) errorMsg += 'ConvErr: ' + convError.message + ' | '
+    if (resCursos.error) errorMsg += 'CursosErr: ' + resCursos.error.message + ' | '
+    if (resCupo.error && resCupo.error.code !== '42P01') errorMsg += 'CupoErr: ' + resCupo.error.message + ' | ' // 42P01 es undefined_table
+    if (resMis.error) errorMsg += 'MisErr: ' + resMis.error.message + ' | '
+    if (errorMsg) setDebugError(errorMsg)
+    
+    const { data: cursosData } = resCursos
+    const { data: cupoData } = resCupo
+    const { data: misData } = resMis
 
     setConvocatorias(convData || [])
     setCursos(cursosData || [])
@@ -166,6 +183,7 @@ export default function PasoCursos({ docente, onSiguiente, onRegresar }) {
       <div className="bg-white rounded-2xl border border-itd-navy/10 p-8 text-center text-itd-navyDark/60">
         No hay ninguna convocatoria abierta en este momento. Vuelve a intentarlo cuando se abra el
         siguiente periodo.
+        {debugError && <div className="mt-4 text-xs text-red-500 font-mono">DEBUG: {debugError}</div>}
       </div>
     )
   }
@@ -276,6 +294,7 @@ export default function PasoCursos({ docente, onSiguiente, onRegresar }) {
         )}
       </div>
 
+      {debugError && <div className="mt-4 mb-4 text-xs bg-red-100 text-red-700 p-2 rounded font-mono">DEBUG: {debugError}</div>}
       <div className="flex justify-between items-center mt-8">
         <button onClick={onRegresar} className="text-sm text-itd-navyDark/60 hover:text-itd-navyDark">
           ← Regresar

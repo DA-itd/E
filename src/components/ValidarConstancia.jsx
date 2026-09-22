@@ -1,9 +1,8 @@
+// src/components/ValidarConstancia.jsx
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { formatearRangoFechas } from '../lib/formatoFechas'
 
-// Página PÚBLICA (no requiere iniciar sesión) que se abre al escanear el
-// QR de una constancia o reconocimiento, para confirmar que es auténtica.
 export default function ValidarConstancia({ folio, tipo }) {
   const [resultado, setResultado] = useState(undefined) // undefined = cargando
 
@@ -14,9 +13,20 @@ export default function ValidarConstancia({ folio, tipo }) {
       .catch(() => setResultado({ valido: false }))
   }, [folio, tipo])
 
+  function volverAlInicio() {
+    window.location.href = window.location.origin + window.location.pathname
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-itd-sand">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-itd-sand">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-lg border border-itd-navy/10 p-8 text-center">
+        <button
+          onClick={volverAlInicio}
+          className="text-xs text-itd-navy font-semibold hover:underline mb-4 inline-flex items-center gap-1 cursor-pointer"
+        >
+          ← Volver al inicio
+        </button>
+
         <h1 className="font-display text-lg font-semibold text-itd-navy mb-1">
           Validación de Documento
         </h1>
@@ -36,7 +46,9 @@ export default function ValidarConstancia({ folio, tipo }) {
               <p><span className="text-itd-navyDark/50">Curso:</span> {resultado.curso}</p>
               <p>
                 <span className="text-itd-navyDark/50">Fechas:</span>{' '}
-                {formatearRangoFechas(resultado.fechaInicio, resultado.fechaFin)}
+                {resultado.fechaInicio && resultado.fechaFin
+                  ? formatearRangoFechas(resultado.fechaInicio, resultado.fechaFin)
+                  : (resultado.fechaTexto || '')}
               </p>
               <p><span className="text-itd-navyDark/50">Folio:</span> {resultado.folio}</p>
             </div>

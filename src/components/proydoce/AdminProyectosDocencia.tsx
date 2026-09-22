@@ -64,8 +64,10 @@ export function obtenerPeriodoActual(): { mes: 'Enero' | 'Junio' | 'Agosto'; nom
   };
 }
 
-// Evaluar si un curso pertenece a un mes / periodo específico
-export function coincidePeriodoCurso(c: any, mesFiltro: string): boolean {
+// Evaluar si un curso pertenece a un mes / periodo específico. Si se pasa
+// anioFiltro, también debe coincidir el año (evita mezclar, por ejemplo,
+// "Agosto 2024" con "Agosto 2026" solo por compartir el mismo mes).
+export function coincidePeriodoCurso(c: any, mesFiltro: string, anioFiltro?: number): boolean {
   if (mesFiltro === 'todos') return true;
   const mesStr = mesFiltro.toLowerCase();
   const mesNum = mesFiltro === 'Enero' ? 1 : mesFiltro === 'Junio' ? 6 : mesFiltro === 'Agosto' ? 8 : 0;
@@ -76,7 +78,19 @@ export function coincidePeriodoCurso(c: any, mesFiltro: string): boolean {
   const matchPeriodo = c.periodo?.toLowerCase().includes(mesStr);
   const matchFecha = c.fecha_inicio?.toLowerCase().includes(mesStr);
 
-  return Boolean(matchConvMes || matchSemana || matchNombre || matchPeriodo || matchFecha);
+  const coincideMes = Boolean(matchConvMes || matchSemana || matchNombre || matchPeriodo || matchFecha);
+  if (!coincideMes) return false;
+
+  if (anioFiltro) {
+    const anioConv = c.convocatorias?.anio;
+    const coincideAnio =
+      anioConv === anioFiltro ||
+      Boolean(c.fecha_inicio && c.fecha_inicio.includes(String(anioFiltro))) ||
+      Boolean(c.folio && c.folio.includes(String(anioFiltro)));
+    if (!coincideAnio) return false;
+  }
+
+  return true;
 }
 
 export interface AdminProyectosDocenciaProps {
@@ -215,7 +229,7 @@ export default function AdminProyectosDocencia({
       if (!coincideDepartamento(c.departamento, deptoAsignado)) {
         return false;
       }
-      if (!coincidePeriodoCurso(c, periodoActual.mes)) {
+      if (!coincidePeriodoCurso(c, periodoActual.mes, periodoActual.anio)) {
         return false;
       }
       if (busqueda.trim() !== '') {
@@ -353,21 +367,34 @@ export default function AdminProyectosDocencia({
       {seccionActiva === 'cursos' && (
         <div className="space-y-4">
           {esUsuarioDepto ? (
-            <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white rounded-2xl p-5 sm:p-6 shadow-md border border-blue-800">
+            <div
+              className="rounded-2xl p-5 sm:p-6 shadow-md"
+              style={{
+                background: 'linear-gradient(to right, #1e3a5f, #1e1b4b)',
+                border: '1px solid #1e3a8a',
+                color: '#ffffff',
+              }}
+            >
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="bg-white/20 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full backdrop-blur-xs">
+                    <span
+                      className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
+                      style={{ background: 'rgba(255,255,255,0.2)', color: '#ffffff' }}
+                    >
                       🏢 {deptoAsignado}
                     </span>
-                    <span className="bg-amber-400 text-blue-950 text-xs font-bold px-2.5 py-0.5 rounded-full">
+                    <span
+                      className="text-xs font-bold px-2.5 py-0.5 rounded-full"
+                      style={{ background: '#fbbf24', color: '#1e1b4b' }}
+                    >
                       📌 {periodoActual.nombre}
                     </span>
                   </div>
-                  <h3 className="text-lg font-bold tracking-tight text-white">
+                  <h3 className="text-lg font-bold tracking-tight" style={{ color: '#ffffff' }}>
                     Cursos Disponibles para Descargar Lista de Asistencia
                   </h3>
-                  <p className="text-xs text-blue-200">
+                  <p className="text-xs" style={{ color: '#bfdbfe' }}>
                     Solo se muestran los cursos pertenecientes a su departamento en el periodo actual. Seleccione el curso deseado para descargar su formato oficial en PDF o Excel.
                   </p>
                 </div>
@@ -379,12 +406,18 @@ export default function AdminProyectosDocencia({
                       value={busqueda}
                       onChange={(e) => setBusqueda(e.target.value)}
                       placeholder="Buscar curso o instructor…"
-                      className="w-full rounded-xl bg-white/10 border border-white/20 px-3.5 py-2 text-xs text-white placeholder-blue-200 focus:outline-hidden focus:ring-2 focus:ring-amber-400 focus:bg-white/20"
+                      className="w-full rounded-xl px-3.5 py-2 text-xs focus:outline-none focus:ring-2"
+                      style={{
+                        background: 'rgba(255,255,255,0.1)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        color: '#ffffff',
+                      }}
                     />
                     {busqueda && (
                       <button
                         onClick={() => setBusqueda('')}
-                        className="absolute right-2.5 top-2 text-xs text-white/70 hover:text-white"
+                        className="absolute right-2.5 top-2 text-xs hover:opacity-100"
+                        style={{ color: 'rgba(255,255,255,0.7)' }}
                       >
                         ✕
                       </button>

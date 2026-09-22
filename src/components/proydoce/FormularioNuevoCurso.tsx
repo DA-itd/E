@@ -10,9 +10,10 @@ interface Props {
 }
 
 export default function FormularioNuevoCurso({ onCursoCreado, onVolver }: Props) {
+  const anioActual = new Date().getFullYear();
   const [nombre, setNombre] = useState('');
-  const [folio, setFolio] = useState(`ITD-AD-2026-${String(Math.floor(Math.random() * 900) + 100)}`);
-  const [clave, setClave] = useState(`CAD-26-${String(Math.floor(Math.random() * 90) + 10)}`);
+  const [folio, setFolio] = useState(`TNM-054-${String(Math.floor(Math.random() * 900) + 100)}-${anioActual}-${String(Math.floor(Math.random() * 900) + 100)}`);
+  const [clave, setClave] = useState(`CAD-${String(anioActual).slice(-2)}-${String(Math.floor(Math.random() * 90) + 10)}`);
   const [instructor, setInstructor] = useState('');
   const [instructorRfc, setInstructorRfc] = useState('');
   const [instructorCurp, setInstructorCurp] = useState('');
@@ -284,7 +285,8 @@ export default function FormularioNuevoCurso({ onCursoCreado, onVolver }: Props)
                 required
                 value={folio}
                 onChange={e => setFolio(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono font-bold text-[#1B396A]"
+                placeholder={`TNM-054-123-${anioActual}-123`}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-mono font-bold text-[#1B396A] placeholder:text-slate-400"
               />
             </div>
             <div>

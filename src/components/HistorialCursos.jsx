@@ -4,11 +4,18 @@ import { formatearRangoFechas } from '../lib/formatoFechas'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
-const LOGO_ITD = 'https://raw.githubusercontent.com/DA-itd/E/main/logo%20itd%20original.jpg'
+const LOGO_ITD_URL = 'https://raw.githubusercontent.com/DA-itd/E/main/logo_itdurango.png'
+const LOGO_ITD_LOCAL = `${import.meta.env.BASE_URL || '/'}logo_itdurango.png`
 
-async function imagenABase64(url) {
+async function imagenABase64(url, fallbackUrl) {
   try {
-    const resp = await fetch(url)
+    let resp = await fetch(url).catch(() => null)
+    if (!resp || !resp.ok) {
+      if (fallbackUrl) {
+        resp = await fetch(fallbackUrl).catch(() => null)
+      }
+    }
+    if (!resp || !resp.ok) return null
     const blob = await resp.blob()
     return await new Promise((resolve) => {
       const reader = new FileReader()
@@ -78,12 +85,16 @@ export default function HistorialCursos({ docente }) {
       const doc = new jsPDF('p', 'mm', 'letter')
       const pageWidth = doc.internal.pageSize.getWidth()
 
-      const logo = await imagenABase64(LOGO_ITD)
+      const logo = await imagenABase64(LOGO_ITD_LOCAL, LOGO_ITD_URL)
       if (logo) {
         try {
-          doc.addImage(logo, 'JPEG', pageWidth - 35, 10, 25, 25)
+          doc.addImage(logo, 'PNG', pageWidth - 34, 8, 19, 22.5)
         } catch {
-          // si el formato de imagen no coincide, se omite el logo sin romper el PDF
+          try {
+            doc.addImage(logo, undefined, pageWidth - 34, 8, 19, 22.5)
+          } catch {
+            // si el formato de imagen no coincide, se omite el logo sin romper el PDF
+          }
         }
       }
 

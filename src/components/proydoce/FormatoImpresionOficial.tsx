@@ -1,6 +1,5 @@
 import React from 'react';
 import { Curso, Participante, FormatoConfig } from '../../types';
-import LogoITD from '../LogoITD';
 
 interface Props {
   curso: Curso;

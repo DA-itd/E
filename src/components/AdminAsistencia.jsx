@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { formatearRangoFechas } from '../lib/formatoFechas'
 
-export default function AdminAsistencia() {
+export default function AdminAsistencia({ esSuperAdmin = true, miDepartamento = '' }) {
   const [convocatorias, setConvocatorias] = useState([])
   const [convocatoriaId, setConvocatoriaId] = useState('')
   const [cursos, setCursos] = useState([])
@@ -38,11 +38,13 @@ export default function AdminAsistencia() {
   }
 
   async function cargarCursos(convId) {
-    const { data } = await supabase
-      .from('cursos')
-      .select('*')
-      .eq('convocatoria_id', convId)
-      .order('folio')
+    let query = supabase.from('cursos').select('*').eq('convocatoria_id', convId)
+    // Un administrador normal (no súper admin) solo ve los cursos de su
+    // propio departamento.
+    if (!esSuperAdmin && miDepartamento) {
+      query = query.eq('departamento', miDepartamento)
+    }
+    const { data } = await query.order('folio')
     setCursos(data || [])
   }
 
@@ -79,9 +81,16 @@ export default function AdminAsistencia() {
 
   return (
     <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8">
-      <h2 className="font-display text-xl font-semibold text-itd-navy mb-1">
-        Revisión de Asistencia
-      </h2>
+      <div className="flex items-center gap-2 mb-1">
+        <h2 className="font-display text-xl font-semibold text-itd-navy">
+          Revisión de Asistencia
+        </h2>
+        {!esSuperAdmin && miDepartamento && (
+          <span className="bg-emerald-100 text-emerald-800 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-300">
+            {miDepartamento}
+          </span>
+        )}
+      </div>
       <p className="text-sm text-itd-navyDark/60 mb-6">
         Marca qué docentes acreditaron el curso según tu lista de asistencia. Esto habilita su
         constancia y se contabiliza en las estadísticas.
@@ -114,6 +123,11 @@ export default function AdminAsistencia() {
               <option key={c.id} value={c.id}>{c.folio} · {c.nombre}</option>
             ))}
           </select>
+          {!esSuperAdmin && convocatoriaId && cursos.length === 0 && (
+            <p className="text-xs text-itd-navyDark/40 mt-1">
+              No hay cursos de tu departamento en esta convocatoria.
+            </p>
+          )}
         </div>
       </div>
 

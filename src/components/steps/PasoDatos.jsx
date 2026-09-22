@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import { obtenerConvocatoriaActivaId } from '../../lib/convocatorias'
 import { leerTexto, leerEnCuantoSePueda } from '../../lib/voz'
 import BotonEscuchar from '../BotonEscuchar'
 import BotonDictar from '../BotonDictar'
@@ -10,8 +11,14 @@ const MENSAJE_BIENVENIDA =
   '¡Hola! Por favor verifica que tu información sea correcta antes de continuar. ' +
   'Puedes dictar la información presionando el ícono de micrófono junto a los campos.'
 
+// Mismo formato oficial de CURP que ya se exige en Supabase
+// (docentes_curp_formato_check), para que el error se detecte aquí antes
+// de intentar guardar, no hasta que la base de datos lo rechace.
+const CURP_REGEX =
+  /^[A-Z]{1}[AEIOUX]{1}[A-Z]{2}[0-9]{2}(0[1-9]|1[0-2])(0[1-9]|1[0-9]|2[0-9]|3[01])[HM](AS|BC|BS|CC|CS|CH|CL|CM|DF|DG|GT|GR|HG|JC|MC|MN|MS|NT|NL|OC|PL|QO|QR|SP|SL|SR|TC|TS|TL|VZ|YN|ZS|NE)[B-DF-HJ-NP-TV-Z]{3}[A-Z0-9][0-9]$/
+
 function validarCurp(v) {
-  return /^[A-Z0-9]{18}$/.test(v.trim().toUpperCase())
+  return CURP_REGEX.test((v || '').trim().toUpperCase())
 }
 
 export default function PasoDatos({ docente, onSiguiente }) {
@@ -26,6 +33,14 @@ export default function PasoDatos({ docente, onSiguiente }) {
   const [departamentos, setDepartamentos] = useState([])
   const [error, setError] = useState('')
   const [guardando, setGuardando] = useState(false)
+
+  // Se calcula UNA sola vez, con el dato que ya traía el docente al entrar
+  // (no con lo que vaya escribiendo) -- si su CURP ya estaba bien
+  // capturado, tanto el CURP como el nombre quedan de solo lectura, para
+  // evitar que un error de dedo en una edición futura eche a perder un
+  // dato que ya estaba correcto. Si no tenía CURP válido todavía (docente
+  // nuevo, o CURP mal capturado), los campos siguen editables como antes.
+  const [datosBloqueados] = useState(() => validarCurp(docente.curp))
 
   useEffect(() => {
     cargarDepartamentos()
@@ -52,12 +67,17 @@ export default function PasoDatos({ docente, onSiguiente }) {
   async function continuar() {
     setError('')
     if (!nombre.trim()) return setError('Falta tu nombre completo.')
-    if (!validarCurp(curp)) return setError('El CURP debe tener 18 caracteres (letras y números).')
+    if (!validarCurp(curp)) {
+      return setError(
+        'El CURP no tiene un formato válido. Verifica que esté completo y bien escrito (18 caracteres, con tu fecha de nacimiento y estado correctos).'
+      )
+    }
     if (!departamento) return setError('Selecciona tu departamento.')
     if (!genero) return setError('Selecciona tu género.')
     if (niveles.length === 0) return setError('Selecciona al menos un nivel académico.')
 
     setGuardando(true)
+    const convocatoriaActivaId = await obtenerConvocatoriaActivaId()
     const { data, error: errorDB } = await supabase
       .from('docentes')
       .update({
@@ -67,6 +87,7 @@ export default function PasoDatos({ docente, onSiguiente }) {
         genero,
         telefono: telefono.trim() || null,
         nivel: niveles.join(', '),
+        ultima_convocatoria_confirmada_id: convocatoriaActivaId,
       })
       .eq('id', docente.id)
       .select()
@@ -76,6 +97,8 @@ export default function PasoDatos({ docente, onSiguiente }) {
     if (errorDB) {
       if (errorDB.code === '23505') {
         setError('Ese CURP ya está registrado con otra cuenta. Verifica que esté bien escrito.')
+      } else if (errorDB.code === '23514') {
+        setError('El CURP no tiene un formato válido. Verifica que esté completo y bien escrito.')
       } else {
         setError('No se pudo guardar tu información. Intenta de nuevo.')
       }
@@ -103,38 +126,65 @@ export default function PasoDatos({ docente, onSiguiente }) {
         </span>
       </div>
 
+      {datosBloqueados && (
+        <div className="mb-6 rounded-lg bg-itd-navy/5 border border-itd-navy/15 px-4 py-3 text-sm text-itd-navyDark/70 flex items-start gap-2">
+          <span className="text-lg leading-none">🔒</span>
+          <span>
+            Tu nombre y CURP ya están verificados, por eso aparecen bloqueados. Si detectas un
+            error en alguno de los dos, contacta a la Coordinación de Desarrollo Académico para
+            corregirlo (evitamos que se editen aquí para no arriesgar un dato que ya es correcto).
+          </span>
+        </div>
+      )}
+
       <div className="space-y-4">
         <div>
           <div className="flex items-center gap-1 mb-1">
             <label className="text-sm font-medium text-itd-navyDark/80">Nombre Completo *</label>
-            <BotonEscuchar texto="Nombre completo" />
+            {!datosBloqueados && <BotonEscuchar texto="Nombre completo" />}
           </div>
-          <div className="flex items-center gap-2">
+          {datosBloqueados ? (
             <input
               value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              className="flex-1 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+              disabled
+              className="w-full rounded-lg border border-itd-navy/10 bg-gray-50 px-3 py-2 text-sm text-itd-navyDark/60"
             />
-            <BotonDictar onTexto={(t) => setNombre(t.toUpperCase())} />
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                className="flex-1 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+              />
+              <BotonDictar onTexto={(t) => setNombre(t.toUpperCase())} />
+            </div>
+          )}
         </div>
 
         <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <div className="flex items-center gap-1 mb-1">
               <label className="text-sm font-medium text-itd-navyDark/80">CURP *</label>
-              <BotonEscuchar texto="CURP" />
+              {!datosBloqueados && <BotonEscuchar texto="CURP" />}
             </div>
-            <div className="flex items-center gap-2">
+            {datosBloqueados ? (
               <input
                 value={curp}
-                onChange={(e) => setCurp(e.target.value.toUpperCase())}
-                maxLength={18}
-                placeholder="Ej. XXXX000000XXXXXX00"
-                className="flex-1 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm font-mono uppercase"
+                disabled
+                className="w-full rounded-lg border border-itd-navy/10 bg-gray-50 px-3 py-2 text-sm font-mono uppercase text-itd-navyDark/60"
               />
-              <BotonDictar onTexto={(t) => setCurp(t.replace(/\s+/g, '').toUpperCase())} />
-            </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  value={curp}
+                  onChange={(e) => setCurp(e.target.value.toUpperCase())}
+                  maxLength={18}
+                  placeholder="Ej. XXXX000000XXXXXX00"
+                  className="flex-1 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm font-mono uppercase"
+                />
+                <BotonDictar onTexto={(t) => setCurp(t.replace(/\s+/g, '').toUpperCase())} />
+              </div>
+            )}
           </div>
           <div>
             <div className="flex items-center gap-1 mb-1">

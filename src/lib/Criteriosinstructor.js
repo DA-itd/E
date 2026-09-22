@@ -24,6 +24,18 @@ const ROJO = rgb(0.75, 0, 0);
 const VOBO_NOMBRE_DEFAULT = 'Adriana Eréndira Murillo';
 const VOBO_CARGO_DEFAULT = 'Subdirección Académica';
 
+function descargarPDFLocal(bytes, nombreArchivo) {
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function y(top) {
   return ALTO_PAGINA - top;
 }
@@ -230,11 +242,16 @@ export async function descargarCriteriosInstructor(item) {
 
     // ===== 9. Guardar y descargar =====
     const bytes = await pdfDoc.save();
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    return url;
-  } catch (error) {
+    
+    // Si pasaron la bandera "retornarBytes" (desde el Respaldo ZIP), lo devolvemos crudo
+    if (item.retornarBytes) return bytes; 
+
+    // Aquí forzamos la descarga directa en lugar de intentar abrir una pestaña nueva
+    const nombreLimpio = (item.curso_nombre || 'Criterios').replace(/[^a-zA-Z0-9 áéíóúñÑ]/g, "_").trim();
+    descargarPDFLocal(bytes, `Criterios_${nombreLimpio}.pdf`);
+    
+    return true;
+    } catch (error) {
     console.error('❌ Error al generar PDF de criterios de instructor:', error);
     throw new Error('No se pudo generar el PDF: ' + error.message);
   }

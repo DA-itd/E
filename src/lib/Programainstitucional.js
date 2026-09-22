@@ -19,6 +19,19 @@ import {
 import { supabase } from './supabaseClient';
 
 const BASE = import.meta.env.BASE_URL;
+const URL_LOGO_TECNM = 'https://raw.githubusercontent.com/DA-itd/E/main/LOGO_tecnm.jpg';
+const URL_LOGO_ITD = 'https://raw.githubusercontent.com/DA-itd/E/main/logo_itdurango.png';
+
+async function cargarBufferConFallback(rutaLocal, urlRemota) {
+  try {
+    const res = await fetch(rutaLocal);
+    if (res.ok) return await res.arrayBuffer();
+  } catch {
+    // fallback a URL remota
+  }
+  const resRemota = await fetch(urlRemota);
+  return await resRemota.arrayBuffer();
+}
 const ANCHO_PAGINA = 612;
 const ALTO_PAGINA = 792;
 const MARGEN_X = 56;
@@ -73,12 +86,12 @@ function y(top) {
 
 async function cargarLogos(pdfDoc) {
   const [tecnmBytes, itdBytes] = await Promise.all([
-    fetch(`${BASE}logos/logo-tecnm.jpg`).then((r) => r.arrayBuffer()),
-    fetch(`${BASE}logos/logo-itd.jpg`).then((r) => r.arrayBuffer()),
+    cargarBufferConFallback(`${BASE}logos/logo-tecnm.jpg`, URL_LOGO_TECNM),
+    cargarBufferConFallback(`${BASE}logo_itdurango.png`, URL_LOGO_ITD),
   ]);
   return {
     tecnm: await pdfDoc.embedJpg(tecnmBytes),
-    itd: await pdfDoc.embedJpg(itdBytes),
+    itd: await pdfDoc.embedPng(itdBytes),
   };
 }
 
@@ -134,15 +147,16 @@ function dibujarEncabezado(page, logos, fN, fB, pagina, totalPaginas) {
   });
 
   // Logo ITD (chico, dentro de la fila superior de la columna media)
-  const itdDim = logos.itd.scale(0.011);
+  const itdAlto = 20;
+  const itdAncho = (logos.itd.width / logos.itd.height) * itdAlto;
   page.drawImage(logos.itd, {
-    x: xMidIzq + 4,
+    x: xMidIzq + 6,
     y: y(top + filaAlto - 3),
-    width: itdDim.width,
-    height: itdDim.height,
+    width: itdAncho,
+    height: itdAlto,
   });
   page.drawText('INSTITUTO TECNOLÓGICO DE DURANGO', {
-    x: xMidIzq + 4 + itdDim.width + 8,
+    x: xMidIzq + 6 + itdAncho + 8,
     y: y(top + 17),
     size: 10.5,
     font: fB,
@@ -374,8 +388,8 @@ export async function descargarProgramaPDF(cursos, periodoLabel) {
  */
 export async function descargarProgramaWord(cursos, periodoLabel) {
   const [tecnmBytes, itdBytes] = await Promise.all([
-    fetch(`${BASE}logos/logo-tecnm.jpg`).then((r) => r.arrayBuffer()),
-    fetch(`${BASE}logos/logo-itd.jpg`).then((r) => r.arrayBuffer()),
+    cargarBufferConFallback(`${BASE}logos/logo-tecnm.jpg`, URL_LOGO_TECNM),
+    cargarBufferConFallback(`${BASE}logo_itdurango.png`, URL_LOGO_ITD),
   ]);
   const firmantes = await obtenerFirmantes();
   const fechaTexto = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -447,7 +461,7 @@ export async function descargarProgramaWord(cursos, periodoLabel) {
                 children: [new Paragraph({
                   alignment: AlignmentType.CENTER,
                   children: [
-                    new ImageRun({ data: itdBytes, transformation: { width: 24, height: 24 } }),
+                    new ImageRun({ data: itdBytes, type: 'png', transformation: { width: 22, height: 26 } }),
                     new TextRun({ font: 'Arial', text: '  INSTITUTO TECNOLÓGICO DE DURANGO', bold: true, size: 20 }),
                   ],
                 })],

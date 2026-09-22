@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import GestionInscritosCurso from './GestionInscritosCurso'
 
 const TIPOS_CURSO = ['Docente', 'Profesional']
 
@@ -39,10 +40,13 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
 
   const [formConvocatoria, setFormConvocatoria] = useState(null) // null = cerrado; objeto = editando/creando
   const [formCurso, setFormCurso] = useState(null)
+  const [gestionInscritosCursoId, setGestionInscritosCursoId] = useState(null)
   const [guardando, setGuardando] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [anioFolio, setAnioFolio] = useState(new Date().getFullYear())
   const [mostrarAnioFolio, setMostrarAnioFolio] = useState(false)
+  const [archivandoId, setArchivandoId] = useState(null)
+  const [conteoInscripcionesPorConv, setConteoInscripcionesPorConv] = useState({})
 
   // Octubre a diciembre se lanza la convocatoria de enero del año siguiente,
   // así que en esos meses hay que poder elegir el año del folio. El resto
@@ -71,6 +75,22 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
       .order('mes', { ascending: false })
     setConvocatorias(data || [])
     setCargando(false)
+    cargarConteoInscripciones()
+  }
+
+  // Cuántas inscripciones activas le quedan a cada convocatoria, para saber
+  // si ya se archivó (0 = ya archivada, o nunca tuvo cursos con inscritos).
+  async function cargarConteoInscripciones() {
+    const { data } = await supabase
+      .from('inscripciones')
+      .select('id, cursos!inner(convocatoria_id)')
+      .eq('estado', 'activo')
+    const conteo = {}
+    ;(data || []).forEach((i) => {
+      const cid = i.cursos?.convocatoria_id
+      if (cid) conteo[cid] = (conteo[cid] || 0) + 1
+    })
+    setConteoInscripcionesPorConv(conteo)
   }
 
   async function cargarCursos(convocatoriaId) {
@@ -102,6 +122,65 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
       return
     }
     cargarConvocatorias()
+  }
+
+  async function archivarInscripciones(conv) {
+    if (
+      !confirm(
+        `¿Archivar TODAS las inscripciones activas de "${conv.nombre}" a historial?\n\n` +
+        `Esto las mueve de "inscripciones" a "inscripciones_historial" y las borra de la ` +
+        `tabla activa (dejan de contar en el reporte del periodo actual, y de aparecer en ` +
+        `Descarga de Constancias / Asistencia).\n\n` +
+        `Solo funciona si TODAS las inscripciones activas de esta convocatoria ya tienen ` +
+        `asistencia revisada (Sí o No, ninguna en blanco). Si falta alguna por revisar, ` +
+        `esta acción de archivado se detiene sola y no mueve ni borra nada — ninguna ` +
+        `inscripción se cancela ni se modifica.`
+      )
+    ) return
+
+    setArchivandoId(conv.id)
+    setErrorMsg('')
+    const { data, error } = await supabase.rpc('archivar_convocatoria_a_historial', {
+      p_convocatoria_id: conv.id,
+    })
+    setArchivandoId(null)
+
+    if (error) {
+      setErrorMsg('No se archivó: ' + error.message)
+      return
+    }
+
+    alert(`Se archivaron ${data} inscripción(es) a historial.`)
+    setCursosPorConvocatoria((prev) => ({ ...prev, [conv.id]: undefined }))
+    cargarConvocatorias()
+  }
+
+  async function guardarCurso(e) {
+    e.preventDefault()
+    setGuardando(true)
+    setErrorMsg('')
+    const datos = {
+      ...formCurso,
+      cupo_max: Number(formCurso.cupo_max),
+      horas: Number(formCurso.horas),
+    }
+    const esNuevo = !datos.id
+    const query = esNuevo
+      ? supabase.from('cursos').insert(datos)
+      : supabase.from('cursos').update(datos).eq('id', datos.id)
+      
+    const { error } = await query
+    setGuardando(false)
+    if (error) {
+      if (error.code === '23505') {
+        setErrorMsg(`El folio "${datos.folio}" ya está en uso. Usa otro folio.`)
+      } else {
+        setErrorMsg('No se pudo guardar el curso: ' + error.message)
+      }
+      return
+    }
+    setFormCurso(null)
+    cargarCursos(datos.convocatoria_id)
   }
 
   async function guardarConvocatoria(e) {
@@ -143,43 +222,56 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
   }
 
   async function eliminarConvocatoria(conv) {
-    if (!confirm(`¿Eliminar la convocatoria "${conv.nombre}"? Esto solo funciona si no tiene cursos asociados.`)) return
+    if (
+      !confirm(
+        `¿Eliminar por completo la convocatoria "${conv.nombre}"?\n\n` +
+        `Esto SOLO funciona si no tiene ningún curso dado de alta — si ya tiene cursos, ` +
+        `la base de datos va a rechazar el borrado y no se perderá nada.\n\n` +
+        `Si lo que quieres es retirarla de la vista de inscripción sin perder su información, ` +
+        `usa "Dar de baja" en vez de "Eliminar".`
+      )
+    ) return
     setErrorMsg('')
+    
+    // First, clear this convocatoria from any docente that has it as their "ultima_convocatoria_confirmada_id"
+    const { error: errorDocentes } = await supabase
+      .from('docentes')
+      .update({ ultima_convocatoria_confirmada_id: null })
+      .eq('ultima_convocatoria_confirmada_id', conv.id)
+      
+    if (errorDocentes) {
+      setErrorMsg('No se pudieron desenlazar los docentes que confirmaron datos en esta convocatoria: ' + errorDocentes.message)
+      return
+    }
+
+    // Now attempt to delete the convocatoria
     const { error } = await supabase.from('convocatorias').delete().eq('id', conv.id)
     if (error) {
-      setErrorMsg('No se pudo eliminar (probablemente ya tiene cursos asociados): ' + error.message)
+      if (error.message.includes('violates foreign key constraint')) {
+         setErrorMsg('No se pudo eliminar la convocatoria porque aún hay registros en el sistema que dependen de ella. Refresca la página e inténtalo de nuevo.');
+      } else {
+         setErrorMsg('No se pudo eliminar: ' + error.message)
+      }
       return
     }
     cargarConvocatorias()
   }
 
-  async function guardarCurso(e) {
-    e.preventDefault()
-    setGuardando(true)
+  async function eliminarCurso(curso) {
+    if (!confirm(`¿Eliminar el curso "${curso.nombre}"? Esto eliminará también TODAS las inscripciones asociadas a este curso de forma irreversible.`)) return
     setErrorMsg('')
-    const datos = { ...formCurso, horas: Number(formCurso.horas), cupo_max: Number(formCurso.cupo_max) }
-    const esNuevo = !datos.id
-
-    const query = esNuevo
-      ? supabase.from('cursos').insert(datos)
-      : supabase.from('cursos').update(datos).eq('id', datos.id)
-
-    const { error } = await query
-    setGuardando(false)
-    if (error) {
-      setErrorMsg('No se pudo guardar el curso: ' + error.message)
+    
+    // First, delete all enrollments (inscripciones) linked to this course to satisfy foreign key constraints.
+    const { error: errorInscripciones } = await supabase.from('inscripciones').delete().eq('curso_id', curso.id)
+    if (errorInscripciones) {
+      setErrorMsg('No se pudieron limpiar las inscripciones previas: ' + errorInscripciones.message)
       return
     }
-    setFormCurso(null)
-    cargarCursos(datos.convocatoria_id)
-  }
 
-  async function eliminarCurso(curso) {
-    if (!confirm(`¿Eliminar el curso "${curso.nombre}"? Esto solo funciona si no tiene inscripciones.`)) return
-    setErrorMsg('')
+    // Now it is safe to delete the course.
     const { error } = await supabase.from('cursos').delete().eq('id', curso.id)
     if (error) {
-      setErrorMsg('No se pudo eliminar (probablemente ya tiene inscripciones): ' + error.message)
+      setErrorMsg('No se pudo eliminar el curso: ' + error.message)
       return
     }
     cargarCursos(curso.convocatoria_id)
@@ -264,59 +356,91 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
             />
             <select
               value={formConvocatoria.mes}
-              onChange={(e) => setFormConvocatoria({ ...formConvocatoria, mes: e.target.value })}
+              onChange={(e) => setFormConvocatoria({ ...formConvocatoria, mes: Number(e.target.value) })}
               className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
             >
-              <option value={1}>Enero (Trimestre 1)</option>
-              <option value={6}>Junio (Trimestre 2)</option>
-              <option value={8}>Agosto (Trimestre 3)</option>
+              <option value={1}>Enero</option>
+              <option value={2}>Febrero</option>
+              <option value={3}>Marzo</option>
+              <option value={4}>Abril</option>
+              <option value={5}>Mayo</option>
+              <option value={6}>Junio</option>
+              <option value={7}>Julio</option>
+              <option value={8}>Agosto</option>
+              <option value={9}>Septiembre</option>
+              <option value={10}>Octubre</option>
+              <option value={11}>Noviembre</option>
+              <option value={12}>Diciembre</option>
             </select>
 
             <div className="sm:col-span-2 rounded-lg bg-itd-sand/60 p-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <p className="sm:col-span-2 text-xs font-semibold text-itd-navyDark/70">
-                Fechas de cada periodo (para que los cursos se agrupen automáticamente)
+                Fechas Generales de la Convocatoria (Estas definen si aparece en el portal)
+              </p>
+              <label className="text-xs text-itd-navyDark/60">
+                Fecha de inicio general
+                <input
+                  type="date"
+                  required
+                  value={formConvocatoria.fecha_inicio || ''}
+                  onChange={(e) => setFormConvocatoria({ ...formConvocatoria, fecha_inicio: e.target.value })}
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                />
+              </label>
+              <label className="text-xs text-itd-navyDark/60">
+                Fecha de fin general
+                <input
+                  type="date"
+                  required
+                  value={formConvocatoria.fecha_fin || ''}
+                  onChange={(e) => setFormConvocatoria({ ...formConvocatoria, fecha_fin: e.target.value })}
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                />
+              </label>
+
+              <p className="sm:col-span-2 text-xs font-semibold text-itd-navyDark/70 mt-2">
+                Fechas de cada periodo (Opcional - para que los cursos se agrupen automáticamente)
               </p>
               <label className="text-xs text-itd-navyDark/60">
                 Periodo 1 — inicio
                 <input
                   type="date"
-                  value={formConvocatoria.periodo1_inicio}
+                  value={formConvocatoria.periodo1_inicio || ''}
                   onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo1_inicio: e.target.value })}
-                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1"
                 />
               </label>
               <label className="text-xs text-itd-navyDark/60">
                 Periodo 1 — fin
                 <input
                   type="date"
-                  value={formConvocatoria.periodo1_fin}
+                  value={formConvocatoria.periodo1_fin || ''}
                   onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo1_fin: e.target.value })}
-                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1"
                 />
               </label>
               <label className="text-xs text-itd-navyDark/60">
                 Periodo 2 — inicio
                 <input
                   type="date"
-                  value={formConvocatoria.periodo2_inicio}
+                  value={formConvocatoria.periodo2_inicio || ''}
                   onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo2_inicio: e.target.value })}
-                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1"
                 />
               </label>
               <label className="text-xs text-itd-navyDark/60">
                 Periodo 2 — fin
                 <input
                   type="date"
-                  value={formConvocatoria.periodo2_fin}
+                  value={formConvocatoria.periodo2_fin || ''}
                   onChange={(e) => setFormConvocatoria({ ...formConvocatoria, periodo2_fin: e.target.value })}
-                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1 bg-white"
+                  className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1"
                 />
               </label>
             </div>
+
             <div className="sm:col-span-2 flex gap-2 justify-end">
-              <button type="button" onClick={() => setFormConvocatoria(null)} className="rounded-lg px-4 py-2 text-sm text-itd-navyDark/60">
-                Cancelar
-              </button>
+              <button type="button" onClick={() => setFormConvocatoria(null)} className="rounded-lg px-4 py-2 text-sm text-itd-navyDark/60">Cancelar</button>
               <button type="submit" disabled={guardando} className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium disabled:opacity-50">
                 {guardando ? 'Guardando…' : 'Guardar'}
               </button>
@@ -326,7 +450,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
 
         <div className="space-y-3">
           {convocatorias
-            .filter((conv) => conv.activo || verInactivas)
+            .filter((c) => verInactivas || c.activo)
             .map((conv) => (
             <div key={conv.id} className="rounded-xl border border-itd-navy/10 overflow-hidden">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-4 bg-white">
@@ -336,10 +460,10 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                     {!conv.activo && <span className="ml-2 text-xs text-itd-guinda">(inactiva)</span>}
                   </p>
                   <p className="text-xs text-itd-navyDark/60 mt-0.5">
-                    {conv.nombre} · {conv.anio} · {conv.fecha_inicio} a {conv.fecha_fin}
+                    {conv.nombre} · {conv.fecha_inicio} a {conv.fecha_fin}
                   </p>
                 </button>
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex flex-wrap items-center gap-3 shrink-0">
                   <button
                     onClick={() => setFormConvocatoria({
                       ...conv,
@@ -356,12 +480,31 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                   <button
                     onClick={() => alternarActivoConvocatoria(conv)}
                     className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand"
+                    title="Reversible: solo la oculta de la vista de inscripción, no borra nada"
                   >
                     {conv.activo ? 'Dar de baja' : 'Dar de alta'}
                   </button>
+                  {(conteoInscripcionesPorConv[conv.id] || 0) === 0 ? (
+                    <span
+                      className="text-xs font-semibold text-green-700 bg-green-100 border border-green-300 px-3 py-1.5 rounded-lg"
+                      title="Esta convocatoria ya no tiene inscripciones activas (se archivaron, o nunca tuvo)"
+                    >
+                      ✓ Archivada
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => archivarInscripciones(conv)}
+                      disabled={archivandoId === conv.id}
+                      className="text-xs rounded-lg border border-amber-400/50 text-amber-700 px-3 py-1.5 hover:bg-amber-50 disabled:opacity-50"
+                      title="Mueve las inscripciones activas de esta convocatoria a historial. Solo funciona si todas ya tienen asistencia revisada."
+                    >
+                      {archivandoId === conv.id ? 'Archivando…' : 'Archivar a historial'}
+                    </button>
+                  )}
                   <button
                     onClick={() => eliminarConvocatoria(conv)}
                     className="text-xs rounded-lg border border-itd-guinda/30 text-itd-guinda px-3 py-1.5 hover:bg-itd-guinda/5"
+                    title="Solo funciona si la convocatoria no tiene cursos; si ya tiene, no hace nada"
                   >
                     Eliminar
                   </button>
@@ -408,7 +551,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                         <input
                           required
                           placeholder="Folio"
-                          value={formCurso.folio}
+                          value={formCurso.folio || ''}
                           onChange={(e) => setFormCurso({ ...formCurso, folio: e.target.value })}
                           className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm flex-1"
                         />
@@ -424,29 +567,32 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                           </select>
                         )}
                       </div>
-                      <select
+                      <input
+                        list="opciones-periodo"
                         required
-                        value={formCurso.semana}
+                        placeholder="Periodo o Semana"
+                        value={formCurso.semana || ''}
                         onChange={(e) => {
                           const periodo = e.target.value
                           const conv = convocatorias.find((c) => c.id === formCurso.convocatoria_id)
                           const auto =
-                            periodo === 'PERIODO_1'
+                            periodo === 'PERIODO_1' || periodo === 'Periodo 1'
                               ? { fecha_inicio: conv?.periodo1_inicio || '', fecha_fin: conv?.periodo1_fin || '' }
-                              : periodo === 'PERIODO_2'
+                              : periodo === 'PERIODO_2' || periodo === 'Periodo 2'
                               ? { fecha_inicio: conv?.periodo2_inicio || '', fecha_fin: conv?.periodo2_fin || '' }
                               : {}
                           setFormCurso({ ...formCurso, semana: periodo, ...auto })
                         }}
                         className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-                      >
-                        <option value="">Periodo…</option>
-                        <option value="PERIODO_1">Periodo 1</option>
-                        <option value="PERIODO_2">Periodo 2</option>
-                      </select>
-                      <input required placeholder="Nombre del curso" value={formCurso.nombre} onChange={(e) => setFormCurso({ ...formCurso, nombre: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2" />
-                      <input placeholder="Instructor" value={formCurso.instructor} onChange={(e) => setFormCurso({ ...formCurso, instructor: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
-                      <input placeholder="Departamento" value={formCurso.departamento} onChange={(e) => setFormCurso({ ...formCurso, departamento: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      />
+                      <datalist id="opciones-periodo">
+                        <option value="Periodo 1" />
+                        <option value="Periodo 2" />
+                        <option value="Extemporáneo" />
+                      </datalist>
+                      <input required placeholder="Nombre del curso" value={formCurso.nombre || ''} onChange={(e) => setFormCurso({ ...formCurso, nombre: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2" />
+                      <input placeholder="Instructor" value={formCurso.instructor || ''} onChange={(e) => setFormCurso({ ...formCurso, instructor: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <input placeholder="Departamento" value={formCurso.departamento || ''} onChange={(e) => setFormCurso({ ...formCurso, departamento: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
                       <textarea
                         placeholder="Objetivo del curso (aparece en el Programa Institucional)"
                         value={formCurso.objetivo || ''}
@@ -456,21 +602,21 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                       />
                       <label className="text-xs text-itd-navyDark/60">
                         Fecha inicio
-                        <input required type="date" value={formCurso.fecha_inicio} onChange={(e) => setFormCurso({ ...formCurso, fecha_inicio: e.target.value })} className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1" />
+                        <input required type="date" value={formCurso.fecha_inicio || ''} onChange={(e) => setFormCurso({ ...formCurso, fecha_inicio: e.target.value })} className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1" />
                       </label>
                       <label className="text-xs text-itd-navyDark/60">
                         Fecha fin
-                        <input required type="date" value={formCurso.fecha_fin} onChange={(e) => setFormCurso({ ...formCurso, fecha_fin: e.target.value })} className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1" />
+                        <input required type="date" value={formCurso.fecha_fin || ''} onChange={(e) => setFormCurso({ ...formCurso, fecha_fin: e.target.value })} className="w-full rounded-lg border border-itd-navy/20 px-3 py-2 text-sm mt-1" />
                       </label>
-                      <input required type="number" placeholder="Horas" value={formCurso.horas} onChange={(e) => setFormCurso({ ...formCurso, horas: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
-                      <input required type="number" placeholder="Cupo máximo" value={formCurso.cupo_max} onChange={(e) => setFormCurso({ ...formCurso, cupo_max: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
-                      <select required value={formCurso.horario} onChange={(e) => setFormCurso({ ...formCurso, horario: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm">
+                      <input required type="number" placeholder="Horas" value={formCurso.horas || ''} onChange={(e) => setFormCurso({ ...formCurso, horas: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <input required type="number" placeholder="Cupo máximo" value={formCurso.cupo_max || ''} onChange={(e) => setFormCurso({ ...formCurso, cupo_max: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm" />
+                      <select required value={formCurso.horario || ''} onChange={(e) => setFormCurso({ ...formCurso, horario: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm">
                         <option value="">Horario…</option>
                         {HORARIOS.map((h) => (
                           <option key={h} value={h}>{h}</option>
                         ))}
                       </select>
-                      <select value={formCurso.tipo} onChange={(e) => setFormCurso({ ...formCurso, tipo: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2">
+                      <select value={formCurso.tipo || 'Docente'} onChange={(e) => setFormCurso({ ...formCurso, tipo: e.target.value })} className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm sm:col-span-2">
                         {TIPOS_CURSO.map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
                       <div className="sm:col-span-2 flex gap-2 justify-end">
@@ -483,34 +629,61 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                   )}
 
                   {(cursosPorConvocatoria[conv.id] || []).map((curso) => (
-                    <div key={curso.id} className="rounded-lg border border-itd-navy/10 bg-white p-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-medium text-itd-navyDark">
-                          {curso.nombre}
-                          {curso.status !== 'activo' && <span className="ml-2 text-xs text-amber-600">(borrador · no visible)</span>}
-                          {curso.cerrado_manualmente && <span className="ml-2 text-xs text-itd-guinda">(inscripciones cerradas)</span>}
-                        </p>
-                        <p className="text-xs text-itd-navyDark/60">
-                          Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · {curso.horario || 'sin horario'} · cupo <strong className="text-itd-navy">{curso.cupo_max}</strong>
-                        </p>
+                    <div key={curso.id} className="rounded-lg border border-itd-navy/10 bg-white p-3 flex flex-col gap-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-itd-navyDark">
+                            {curso.nombre}
+                            {curso.status !== 'activo' && <span className="ml-2 text-xs text-amber-600">(borrador · no visible)</span>}
+                            {curso.cerrado_manualmente && <span className="ml-2 text-xs text-itd-guinda">(inscripciones cerradas)</span>}
+                          </p>
+                          <p className="text-xs text-itd-navyDark/60">
+                            Folio {curso.folio} · {curso.tipo} · {curso.horas} hrs · {curso.horario || 'sin horario'} · cupo <strong className="text-itd-navy">{curso.cupo_max}</strong>
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2 shrink-0">
+                          <button 
+                            onClick={() => setGestionInscritosCursoId(gestionInscritosCursoId === curso.id ? null : curso.id)} 
+                            className={`text-xs rounded-lg px-3 py-1.5 font-medium ${gestionInscritosCursoId === curso.id ? 'bg-itd-sand border border-itd-navy/20' : 'border border-itd-navy/20 hover:bg-itd-sand'}`}
+                          >
+                            Inscritos
+                          </button>
+                          <button 
+                            onClick={() => setFormCurso({
+                              ...curso,
+                              semana: curso.semana || '',
+                              instructor: curso.instructor || '',
+                              departamento: curso.departamento || '',
+                              objetivo: curso.objetivo || '',
+                              fecha_inicio: curso.fecha_inicio || '',
+                              fecha_fin: curso.fecha_fin || '',
+                              horas: curso.horas || '',
+                              horario: curso.horario || ''
+                            })} 
+                            className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => alternarPublicacion(curso)}
+                            className={`text-xs rounded-lg px-3 py-1.5 font-medium ${
+                              curso.status === 'activo'
+                                ? 'border border-itd-navy/20 hover:bg-itd-sand'
+                                : 'bg-itd-navy text-white hover:bg-itd-navyDark'
+                            }`}
+                          >
+                            {curso.status === 'activo' ? 'Ocultar' : 'Publicar →'}
+                          </button>
+                          <button onClick={() => alternarCierreCurso(curso)} className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand">
+                            {curso.cerrado_manualmente ? 'Reabrir' : 'Cerrar inscripciones'}
+                          </button>
+                          <button onClick={() => eliminarCurso(curso)} className="text-xs rounded-lg border border-itd-guinda/30 text-itd-guinda px-3 py-1.5 hover:bg-itd-guinda/5">Eliminar</button>
+                        </div>
                       </div>
-                      <div className="flex gap-2 shrink-0">
-                        <button onClick={() => setFormCurso(curso)} className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand">Editar</button>
-                        <button
-                          onClick={() => alternarPublicacion(curso)}
-                          className={`text-xs rounded-lg px-3 py-1.5 font-medium ${
-                            curso.status === 'activo'
-                              ? 'border border-itd-navy/20 hover:bg-itd-sand'
-                              : 'bg-itd-navy text-white hover:bg-itd-navyDark'
-                          }`}
-                        >
-                          {curso.status === 'activo' ? 'Ocultar' : 'Publicar →'}
-                        </button>
-                        <button onClick={() => alternarCierreCurso(curso)} className="text-xs rounded-lg border border-itd-navy/20 px-3 py-1.5 hover:bg-itd-sand">
-                          {curso.cerrado_manualmente ? 'Reabrir' : 'Cerrar inscripciones'}
-                        </button>
-                        <button onClick={() => eliminarCurso(curso)} className="text-xs rounded-lg border border-itd-guinda/30 text-itd-guinda px-3 py-1.5 hover:bg-itd-guinda/5">Eliminar</button>
-                      </div>
+                      
+                      {gestionInscritosCursoId === curso.id && (
+                        <GestionInscritosCurso cursoId={curso.id} />
+                      )}
                     </div>
                   ))}
 

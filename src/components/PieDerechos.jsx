@@ -1,8 +1,8 @@
 export default function PieDerechos() {
   const anio = new Date().getFullYear()
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-itd-guinda text-white text-center text-xs py-2 px-4">
-      D.R. © Alejandro Calderón Rentería. {anio}
-    </div>
+    <footer className="w-full mt-auto py-3 px-4 bg-gradient-to-r from-itd-guinda via-[#781834] to-itd-navy text-white text-center text-xs border-t border-white/10 shadow-xs">
+      D.R. © Alejandro Calderón Rentería. {anio} · Instituto Tecnológico de Durango
+    </footer>
   )
 }

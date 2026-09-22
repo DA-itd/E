@@ -1,7 +1,8 @@
 // src/components/proydoce/GenerarListaAsistencia.tsx
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../lib/supabaseClient';
-import { DEPARTAMENTOS_ITD } from '../../data/mockData';
+// ✅ Correcto: mismo folder, exportado desde AdminProyectosDocencia
+import { DEPARTAMENTOS_ITD } from './AdminProyectosDocencia';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -298,10 +299,12 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
 
   const [descargandoPDF, setDescargandoPDF] = useState(false);
 
-  useEffect(() => {
+   useEffect(() => {
     cargarDatosCompletos();
     cargarCatalogoDocentes();
+  }, [cursoId, cursoProp]);
 
+  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         if (mostrarModalNuevo) {
@@ -313,7 +316,8 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cursoId, cursoProp, mostrarModalNuevo]);
+  }, [mostrarModalNuevo, onClose]);
+    const [filaHover, setFilaHover] = useState<number | null>(null);
 
   // ==========================================
   // Carga del catálogo directamente de Supabase (sin capa local)
@@ -1461,8 +1465,10 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
         },
         { onConflict: 'nombre_completo' }
       )
-      .then(() => {})
-      .catch((err: any) => console.warn('Aviso al guardar docente en Supabase:', err));
+      .then(
+        () => {},
+        (err: any) => console.warn('Aviso al guardar docente en Supabase:', err)
+      );
 
     // Inscribir al curso actual en Supabase
     if (datosCurso?.id) {
@@ -1486,8 +1492,10 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
           tarjeta: nuevo.tarjeta,
           estado: 'activo'
         })
-        .then(() => {})
-        .catch((err: any) => console.warn('Aviso Supabase inscripciones:', err));
+        .then(
+          () => {},
+          (err: any) => console.warn('Aviso Supabase inscripciones:', err)
+        );
     }
 
     setMostrarModalNuevo(false);
@@ -1511,7 +1519,7 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
     setParticipantesEliminados([]);
   }
 
-  function renderHojaIndividual(numeroPagina: number) {
+      function renderHojaIndividual(numeroPagina: number) {
     if (!datosCurso) return null;
     const filas = obtenerFilasDePagina(numeroPagina);
     const esUltima = numeroPagina === totalPaginas;
@@ -1519,13 +1527,11 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
     return (
       <div
         key={`hoja-${numeroPagina}`}
-        className="pagina-impresion bg-white text-black p-5 sm:p-7 max-w-[279mm] w-full mx-auto border-2 border-black shadow-lg font-sans text-xs leading-tight mb-8 relative"
+        className="pagina-impresion bg-white text-slate-900 p-6 sm:p-8 max-w-[279mm] w-full mx-auto border border-slate-300 shadow-sm font-sans text-xs leading-tight mb-8 relative rounded-sm"
       >
-        <div className="border border-black flex items-stretch mb-2">
-          <div
-            className="w-36 sm:w-44 border-r-2 border-black p-1.5 flex items-center justify-center text-center bg-white shrink-0"
-            style={{ borderRight: '1.5px solid black' }}
-          >
+        {/* ENCABEZADO OFICIAL */}
+        <div className="border border-slate-300 flex items-stretch mb-3 rounded-sm overflow-hidden">
+          <div className="w-36 sm:w-44 border-r border-slate-300 p-2 flex items-center justify-center text-center bg-slate-50 shrink-0">
             <img
               src={LOGO_TECNM_URL}
               alt="Logo TecNM / ITD"
@@ -1534,101 +1540,103 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
             />
           </div>
 
-          <div className="flex-1 p-2 text-center flex flex-col justify-center">
-            <h1 className="font-bold text-sm sm:text-base tracking-wide text-gray-900">
+          <div className="flex-1 p-2.5 text-center flex flex-col justify-center bg-white">
+            <h1 style={{ color: '#1B396A' }} className="font-bold text-sm sm:text-base tracking-wide">
               INSTITUTO TECNOLÓGICO DE DURANGO
             </h1>
-            <p className="text-[11px] sm:text-xs font-semibold text-gray-800 mt-0.5">
-              Nombre del documento: Formato de Lista de Asistencia
+            <p className="text-[11px] sm:text-xs font-medium text-slate-700 mt-0.5">
+              Formato de Lista de Asistencia
             </p>
-            <p className="text-[9px] sm:text-[10px] text-gray-600 mt-0.5">
-              Referencias a la Norma NMX-CC-9001-IMNC-2008 6.2.2
+            <p className="text-[9px] sm:text-[10px] text-slate-400 mt-0.5">
+              Referencia: NMX-CC-9001-IMNC-2008 · 6.2.2
             </p>
           </div>
 
-          <div
-            className="w-44 border-l-2 border-black text-[9px] sm:text-[9.5px] shrink-0"
-            style={{ borderLeft: '1.5px solid black' }}
-          >
-            <div className="border-b border-black px-2 py-1 flex justify-between">
-              <span className="font-semibold">Código:</span>
-              <span className="font-bold">ITD-AD-FO-8</span>
+          <div className="w-44 border-l border-slate-300 text-[9px] sm:text-[9.5px] shrink-0 bg-slate-50">
+            <div className="border-b border-slate-200 px-2.5 py-1 flex justify-between">
+              <span className="text-slate-500">Código</span>
+              <span className="font-semibold text-slate-800">ITD-AD-FO-8</span>
             </div>
-            <div className="border-b border-black px-2 py-1 flex justify-between">
-              <span className="font-semibold">Revisión:</span>
-              <span className="font-bold">1</span>
+            <div className="border-b border-slate-200 px-2.5 py-1 flex justify-between">
+              <span className="text-slate-500">Revisión</span>
+              <span className="font-semibold text-slate-800">1</span>
             </div>
-            <div className="border-b border-black px-2 py-1 flex justify-between">
-              <span className="font-semibold">Página:</span>
-              <span className="font-bold">{numeroPagina} de {totalPaginas}</span>
+            <div className="border-b border-slate-200 px-2.5 py-1 flex justify-between">
+              <span className="text-slate-500">Página</span>
+              <span className="font-semibold text-slate-800">{numeroPagina} de {totalPaginas}</span>
             </div>
-            <div className="px-2 py-1 flex justify-between">
-              <span className="font-semibold">Fecha:</span>
-              <span>{new Date().toLocaleDateString('es-MX')}</span>
+            <div className="px-2.5 py-1 flex justify-between">
+              <span className="text-slate-500">Fecha</span>
+              <span className="text-slate-700">{new Date().toLocaleDateString('es-MX')}</span>
             </div>
           </div>
         </div>
 
-        <div className="border border-black mb-2 text-[10px]">
-          <div className="border-b border-black font-bold py-1 px-3 text-center uppercase tracking-wider bg-gray-100/80">
+        {/* METADATOS DEL CURSO */}
+        <div className="border border-slate-300 mb-3 text-[10.5px] rounded-sm overflow-hidden">
+          <div
+            style={{ backgroundColor: '#1B396A', color: '#ffffff' }}
+            className="border-b border-slate-300 font-semibold py-1.5 px-3 text-center uppercase tracking-wide text-[10px]"
+          >
             {datosCurso.modalidad || 'CURSO PRESENCIAL'}
           </div>
-          <div className="flex border-b border-black">
-            <div className="flex-1 py-1 px-3 border-r border-black flex items-center gap-2">
-              <span className="font-semibold">Hoja:</span>
-              <span className="font-bold">{numeroPagina}</span>
-              <span className="font-semibold">de</span>
-              <span className="font-bold">{totalPaginas}</span>
+          <div className="flex border-b border-slate-200">
+            <div className="flex-1 py-1.5 px-3 border-r border-slate-200 flex items-center gap-2 text-slate-700">
+              <span className="text-slate-400">Hoja</span>
+              <span className="font-semibold text-slate-900">{numeroPagina}</span>
+              <span className="text-slate-400">de</span>
+              <span className="font-semibold text-slate-900">{totalPaginas}</span>
             </div>
-            <div className="w-64 py-1 px-3 flex items-center justify-between">
-              <span className="font-semibold">Folio:</span>
-              <span className="font-mono font-bold text-black">{datosCurso.folio}</span>
+            <div className="w-64 py-1.5 px-3 flex items-center justify-between">
+              <span className="text-slate-400">Folio</span>
+              <span style={{ color: '#1B396A' }} className="font-mono font-semibold">{datosCurso.folio}</span>
             </div>
           </div>
-          <div className="flex border-b border-black py-1 px-3">
-            <span className="font-semibold mr-2 shrink-0">Nombre del curso:</span>
-            <span className="font-medium uppercase">{datosCurso.nombre}</span>
+          <div className="flex border-b border-slate-200 py-1.5 px-3">
+            <span className="text-slate-400 mr-2 shrink-0">Curso</span>
+            <span className="font-medium uppercase text-slate-800">{datosCurso.nombre}</span>
           </div>
-          <div className="flex border-b border-black py-1 px-3">
-            <span className="font-semibold mr-2 shrink-0">Nombre del Instructor (a):</span>
-            <span className="font-medium">{datosCurso.instructor}</span>
+          <div className="flex border-b border-slate-200 py-1.5 px-3">
+            <span className="text-slate-400 mr-2 shrink-0">Instructor(a)</span>
+            <span className="font-medium text-slate-800">{datosCurso.instructor}</span>
           </div>
           <div className="flex flex-wrap text-[9.5px]">
-            <div className="flex-1 py-1 px-3 border-r border-black flex items-center gap-1 min-w-[200px]">
-              <span className="font-semibold">Periodo:</span>
-              <span>{datosCurso.periodo}</span>
+            <div className="flex-1 py-1.5 px-3 border-r border-slate-200 flex items-center gap-1.5 min-w-[200px]">
+              <span className="text-slate-400">Periodo</span>
+              <span className="text-slate-700">{datosCurso.periodo}</span>
             </div>
-            <div className="w-36 py-1 px-3 border-r border-black flex items-center gap-1">
-              <span className="font-semibold">Duración:</span>
-              <span>{datosCurso.duracion}</span>
+            <div className="w-36 py-1.5 px-3 border-r border-slate-200 flex items-center gap-1.5">
+              <span className="text-slate-400">Duración</span>
+              <span className="text-slate-700">{datosCurso.duracion}</span>
             </div>
-            <div className="w-44 py-1 px-3 flex items-center gap-1">
-              <span className="font-semibold">Horario:</span>
-              <span>{datosCurso.horario}</span>
+            <div className="w-44 py-1.5 px-3 flex items-center gap-1.5">
+              <span className="text-slate-400">Horario</span>
+              <span className="text-slate-700">{datosCurso.horario}</span>
             </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse border border-black text-[9px] mb-2 min-w-[650px]">
+        {/* TABLA DE PARTICIPANTES */}
+        <div className="overflow-x-auto rounded-sm border border-slate-300">
+          <table className="w-full border-collapse text-[9px] min-w-[650px]">
             <thead>
-              <tr className="bg-gray-100">
-                <th rowSpan={2} className="border border-black px-1 py-1 text-center w-8">No.</th>
-                <th rowSpan={2} className="border border-black px-2 py-1 text-left">Nombre del Participante</th>
-                <th rowSpan={2} className="border border-black px-1.5 py-1 text-left w-36">R.F.C. / CURP</th>
-                <th rowSpan={2} className="border border-black px-2 py-1 text-left">Puesto y departamento de adscripción</th>
-                <th colSpan={2} className="border border-black px-1 py-0.5 text-center">Nivel de Puesto</th>
-                <th colSpan={5} className="border border-black px-1 py-0.5 text-center">Asistencia</th>
-                <th rowSpan={2} className="border border-black px-1 py-1 text-center w-6 print:hidden"></th>
+              <tr className="bg-slate-100 text-slate-600">
+                <th rowSpan={2} className="border-b border-r border-slate-200 px-1 py-1.5 text-center w-8 font-semibold">No.</th>
+                <th rowSpan={2} className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold">Nombre del Participante</th>
+                <th rowSpan={2} className="border-b border-r border-slate-200 px-1.5 py-1.5 text-left w-36 font-semibold">R.F.C. / CURP</th>
+                <th rowSpan={2} className="border-b border-r border-slate-200 px-2 py-1.5 text-left font-semibold">Puesto y departamento de adscripción</th>
+                <th colSpan={2} className="border-b border-r border-slate-200 px-1 py-1 text-center font-semibold">Nivel</th>
+                <th colSpan={5} className="border-b border-slate-200 px-1 py-1 text-center font-semibold">Asistencia</th>
+                <th rowSpan={2} className="border-b border-slate-200 px-1 py-1.5 text-center w-6 print:hidden"></th>
               </tr>
-              <tr className="bg-gray-50 text-[8.5px]">
-                <th className="border border-black px-1 py-0.5 text-center w-7" title="Funcionario Docente">FD</th>
-                <th className="border border-black px-1 py-0.5 text-center w-7" title="Docente">D</th>
-                <th className="border border-black px-1 py-0.5 text-center w-6">L</th>
-                <th className="border border-black px-1 py-0.5 text-center w-6">M</th>
-                <th className="border border-black px-1 py-0.5 text-center w-6">M</th>
-                <th className="border border-black px-1 py-0.5 text-center w-6">J</th>
-                <th className="border border-black px-1 py-0.5 text-center w-6">V</th>
+              <tr className="bg-slate-50 text-slate-500 text-[8.5px]">
+                <th className="border-b border-r border-slate-200 px-1 py-1 text-center w-7" title="Funcionario Docente">FD</th>
+                <th className="border-b border-r border-slate-200 px-1 py-1 text-center w-7" title="Docente">D</th>
+                <th className="border-b border-r border-slate-200 px-1 py-1 text-center w-6">L</th>
+                <th className="border-b border-r border-slate-200 px-1 py-1 text-center w-6">M</th>
+                <th className="border-b border-r border-slate-200 px-1 py-1 text-center w-6">M</th>
+                <th className="border-b border-r border-slate-200 px-1 py-1 text-center w-6">J</th>
+                <th className="border-b border-slate-200 px-1 py-1 text-center w-6">V</th>
               </tr>
             </thead>
             <tbody>
@@ -1636,43 +1644,50 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                 if (!p) {
                   return (
                     <tr key={`empty-${numeroPagina}-${indexGlobal}`} className="h-5">
-                      <td className="border border-black text-center text-gray-400">{indexGlobal}</td>
-                      <td className="border border-black"></td>
-                      <td className="border border-black"></td>
-                      <td className="border border-black"></td>
-                      <td className="border border-black text-center"></td>
-                      <td className="border border-black text-center"></td>
-                      <td className="border border-black text-center"></td>
-                      <td className="border border-black text-center"></td>
-                      <td className="border border-black text-center"></td>
-                      <td className="border border-black text-center"></td>
-                      <td className="border border-black text-center"></td>
-                      <td className="border border-black text-center print:hidden"></td>
+                      <td className="border-b border-r border-slate-100 text-center text-slate-300">{indexGlobal}</td>
+                      <td className="border-b border-r border-slate-100"></td>
+                      <td className="border-b border-r border-slate-100"></td>
+                      <td className="border-b border-r border-slate-100"></td>
+                      <td className="border-b border-r border-slate-100 text-center"></td>
+                      <td className="border-b border-r border-slate-100 text-center"></td>
+                      <td className="border-b border-r border-slate-100 text-center"></td>
+                      <td className="border-b border-r border-slate-100 text-center"></td>
+                      <td className="border-b border-r border-slate-100 text-center"></td>
+                      <td className="border-b border-r border-slate-100 text-center"></td>
+                      <td className="border-b border-slate-100 text-center"></td>
+                      <td className="border-b border-slate-100 text-center print:hidden"></td>
                     </tr>
                   );
                 }
+                 return (
+                  <tr
+                    key={p.id || indexGlobal}
+                    onMouseEnter={() => setFilaHover(indexGlobal)}
+                    onMouseLeave={() => setFilaHover(null)}
+                    className={`h-5.5 transition-colors ${indexGlobal % 2 === 0 ? 'bg-slate-50' : 'bg-white'} hover:bg-slate-100`}
+                  >
 
-                return (
-                  <tr key={p.id || indexGlobal} className="h-5 hover:bg-amber-50/50 group">
-                    <td className="border border-black text-center font-medium">{indexGlobal}</td>
-                    <td className="border border-black px-2 py-0.5 font-medium uppercase">{p.nombre_completo}</td>
-                    <td className="border border-black px-1.5 py-0.5 font-mono text-[8px] font-semibold">{p.curp || p.rfc}</td>
-                    <td className="border border-black px-2 py-0.5 text-[8.5px] uppercase">{p.puesto_departamento}</td>
-                    <td className="border border-black text-center font-bold">{p.es_fd ? 'X' : ''}</td>
-                    <td className="border border-black text-center font-bold">{p.es_d ? 'X' : ''}</td>
-                    <td className="border border-black text-center"></td>
-                    <td className="border border-black text-center"></td>
-                    <td className="border border-black text-center"></td>
-                    <td className="border border-black text-center"></td>
-                    <td className="border border-black text-center"></td>
-                    <td className="border border-black text-center print:hidden p-0">
-                      <button
-                        onClick={() => handleEliminarParticipante(p.id || indexGlobal - 1)}
-                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 font-bold px-1 transition text-[10px]"
-                        title="Quitar participante de la lista"
-                      >
-                        ✕
-                      </button>
+                    <td className="border-b border-r border-slate-100 text-center text-slate-500 font-medium">{indexGlobal}</td>
+                    <td className="border-b border-r border-slate-100 px-2 py-0.5 font-medium uppercase text-slate-800">{p.nombre_completo}</td>
+                    <td className="border-b border-r border-slate-100 px-1.5 py-0.5 font-mono text-[8px] text-slate-600">{p.curp || p.rfc}</td>
+                    <td className="border-b border-r border-slate-100 px-2 py-0.5 text-[8.5px] uppercase text-slate-600">{p.puesto_departamento}</td>
+                    <td style={{ color: '#1B396A' }} className="border-b border-r border-slate-100 text-center font-semibold">{p.es_fd ? 'X' : ''}</td>
+                    <td style={{ color: '#1B396A' }} className="border-b border-r border-slate-100 text-center font-semibold">{p.es_d ? 'X' : ''}</td>
+                    <td className="border-b border-r border-slate-100 text-center"></td>
+                    <td className="border-b border-r border-slate-100 text-center"></td>
+                    <td className="border-b border-r border-slate-100 text-center"></td>
+                    <td className="border-b border-r border-slate-100 text-center"></td>
+                    <td className="border-b border-slate-100 text-center"></td>
+                    <td className="border-b border-slate-100 text-center print:hidden p-0">
+                      {filaHover === indexGlobal && (
+                        <button
+                          onClick={() => handleEliminarParticipante(p.id || indexGlobal - 1)}
+                          className="text-slate-400 hover:text-red-600 font-medium px-1 transition text-[10px]"
+                          title="Quitar participante de la lista"
+                        >
+                          ✕
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1681,132 +1696,130 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
           </table>
         </div>
 
-        <div className="text-[8.5px] font-medium text-gray-700 mb-3">
+        <div className="text-[8.5px] font-medium text-slate-400 mt-2 mb-4">
           <span>FD = Funcionario docente</span>
           <span className="ml-8">D = Docente</span>
         </div>
 
         {esUltima ? (
-          <div className="flex justify-between items-start text-[9.5px] pt-3 mb-4 gap-8">
+          <div className="flex justify-between items-start text-[9.5px] pt-2 mb-4 gap-8">
             <div className="flex-1 text-center">
-              <div className="border-t border-black w-4/5 mx-auto mb-1"></div>
-              <p className="font-bold">Nombre y firma del instructor (a)</p>
-              <p className="font-medium text-gray-800 text-[9px] mt-0.5">{datosCurso.instructor}</p>
-              <div className="text-left text-[8.5px] text-gray-700 mt-2 space-y-0.5 pl-4">
-                <p>R.F.C.: <span className="font-mono font-semibold">{datosCurso.instructor_rfc || '_________________________'}</span></p>
-                <p>CURP: <span className="font-mono font-semibold">{datosCurso.instructor_curp || '_________________________'}</span></p>
+              <div className="border-t border-slate-400 w-4/5 mx-auto mb-1"></div>
+              <p className="font-semibold text-slate-800">Nombre y firma del instructor (a)</p>
+              <p className="font-medium text-slate-600 text-[9px] mt-0.5">{datosCurso.instructor}</p>
+              <div className="text-left text-[8.5px] text-slate-500 mt-2 space-y-0.5 pl-4">
+                <p>R.F.C.: <span className="font-mono text-slate-700">{datosCurso.instructor_rfc || '_________________________'}</span></p>
+                <p>CURP: <span className="font-mono text-slate-700">{datosCurso.instructor_curp || '_________________________'}</span></p>
               </div>
             </div>
 
             <div className="flex-1 text-center">
-              <div className="border-t border-black w-4/5 mx-auto mb-1"></div>
-              <p className="font-bold">Nombre y firma del coordinador (a)</p>
-              <p className="font-bold text-gray-900 text-[10px] mt-0.5">Alejandro Calderón Rentería</p>
-              <p className="font-medium text-gray-800 text-[9px] mt-0.5">Coordinador de Actualización Docente</p>
+              <div className="border-t border-slate-400 w-4/5 mx-auto mb-1"></div>
+              <p className="font-semibold text-slate-800">Nombre y firma del coordinador (a)</p>
+              <p style={{ color: '#1B396A' }} className="font-bold text-[10px] mt-0.5">Alejandro Calderón Rentería</p>
+              <p className="font-medium text-slate-600 text-[9px] mt-0.5">Coordinador de Actualización Docente</p>
             </div>
           </div>
         ) : (
-          <div className="py-5 text-center text-xs font-semibold text-slate-600 italic border-y border-dashed border-slate-300 my-3 bg-slate-50">
-            --- Continúa en la Hoja {numeroPagina + 1} de {totalPaginas} ---
+          <div className="py-4 text-center text-xs font-medium text-slate-500 italic border-y border-dashed border-slate-300 my-3">
+            Continúa en la Hoja {numeroPagina + 1} de {totalPaginas}
           </div>
         )}
 
-        <div className="flex justify-between items-center text-[8.5px] font-semibold text-gray-700 border-t border-gray-200 pt-2">
+        <div className="flex justify-between items-center text-[8.5px] font-medium text-slate-400 border-t border-slate-200 pt-2">
           <span>ITD-AD-FO-8</span>
-          <span>Revisión: 1  ·  Hoja {numeroPagina} de {totalPaginas}</span>
+          <span>Revisión: 1 · Hoja {numeroPagina} de {totalPaginas}</span>
         </div>
       </div>
     );
   }
 
-  return (
+    return (
     <div
-      className="fixed inset-0 bg-black/80 backdrop-blur-xs flex flex-col items-center justify-start p-0 sm:p-3 md:p-5 z-50 overflow-hidden select-none"
+      className="fixed inset-0 flex flex-col items-center justify-start p-0 sm:p-3 md:p-5 z-50 overflow-hidden select-none"
+      style={{ backgroundColor: 'rgba(2, 6, 23, 0.7)', backdropFilter: 'blur(2px)' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose?.();
       }}
     >
-      <div className="bg-white rounded-none sm:rounded-2xl max-w-6xl w-full h-full sm:max-h-[96vh] flex flex-col shadow-2xl overflow-hidden border border-slate-700/30">
+      <div className="bg-white rounded-none sm:rounded-xl max-w-6xl w-full h-full sm:max-h-[96vh] flex flex-col shadow-2xl overflow-hidden border border-slate-200">
+
+        {/* BARRA SUPERIOR */}
         <div
-          style={{ backgroundColor: '#1B396A', color: '#ffffff' }}
-          className="px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 shadow-xl shrink-0 z-30 border-b border-blue-950"
+          style={{ backgroundColor: '#1B396A' }}
+          className="px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0 z-30"
         >
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={onClose}
-              style={{ backgroundColor: '#f59e0b', color: '#0f172a', borderColor: '#fbbf24' }}
-              className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition-all shadow-md active:scale-95 flex items-center gap-2 shrink-0 border cursor-pointer hover:opacity-90"
+              style={{ color: 'rgba(255,255,255,0.9)' }}
+              className="px-3 py-2 rounded-lg text-xs sm:text-sm font-medium hover:opacity-75 transition-opacity flex items-center gap-1.5 shrink-0"
               title="Cerrar vista y volver a la lista de cursos"
             >
-              <span className="text-base leading-none">⬅️</span>
-              <span className="font-black tracking-wide">Regresar</span>
+              <span className="text-sm leading-none">←</span>
+              <span>Regresar</span>
             </button>
+
+            <div style={{ backgroundColor: 'rgba(255,255,255,0.15)' }} className="w-px h-6 hidden sm:block" />
 
             <div className="min-w-0 flex flex-col justify-center">
               <div className="flex items-center gap-2 flex-wrap">
-                <span
-                  style={{ backgroundColor: '#0f274a', color: '#93c5fd', borderColor: '#3b82f6' }}
-                  className="border px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold inline-flex items-center gap-1 shadow-xs"
-                >
-                  <span>📋</span> ITD-AD-FO-8
+                <span style={{ color: 'rgba(255,255,255,0.55)' }} className="text-[10px] sm:text-xs font-medium tracking-wide">
+                  ITD-AD-FO-8 · Rev. 1
                 </span>
+                <span style={{ color: 'rgba(255,255,255,0.3)' }} className="text-[10px]">·</span>
                 <span
-                  style={{ backgroundColor: '#064e3b', color: '#6ee7b7', borderColor: '#10b981' }}
-                  className="border px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold shadow-xs"
-                >
-                  Rev. 1
-                </span>
-                <span
-                  style={{ backgroundColor: '#78350f', color: '#fde68a', borderColor: '#f59e0b' }}
-                  className="border font-mono px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold"
+                  style={{ borderColor: 'rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.85)' }}
+                  className="border font-mono px-1.5 py-0.5 rounded text-[10px] sm:text-xs"
                 >
                   {datosCurso?.folio}
                 </span>
               </div>
-              <h2 className="font-bold text-xs sm:text-sm text-white tracking-wide truncate max-w-sm sm:max-w-md md:max-w-lg mt-0.5" title={datosCurso?.nombre}>
+              <h2 className="font-semibold text-xs sm:text-sm text-white tracking-wide truncate max-w-sm sm:max-w-md md:max-w-lg mt-0.5" title={datosCurso?.nombre}>
                 {datosCurso?.nombre}
               </h2>
             </div>
           </div>
 
+          {/* GRUPO DE EXPORTACIÓN */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              onClick={handlePDF}
-              disabled={descargandoPDF}
-              style={{ backgroundColor: '#dc2626', color: '#ffffff', borderColor: '#ef4444' }}
-              className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2 shadow-lg border active:scale-95 cursor-pointer hover:opacity-90 ${
-                descargandoPDF ? 'opacity-70 cursor-wait' : ''
-              }`}
-              title="Descargar documento oficial en archivo PDF (.pdf)"
-            >
-              <span className="text-base leading-none">{descargandoPDF ? '⏳' : '📄'}</span>
-              <span>{descargandoPDF ? 'Generando...' : 'Descargar PDF'}</span>
-            </button>
-
-            <button
-              onClick={handlePrint}
-              style={{ backgroundColor: '#0284c7', color: '#ffffff', borderColor: '#38bdf8' }}
-              className="px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2 shadow-lg border active:scale-95 cursor-pointer hover:opacity-90"
-              title="Imprimir formato oficial o Guardar como PDF desde el navegador"
-            >
-              <span className="text-base leading-none">🖨️</span>
-              <span>Imprimir / Guardar</span>
-            </button>
-
-            <button
-              onClick={handleExcel}
-              style={{ backgroundColor: '#059669', color: '#ffffff', borderColor: '#34d399' }}
-              className="px-3 sm:px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2 shadow-lg border active:scale-95 cursor-pointer hover:opacity-90"
-              title="Descargar libro en formato Excel (.xlsx)"
-            >
-              <span className="text-base leading-none">📊</span>
-              <span>Excel</span>
-            </button>
+            <div style={{ borderColor: 'rgba(255,255,255,0.25)' }} className="flex items-center rounded-lg overflow-hidden border">
+              <button
+                onClick={handlePDF}
+                disabled={descargandoPDF}
+                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#ffffff', borderColor: 'rgba(255,255,255,0.25)' }}
+                className={`px-3.5 py-2 text-xs sm:text-sm font-medium hover:opacity-75 transition-opacity flex items-center gap-1.5 border-r ${
+                  descargandoPDF ? 'opacity-60 cursor-wait' : ''
+                }`}
+                title="Descargar documento oficial en archivo PDF (.pdf)"
+              >
+                <span className="text-sm leading-none">{descargandoPDF ? '…' : '⭳'}</span>
+                <span>{descargandoPDF ? 'Generando' : 'PDF'}</span>
+              </button>
+              <button
+                onClick={handlePrint}
+                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#ffffff', borderColor: 'rgba(255,255,255,0.25)' }}
+                className="px-3.5 py-2 text-xs sm:text-sm font-medium hover:opacity-75 transition-opacity flex items-center gap-1.5 border-r"
+                title="Imprimir formato oficial o Guardar como PDF desde el navegador"
+              >
+                <span className="text-sm leading-none">⎙</span>
+                <span>Imprimir</span>
+              </button>
+              <button
+                onClick={handleExcel}
+                style={{ backgroundColor: 'rgba(255,255,255,0.12)', color: '#ffffff' }}
+                className="px-3.5 py-2 text-xs sm:text-sm font-medium hover:opacity-75 transition-opacity flex items-center gap-1.5"
+                title="Descargar libro en formato Excel (.xlsx)"
+              >
+                <span className="text-sm leading-none">▤</span>
+                <span>Excel</span>
+              </button>
+            </div>
 
             <button
               onClick={onClose}
-              style={{ backgroundColor: '#334155', color: '#ffffff', borderColor: '#64748b' }}
-              className="px-2.5 py-2 rounded-xl text-xs font-bold transition-all ml-0.5 border cursor-pointer hover:bg-red-600"
+              style={{ color: 'rgba(255,255,255,0.7)' }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:opacity-75 transition-opacity"
               title="Cerrar vista previa (Esc)"
             >
               ✕
@@ -1814,14 +1827,9 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
           </div>
         </div>
 
-        <div
-          style={{ backgroundColor: '#f1f5f9', borderColor: '#cbd5e1' }}
-          className="border-b px-3 sm:px-5 py-2 flex flex-wrap items-center justify-between gap-2.5 text-xs shrink-0 z-20 shadow-xs"
-        >
+        {/* BARRA DE NAVEGACIÓN Y GESTIÓN */}
+        <div className="bg-slate-50 border-b border-slate-200 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs shrink-0 z-20">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-extrabold text-slate-800 mr-1 flex items-center gap-1 text-[11px] sm:text-xs">
-              <span>📄</span> Vistas:
-            </span>
             {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((num) => (
               <button
                 key={num}
@@ -1829,9 +1837,9 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                 style={
                   paginaVista === num
                     ? { backgroundColor: '#1B396A', color: '#ffffff', borderColor: '#1B396A' }
-                    : { backgroundColor: '#ffffff', color: '#334155', borderColor: '#cbd5e1' }
+                    : { backgroundColor: '#ffffff', color: '#475569', borderColor: '#e2e8f0' }
                 }
-                className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer active:scale-95 border shadow-xs"
+                className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors border"
               >
                 Hoja {num} de {totalPaginas}
               </button>
@@ -1842,11 +1850,11 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                 style={
                   paginaVista === 'todas'
                     ? { backgroundColor: '#1B396A', color: '#ffffff', borderColor: '#1B396A' }
-                    : { backgroundColor: '#ffffff', color: '#334155', borderColor: '#cbd5e1' }
+                    : { backgroundColor: '#ffffff', color: '#475569', borderColor: '#e2e8f0' }
                 }
-                className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer active:scale-95 border shadow-xs"
+                className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors border"
               >
-                📑 Ver Todas ({totalPaginas})
+                Ver todas ({totalPaginas})
               </button>
             )}
           </div>
@@ -1855,94 +1863,82 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
             {participantes.length > 15 && (
               <button
                 onClick={handleAjustarAUnaHoja}
-                style={{ backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer border"
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 transition-colors"
                 title="Quitar participantes excedentes para dejar exactamente 15 y que quede en 1 sola hoja"
               >
-                <span>✂️</span>
-                <span>Dejar en 1 Hoja (15 part.)</span>
+                Dejar en 1 hoja (15)
               </button>
             )}
 
             {participantesEliminados.length > 0 && (
               <button
                 onClick={handleRestaurarParticipantes}
-                style={{ backgroundColor: '#d1fae5', color: '#065f46', borderColor: '#6ee7b7' }}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer border"
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 bg-white border border-slate-200 hover:border-slate-300 transition-colors"
                 title="Restaurar participantes que fueron removidos"
               >
-                <span>↩️</span>
-                <span>Restaurar ({participantesEliminados.length})</span>
+                Restaurar ({participantesEliminados.length})
               </button>
             )}
 
             <button
               onClick={handleAbrirModalNuevo}
-              style={{ backgroundColor: '#059669', color: '#ffffff', borderColor: '#10b981' }}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer border"
+              style={{ backgroundColor: '#1B396A', color: '#ffffff' }}
+              className="px-3.5 py-1.5 rounded-md text-xs font-semibold hover:opacity-90 transition-opacity"
               title="Registrar manualmente un nuevo participante en la lista"
             >
-              <span>➕</span>
-              <span>Agregar Participante</span>
+              + Agregar participante
             </button>
 
             <button
               onClick={() => setMostrarGestor(!mostrarGestor)}
               style={
                 mostrarGestor
-                  ? { backgroundColor: '#4338ca', color: '#ffffff', borderColor: '#6366f1' }
-                  : { backgroundColor: '#eef2ff', color: '#312e81', borderColor: '#c7d2fe' }
+                  ? { backgroundColor: '#1e293b', color: '#ffffff', borderColor: '#1e293b' }
+                  : { backgroundColor: '#ffffff', color: '#475569', borderColor: '#e2e8f0' }
               }
-              className="px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer border"
+              className="px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors border"
             >
-              <span>👥</span>
-              <span>Gestionar ({participantes.length})</span>
+              Gestionar ({participantes.length})
             </button>
           </div>
         </div>
 
         {mostrarGestor && (
-          <div className="bg-amber-50/95 border-b border-amber-200 p-3.5 text-xs flex flex-col gap-2 shrink-0 z-10 shadow-xs">
+          <div className="bg-white border-b border-slate-200 p-4 text-xs flex flex-col gap-2.5 shrink-0 z-10">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-amber-950 flex items-center gap-1.5 text-xs sm:text-sm">
-                👥 Participantes en la Lista de Asistencia ({participantes.length} actuales · {totalPaginas} {totalPaginas === 1 ? 'hoja' : 'hojas'})
+              <span className="font-semibold text-slate-700">
+                Participantes en la lista ({participantes.length} · {totalPaginas} {totalPaginas === 1 ? 'hoja' : 'hojas'})
               </span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleAbrirModalNuevo}
-                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+                  style={{ color: '#1B396A' }}
+                  className="px-2.5 py-1 hover:bg-slate-50 border border-slate-200 rounded-md text-xs font-medium transition-colors"
                 >
-                  ➕ Agregar Docente
+                  + Agregar docente
                 </button>
                 <button
                   onClick={() => setMostrarGestor(false)}
-                  className="text-slate-600 hover:text-slate-900 text-sm font-bold px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg cursor-pointer"
+                  className="text-slate-400 hover:text-slate-700 text-xs font-medium px-2 py-1 transition-colors"
                 >
-                  ✕ Cerrar Gestor
+                  Cerrar
                 </button>
               </div>
             </div>
-            <p className="text-slate-600 text-[11px]">
-              Puedes quitar o agregar participantes para ajustar la lista antes de imprimir o descargar:
-            </p>
-            <div className="max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-lg divide-y divide-slate-100 shadow-inner">
+            <div className="max-h-48 overflow-y-auto bg-slate-50 border border-slate-200 rounded-lg divide-y divide-slate-100">
               {participantes.map((p, idx) => (
-                <div key={p.id || idx} className="px-3 py-2 flex items-center justify-between hover:bg-slate-50">
+                <div key={p.id || idx} className="px-3 py-2 flex items-center justify-between hover:bg-white transition-colors">
                   <div className="flex items-center gap-2 flex-wrap min-w-0">
                     <span className="w-5 text-slate-400 font-mono text-[10px]">{idx + 1}.</span>
-                    <span className="font-bold text-slate-800 uppercase">{p.nombre_completo}</span>
-                    <span className="text-slate-500 text-[10px] font-mono bg-slate-100 px-1.5 py-0.5 rounded">
-                      {p.curp || p.rfc}
-                    </span>
-                    <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded font-semibold uppercase">
-                      {p.puesto_departamento}
-                    </span>
+                    <span className="font-medium text-slate-800 uppercase">{p.nombre_completo}</span>
+                    <span className="text-slate-400 text-[10px] font-mono">{p.curp || p.rfc}</span>
+                    <span className="text-[10px] text-slate-500 uppercase">{p.puesto_departamento}</span>
                   </div>
                   <button
                     onClick={() => handleEliminarParticipante(p.id || idx)}
-                    className="px-2.5 py-1 text-red-600 hover:bg-red-50 border border-red-200 rounded-lg text-xs font-bold transition ml-2 shrink-0 cursor-pointer"
+                    className="text-slate-400 hover:text-red-600 text-xs font-medium transition-colors ml-2 shrink-0"
                   >
-                    🗑️ Quitar
+                    Quitar
                   </button>
                 </div>
               ))}
@@ -1950,11 +1946,11 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
           </div>
         )}
 
-        <div className="relative p-3 sm:p-6 overflow-y-auto bg-slate-200/90 flex-1 select-text">
+        {/* CONTENIDO */}
+        <div className="relative p-4 sm:p-8 overflow-y-auto bg-slate-100 flex-1 select-text">
           {cargando || !datosCurso ? (
-            <div className="bg-white p-12 text-center text-slate-500 font-semibold rounded-2xl border max-w-md mx-auto my-12 shadow-sm">
-              <div className="animate-spin text-3xl mb-3">⏳</div>
-              Cargando participantes y formato oficial del curso...
+            <div className="bg-white p-12 text-center text-slate-400 font-medium rounded-xl border border-slate-200 max-w-md mx-auto my-12">
+              Cargando participantes y formato oficial del curso…
             </div>
           ) : (
             <div id="formato-oficial-itd-impresion-contenedor">
@@ -1967,146 +1963,99 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
               )}
             </div>
           )}
-
-          <div className="sticky bottom-4 flex justify-end gap-2 pr-2 pointer-events-none select-none print:hidden">
-            <div className="bg-slate-900/95 backdrop-blur-xs text-white rounded-2xl shadow-2xl p-2 flex items-center gap-2 pointer-events-auto border border-slate-700">
-              <button
-                onClick={onClose}
-                className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs transition shadow-sm cursor-pointer"
-                title="Volver"
-              >
-                ⬅️ Volver
-              </button>
-              <button
-                onClick={handlePDF}
-                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-extrabold rounded-xl text-xs transition shadow-sm cursor-pointer"
-                title="Descargar PDF"
-              >
-                📄 PDF
-              </button>
-              <button
-                onClick={handlePrint}
-                className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-extrabold rounded-xl text-xs transition shadow-sm cursor-pointer"
-                title="Imprimir"
-              >
-                🖨️ Imprimir
-              </button>
-              <button
-                onClick={handleExcel}
-                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-xl text-xs transition shadow-sm cursor-pointer"
-                title="Descargar Excel"
-              >
-                📊 Excel
-              </button>
-            </div>
-          </div>
         </div>
       </div>
 
+      {/* MODAL: NUEVO PARTICIPANTE */}
       {mostrarModalNuevo && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-60 overflow-y-auto"
+          className="fixed inset-0 flex items-center justify-center p-4 z-60 overflow-y-auto"
+          style={{ backgroundColor: 'rgba(2, 6, 23, 0.6)', backdropFilter: 'blur(2px)' }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setMostrarModalNuevo(false);
           }}
         >
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+          <div className="bg-white rounded-xl max-w-xl w-full p-6 sm:p-7 shadow-2xl border border-slate-200 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-5">
               <div>
-                <h3 className="font-bold text-base text-[#1B396A] flex items-center gap-2">
-                  <span>➕</span> Inscripción Extemporánea / Registro de Docente
+                <h3 className="font-semibold text-base text-slate-900">
+                  Inscripción extemporánea / Registro de docente
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Escriba el <strong>Nombre</strong> o <strong>CURP</strong> para buscar en la base de datos y autollenar todos los campos del docente.
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Escriba el nombre o CURP para autocompletar desde la base de datos.
                 </p>
               </div>
               <button
                 onClick={() => setMostrarModalNuevo(false)}
-                className="text-slate-400 hover:text-slate-700 font-bold text-lg p-1 rounded-lg hover:bg-slate-100 transition"
+                className="text-slate-400 hover:text-slate-700 font-medium text-lg p-1 rounded-lg hover:bg-slate-50 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <div className="mb-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2.5 h-2.5 rounded-full ${
-                    catalogoDocentes.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                  }`} />
-                  <div>
-                    <span className="font-bold text-xs text-slate-800">
-                      {catalogoDocentes.length > 0
-                        ? `Base de Datos Supabase: ${catalogoDocentes.length} docentes listos`
-                        : 'Base de Datos Supabase: sin docentes cargados aún'}
-                    </span>
-                    {errorSupabaseMsg && (
-                      <p className="text-[10px] text-rose-600 font-medium">{errorSupabaseMsg}</p>
-                    )}
-                  </div>
-                </div>
+            {/* ESTADO Y HERRAMIENTAS DEL CATÁLOGO */}
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  catalogoDocentes.length > 0 ? 'bg-emerald-500' : 'bg-slate-300'
+                }`} />
+                <span className="text-xs text-slate-500">
+                  {catalogoDocentes.length > 0
+                    ? `${catalogoDocentes.length} docentes en la base de datos`
+                    : 'Sin docentes cargados aún'}
+                </span>
+                {errorSupabaseMsg && (
+                  <span className="text-[10px] text-red-500">— {errorSupabaseMsg}</span>
+                )}
+              </div>
 
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => cargarCatalogoDocentes()}
-                    disabled={cargandoDocentesSupabase}
-                    className="px-2.5 py-1 text-[11px] font-bold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                    title="Recargar docentes desde Supabase"
-                  >
-                    <span>{cargandoDocentesSupabase ? '⏳' : '🔄'}</span>
-                    <span>{cargandoDocentesSupabase ? 'Cargando...' : 'Recargar'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMostrarTodosDocentes((prev) => !prev);
-                      setMostrarSugerencias(true);
-                    }}
-                    className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer ${
-                      mostrarTodosDocentes
-                        ? 'bg-blue-700 text-white'
-                        : 'bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-800'
-                    }`}
-                  >
-                    <span>📋</span>
-                    <span>{mostrarTodosDocentes ? 'Ocultar Catálogo' : `Ver Todo (${catalogoDocentes.length})`}</span>
-                  </button>
-
-                  <label className="px-2.5 py-1 text-[11px] font-bold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1">
-                    <span>📥</span>
-                    <span>Importar Excel</span>
-                    <input
-                      type="file"
-                      accept=".xlsx,.xls,.csv"
-                      onChange={handleImportarArchivoDocentes}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
+              <div className="flex items-center gap-3 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => cargarCatalogoDocentes()}
+                  disabled={cargandoDocentesSupabase}
+                  style={{ color: '#1B396A' }}
+                  className="hover:opacity-75 font-medium transition-opacity disabled:opacity-50"
+                >
+                  {cargandoDocentesSupabase ? 'Cargando…' : 'Recargar'}
+                </button>
+                <span className="text-slate-200">|</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarTodosDocentes((prev) => !prev);
+                    setMostrarSugerencias(true);
+                  }}
+                  style={{ color: '#1B396A' }}
+                  className="font-medium hover:opacity-75 transition-opacity"
+                >
+                  {mostrarTodosDocentes ? 'Ocultar catálogo' : `Ver todo (${catalogoDocentes.length})`}
+                </button>
+                <span className="text-slate-200">|</span>
+                <label style={{ color: '#1B396A' }} className="font-medium cursor-pointer hover:opacity-75 transition-opacity">
+                  Importar Excel
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={handleImportarArchivoDocentes}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </div>
 
-            <form onSubmit={handleGuardarNuevoParticipante} className="space-y-4 text-xs">
+            <form onSubmit={handleGuardarNuevoParticipante} className="space-y-5 text-xs">
+              {/* BÚSQUEDA */}
               <div className="relative">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-semibold text-slate-700">
-                    Escriba Nombre, Apellido o CURP del Docente *
-                  </label>
-                  {catalogoDocentes.length > 0 && (
-                    <span className="text-[10px] text-blue-700 font-medium flex items-center gap-1 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                      {catalogoDocentes.length} docentes disponibles
-                    </span>
-                  )}
-                </div>
+                <label className="block font-medium text-slate-700 mb-1.5">
+                  Nombre, apellido o CURP del docente *
+                </label>
 
                 <div className="relative">
                   <input
                     type="text"
                     required
-                    placeholder="Escriba Nombre o CURP (Ej. JOSÉ..., CARA75..., LAURA AGUIRRE...)"
+                    placeholder="Ej. JOSÉ…, CARA75…, LAURA AGUIRRE…"
                     value={nuevoNombre}
                     onChange={(e) => {
                       const val = e.target.value;
@@ -2115,9 +2064,7 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                       setDocenteSeleccionadoIndex(-1);
                       setDocenteAutocompletado(false);
                     }}
-                    onFocus={() => {
-                      setMostrarSugerencias(true);
-                    }}
+                    onFocus={() => setMostrarSugerencias(true)}
                     onKeyDown={(e) => {
                       if (mostrarSugerencias && sugerenciasDocentes.length > 0) {
                         if (e.key === 'ArrowDown') {
@@ -2134,10 +2081,10 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                         }
                       }
                     }}
-                    className={`w-full rounded-lg border px-3 py-2.5 text-xs uppercase focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition font-medium ${
+                    className={`w-full rounded-lg border px-3.5 py-2.5 text-xs uppercase focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors ${
                       docenteAutocompletado
-                        ? 'border-emerald-400 bg-emerald-50/40 text-emerald-950 ring-2 ring-emerald-300'
-                        : 'border-slate-300 bg-white text-slate-800'
+                        ? 'border-emerald-300 bg-emerald-50'
+                        : 'border-slate-200 bg-white'
                     }`}
                     autoFocus
                     autoComplete="off"
@@ -2165,7 +2112,7 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                         setDocenteAutocompletado(false);
                         setDocenteSeleccionadoNombre('');
                       }}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs px-1 font-bold"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 text-xs font-medium"
                       title="Limpiar campos"
                     >
                       ✕
@@ -2174,15 +2121,10 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                 </div>
 
                 {mostrarSugerencias && sugerenciasDocentes.length > 0 && (
-                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border-2 border-blue-400 rounded-xl shadow-2xl max-h-72 overflow-y-auto divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-3 py-2 bg-gradient-to-r from-[#1B396A] to-blue-800 text-white text-[11px] font-bold uppercase tracking-wider flex justify-between items-center sticky top-0 z-10 shadow-sm">
-                      <span className="flex items-center gap-1.5">
-                        <span>👥</span>
-                        <span>Docentes Encontrados ({sugerenciasDocentes.length})</span>
-                      </span>
-                      <span className="text-[10px] font-normal text-blue-200 bg-white/10 px-2 py-0.5 rounded">
-                        Haz clic para autollenar todos los campos
-                      </span>
+                  <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-lg shadow-lg max-h-72 overflow-y-auto divide-y divide-slate-100">
+                    <div className="px-3.5 py-2 bg-slate-50 text-slate-500 text-[10px] font-medium uppercase tracking-wide flex justify-between items-center sticky top-0">
+                      <span>{sugerenciasDocentes.length} docente(s) encontrados</span>
+                      <span className="text-slate-400 font-normal normal-case">Clic para autollenar</span>
                     </div>
                     {sugerenciasDocentes.map((doc, idx) => (
                       <button
@@ -2194,46 +2136,26 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                         }}
                         onClick={() => handleSeleccionarDocente(doc)}
                         onMouseEnter={() => setDocenteSeleccionadoIndex(idx)}
-                        className={`w-full text-left px-4 py-3 transition flex flex-col gap-1 cursor-pointer border-b border-slate-100 last:border-0 ${
-                          docenteSeleccionadoIndex === idx
-                            ? 'bg-blue-100/95 text-blue-950 border-l-4 border-[#1B396A]'
-                            : 'hover:bg-blue-50/70 text-slate-800'
+                        className={`w-full text-left px-3.5 py-2.5 transition-colors flex flex-col gap-1 border-b border-slate-50 last:border-0 ${
+                          docenteSeleccionadoIndex === idx ? 'bg-slate-50' : 'hover:bg-slate-50'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-[#1B396A] flex items-center gap-1.5">
-                            <span className="text-sm">👤</span>
-                            <span>{doc.nombre_completo}</span>
+                          <span className="font-medium text-xs text-slate-800">{doc.nombre_completo}</span>
+                          <span
+                            style={
+                              doc.es_fd
+                                ? { backgroundColor: '#f1f5f9', color: '#475569' }
+                                : { backgroundColor: 'rgba(27,57,106,0.1)', color: '#1B396A' }
+                            }
+                            className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          >
+                            {doc.es_fd ? 'FD' : 'D'}
                           </span>
-                          <div className="flex items-center gap-1.5">
-                            {doc.nivel_estudios && (
-                              <span className="text-[9px] px-2 py-0.5 rounded font-semibold bg-purple-100 text-purple-800 border border-purple-200">
-                                🎓 {doc.nivel_estudios}
-                              </span>
-                            )}
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                              doc.es_fd ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-blue-100 text-blue-800 border border-blue-300'
-                            }`}>
-                              {doc.es_fd ? 'FD' : 'D'}
-                            </span>
-                          </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600 mt-0.5">
-                          {doc.departamento && (
-                            <span className="font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">🏢 {doc.departamento}</span>
-                          )}
-                          {doc.curp && (
-                            <span className="font-mono text-[10px] text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">CURP: {doc.curp}</span>
-                          )}
-                          {doc.rfc && (
-                            <span className="font-mono text-[10px] text-slate-600">RFC: {doc.rfc}</span>
-                          )}
-                          {doc.telefono && (
-                            <span className="text-[10px] text-slate-600">📞 {doc.telefono}</span>
-                          )}
-                          {doc.email && (
-                            <span className="text-[10px] text-slate-500">✉️ {doc.email}</span>
-                          )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10.5px] text-slate-400">
+                          {doc.departamento && <span>{doc.departamento}</span>}
+                          {doc.curp && <span className="font-mono">{doc.curp}</span>}
                         </div>
                       </button>
                     ))}
@@ -2241,119 +2163,94 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                 )}
 
                 {mostrarSugerencias && nuevoNombre.trim().length >= 1 && sugerenciasDocentes.length === 0 && (
-                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-amber-300 rounded-xl shadow-xl p-3 text-xs text-amber-800">
-                    <p className="font-bold flex items-center gap-1.5">
-                      <span>⚠️</span> No se encontró el docente "{nuevoNombre}" en el catálogo.
-                    </p>
-                    <p className="text-[11px] text-slate-600 mt-1">
-                      Puede llenar los datos manualmente a continuación, o importarlo por Excel arriba.
-                    </p>
+                  <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-lg shadow-lg p-3.5 text-xs text-slate-500">
+                    No se encontró "{nuevoNombre}" en el catálogo. Puede llenar los datos manualmente abajo.
                   </div>
                 )}
 
                 {docenteAutocompletado && (
-                  <p className="text-[11px] text-emerald-800 font-medium mt-1.5 flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 p-2.5 rounded-lg shadow-2xs">
-                    <span className="text-sm">✨</span>
-                    <span><strong>Docente {docenteSeleccionadoNombre || 'seleccionado'}:</strong> CURP, RFC, Correo, Teléfono, Departamento, Puesto, Género y Nivel de Estudios autocompletados desde la base de datos oficial.</span>
+                  <p className="text-[11px] text-emerald-700 font-medium mt-2 flex items-center gap-1.5">
+                    <span>✓</span>
+                    <span>Datos de {docenteSeleccionadoNombre || 'el docente'} autocompletados.</span>
                   </p>
                 )}
               </div>
 
-              <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200 space-y-3">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block">
-                  1. Claves Oficiales (CURP / RFC)
+              {/* CLAVES OFICIALES */}
+              <div className="space-y-3">
+                <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide">
+                  Claves oficiales
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      C.U.R.P. (18 Caracteres)
-                    </label>
+                    <label className="block text-slate-600 mb-1">C.U.R.P.</label>
                     <input
                       type="text"
                       maxLength={18}
-                      placeholder="Ej. CARA750101HDGRNN01"
+                      placeholder="CARA750101HDGRNN01"
                       value={nuevoCurp}
-                      onChange={(e) => {
-                        setNuevoCurp(e.target.value.toUpperCase());
-                        setNuevoCurpEditado(true);
-                      }}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono uppercase bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      onChange={(e) => { setNuevoCurp(e.target.value.toUpperCase()); setNuevoCurpEditado(true); }}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono uppercase bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Se conserva exactamente como en base de datos</span>
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      R.F.C. (Con Homoclave)
-                    </label>
+                    <label className="block text-slate-600 mb-1">R.F.C.</label>
                     <input
                       type="text"
                       maxLength={13}
-                      placeholder="Ej. CARA750101ABC"
+                      placeholder="CARA750101ABC"
                       value={nuevoRfc}
-                      onChange={(e) => {
-                        setNuevoRfc(e.target.value.toUpperCase());
-                        setNuevoRfcEditado(true);
-                      }}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono uppercase bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      onChange={(e) => { setNuevoRfc(e.target.value.toUpperCase()); setNuevoRfcEditado(true); }}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-mono uppercase bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Clave oficial ante el SAT</span>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200 space-y-3">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block">
-                  2. Datos de Contacto
+              {/* CONTACTO */}
+              <div className="space-y-3">
+                <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide">
+                  Datos de contacto
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Correo Electrónico Institucional
-                    </label>
+                    <label className="block text-slate-600 mb-1">Correo institucional</label>
                     <input
                       type="email"
                       placeholder="docente@itdurango.edu.mx"
                       value={nuevoEmail}
-                      onChange={(e) => {
-                        setNuevoEmail(e.target.value.toLowerCase());
-                        setNuevoEmailEditado(true);
-                      }}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      onChange={(e) => { setNuevoEmail(e.target.value.toLowerCase()); setNuevoEmailEditado(true); }}
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     />
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Teléfono / Celular
-                    </label>
+                    <label className="block text-slate-600 mb-1">Teléfono / celular</label>
                     <input
                       type="tel"
-                      placeholder="Ej. 618-123-4567"
+                      placeholder="618-123-4567"
                       value={nuevoTelefono}
                       onChange={(e) => setNuevoTelefono(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200 space-y-3">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block">
-                  3. Adscripción y Puesto en el ITD
+              {/* ADSCRIPCIÓN */}
+              <div className="space-y-3">
+                <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide">
+                  Adscripción y puesto
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Departamento de Adscripción
-                    </label>
+                    <label className="block text-slate-600 mb-1">Departamento</label>
                     <input
                       type="text"
                       list="lista-deptos-itd"
-                      placeholder="Ej. SISTEMAS Y COMPUTACIÓN"
+                      placeholder="Ej. Sistemas y Computación"
                       value={nuevoDepartamento}
                       onChange={(e) => setNuevoDepartamento(e.target.value.toUpperCase())}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs uppercase bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs uppercase bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     />
                     <datalist id="lista-deptos-itd">
                       {(DEPARTAMENTOS_ITD || []).map((dep: string) => (
@@ -2361,113 +2258,78 @@ export default function GenerarListaAsistencia({ cursoId, cursoProp, onClose }: 
                       ))}
                     </datalist>
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Puesto / Categoría / Plaza
-                    </label>
+                    <label className="block text-slate-600 mb-1">Puesto / categoría</label>
                     <input
                       type="text"
-                      placeholder="Ej. PROFESOR DE CARRERA TITULAR C"
+                      placeholder="Ej. Profesor de carrera titular C"
                       value={nuevoPuesto}
                       onChange={(e) => setNuevoPuesto(e.target.value.toUpperCase())}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs uppercase bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs uppercase bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     />
                   </div>
                 </div>
 
-                <div className="pt-1">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Nivel de Puesto (D / FD)
-                    </label>
-                    <div className="flex gap-4 pt-1.5">
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="nivelPuesto"
-                          value="D"
-                          checked={nuevoTipo === 'D'}
-                          onChange={() => setNuevoTipo('D')}
-                          className="text-blue-600"
-                        />
-                        <span className="font-semibold text-slate-800 text-[11px]">D (Docente)</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="nivelPuesto"
-                          value="FD"
-                          checked={nuevoTipo === 'FD'}
-                          onChange={() => setNuevoTipo('FD')}
-                          className="text-blue-600"
-                        />
-                        <span className="font-semibold text-slate-800 text-[11px]">FD (Funcionario Docente)</span>
-                      </label>
-                    </div>
-                  </div>
+                <div className="flex gap-5 pt-1">
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="nivelPuesto" value="D" checked={nuevoTipo === 'D'} onChange={() => setNuevoTipo('D')} />
+                    <span className="text-slate-700">D — Docente</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="radio" name="nivelPuesto" value="FD" checked={nuevoTipo === 'FD'} onChange={() => setNuevoTipo('FD')} />
+                    <span className="text-slate-700">FD — Funcionario Docente</span>
+                  </label>
                 </div>
               </div>
 
-              <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200 space-y-3">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block">
-                  4. Nivel de Estudios y Datos Personales
+              {/* ESTUDIOS Y DATOS PERSONALES */}
+              <div className="space-y-3">
+                <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide">
+                  Nivel de estudios y datos personales
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Nivel de Estudios / Grado Académico
-                    </label>
+                    <label className="block text-slate-600 mb-1">Grado académico</label>
                     <select
                       value={nuevoNivelEstudios}
                       onChange={(e) => setNuevoNivelEstudios(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     >
                       <option value="Licenciatura">Licenciatura</option>
                       <option value="Especialidad">Especialidad</option>
                       <option value="Maestría">Maestría</option>
                       <option value="Doctorado">Doctorado</option>
                     </select>
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Nivel académico oficial registrado</span>
                   </div>
-
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Género (Hombre / Mujer)
-                    </label>
+                    <label className="block text-slate-600 mb-1">Género</label>
                     <select
                       value={nuevoGenero}
                       onChange={(e) => setNuevoGenero(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-900 focus:border-blue-900 outline-none transition-colors"
                     >
-                      <option value="Masculino">Masculino (Hombre)</option>
-                      <option value="Femenino">Femenino (Mujer)</option>
+                      <option value="Masculino">Masculino</option>
+                      <option value="Femenino">Femenino</option>
                       <option value="Otro">Otro</option>
                     </select>
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Para registros oficiales TecNM</span>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 text-[11px] text-emerald-900 flex items-center gap-2">
-                <span className="text-base">💾</span>
-                <span>Al guardar, el registro completo quedará almacenado de forma permanente en la base de datos de docentes e inscrito en este curso.</span>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setMostrarModalNuevo(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg transition text-xs cursor-pointer"
+                  className="px-4 py-2 text-slate-500 hover:text-slate-700 font-medium text-xs transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#1B396A] hover:bg-[#152e55] text-white font-bold rounded-lg transition shadow-sm text-xs flex items-center gap-1.5 cursor-pointer"
+                  style={{ backgroundColor: '#1B396A', color: '#ffffff' }}
+                  className="px-5 py-2 hover:opacity-90 font-semibold rounded-lg text-xs transition-opacity"
                 >
-                  <span>💾</span>
-                  <span>Guardar e Inscribir Docente</span>
+                  Guardar e inscribir
                 </button>
               </div>
             </form>
