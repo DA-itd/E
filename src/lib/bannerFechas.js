@@ -1,73 +1,708 @@
 // src/lib/bannerFechas.js
-// Config de "banners" especiales para el login. Cada entrada define un
-// rango de fechas (mes-día, sin año) y cómo se ve el banner. Para
-// agregar, quitar o mover una fecha, solo edita este arreglo — no hace
-// falta tocar Login.jsx.
+// Calendario Institucional de Fechas Conmemorativas y Efemérides
+// para el Instituto Tecnológico de Durango (TecNM / ITD).
 //
-// El orden importa: se usa la PRIMERA que haga match, así que las fechas
-// más específicas (un solo día) deben ir ANTES que los rangos largos que
-// las contienen (ej. "16 de septiembre" antes que "todo septiembre").
-//
-// Nota: la comparación es por texto "MM-DD", así que no uses un rango que
-// cruce el fin de año (ej. inicioMD:'12-20' finMD:'01-05' NO funciona —
-// divide eso en dos entradas, una que termine en '12-31' y otra que
-// empiece en '01-01').
+// Regla de prioridad: Las fechas específicas de un solo día o período corto
+// van ANTES que los rangos del mes completo, para que en ese día especial
+// se muestre la efeméride particular y el resto del mes la conmemoración mensual.
+
 export const FECHAS_ESPECIALES = [
+  // =========================================================================
+  // ENERO
+  // =========================================================================
   {
-    id: 'independencia',
-    inicioMD: '09-16',
-    finMD: '09-16',
+    id: 'ano-nuevo',
+    mes: 1,
+    inicioMD: '01-01',
+    finMD: '01-01',
+    icono: '🎆',
+    titulo: '1 de enero — ¡Feliz Año Nuevo!',
+    texto: 'Bienvenida comunidad docente del ITD a un nuevo ciclo de éxitos y superación académica.',
+    bg: 'linear-gradient(90deg, #1e3a8a, #0369a1)',
+    color: '#ffffff',
+    borde: '#38bdf8',
+  },
+  {
+    id: 'reyes-magos',
+    mes: 1,
+    inicioMD: '01-06',
+    finMD: '01-06',
+    icono: '👑',
+    titulo: '6 de enero — Día de Reyes Magos',
+    texto: 'Conservando nuestras bellas tradiciones familiares y de fraternidad.',
+    bg: 'linear-gradient(90deg, #FEF3C7, #FDE68A)',
+    color: '#78350F',
+    borde: '#F59E0B',
+  },
+  {
+    id: 'educacion-ambiental',
+    mes: 1,
+    inicioMD: '01-26',
+    finMD: '01-26',
+    icono: '🌿',
+    titulo: '26 de enero — Día Mundial de la Educación Ambiental',
+    texto: 'Fomentando la sustentabilidad, el cuidado del planeta y la conciencia ecológica en nuestras aulas.',
+    bg: 'linear-gradient(90deg, #DCFCE7, #BBF7D0)',
+    color: '#14532D',
+    borde: '#22C55E',
+  },
+  {
+    id: 'mes-enero',
+    mes: 1,
+    inicioMD: '01-01',
+    finMD: '01-31',
+    icono: '❄️',
+    titulo: 'Enero — Inicio de Ciclo y Actualización Docente',
+    texto: 'Emprendemos nuevos proyectos y fortalecemos nuestras competencias pedagógicas.',
+    bg: 'linear-gradient(90deg, #F0F9FF, #E0F2FE)',
+    color: '#075985',
+    borde: '#7DD3FC',
+  },
+
+  // =========================================================================
+  // FEBRERO
+  // =========================================================================
+  {
+    id: 'constitucion-mexico',
+    mes: 2,
+    inicioMD: '02-05',
+    finMD: '02-05',
+    icono: '📜🇲🇽',
+    titulo: '5 de febrero — Aniversario de la Constitución Política de México',
+    texto: 'Conmemoramos la promulgación de la Carta Magna de 1917 que rige los derechos y la educación nacional.',
+    bg: 'linear-gradient(90deg, #14532D 0%, #FFFFFF 50%, #991B1B 100%)',
+    color: '#0f172a',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'mujer-nina-ciencia',
+    mes: 2,
+    inicioMD: '02-11',
+    finMD: '02-11',
+    icono: '🔬👩‍🔬',
+    titulo: '11 de febrero — Día Internacional de la Mujer y la Niña en la Ciencia',
+    texto: 'Impulsando las vocaciones científicas, tecnológicas e ingenieriles sin distinción de género.',
+    bg: 'linear-gradient(90deg, #F3E8FF, #E9D5FF)',
+    color: '#581C87',
+    borde: '#A855F7',
+  },
+  {
+    id: 'amor-amistad',
+    mes: 2,
+    inicioMD: '02-14',
+    finMD: '02-14',
+    icono: '❤️',
+    titulo: '14 de febrero — Día del Amor y la Amistad',
+    texto: 'Celebrando la fraternidad, el compañerismo y los lazos que unen a la familia técnica del ITD.',
+    bg: 'linear-gradient(90deg, #FFE4E6, #FECDD3)',
+    color: '#9F1239',
+    borde: '#FB7185',
+  },
+  {
+    id: 'dia-bandera',
+    mes: 2,
+    inicioMD: '02-24',
+    finMD: '02-24',
     icono: '🇲🇽',
-    texto: '16 de septiembre — Día de la Independencia. ¡Viva México!',
-    bg: 'linear-gradient(90deg, #639922, #ffffff 55%, #E24B4A)',
-    color: '#173404',
+    titulo: '24 de febrero — Día de la Bandera Nacional',
+    texto: 'Honramos al lábaro patrio, símbolo supremo de nuestra soberanía, historia e identidad nacional.',
+    bg: 'linear-gradient(90deg, #15803D 0%, #FFFFFF 50%, #DC2626 100%)',
+    color: '#0f172a',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'mes-febrero',
+    mes: 2,
+    inicioMD: '02-01',
+    finMD: '02-29',
+    icono: '🤝',
+    titulo: 'Febrero — Mes de la Lealtad Institucional y Fraternidad',
+    texto: 'Unidos en el compromiso por la excelencia académica y la formación integral de nuestros estudiantes.',
+    bg: 'linear-gradient(90deg, #FDF2F8, #FCE7F3)',
+    color: '#831843',
+    borde: '#F472B6',
+  },
+
+  // =========================================================================
+  // MARZO
+  // =========================================================================
+  {
+    id: 'dia-mujer',
+    mes: 3,
+    inicioMD: '03-08',
+    finMD: '03-08',
+    icono: '💜👩‍🏫',
+    titulo: '8 de marzo — Día Internacional de la Mujer',
+    texto: 'Reconocimiento sincero a todas las maestras, investigadoras y trabajadoras del ITD por su invaluable aporte.',
+    bg: 'linear-gradient(90deg, #6B21A8, #9333EA)',
+    color: '#ffffff',
+    borde: '#C084FC',
+  },
+  {
+    id: 'primavera-juarez',
+    mes: 3,
+    inicioMD: '03-21',
+    finMD: '03-21',
+    icono: '🌸🇲🇽',
+    titulo: '21 de marzo — Natalicio de Benito Juárez y Bienvenida a la Primavera',
+    texto: '«Entre los individuos, como entre las naciones, el respeto al derecho ajeno es la paz».',
+    bg: 'linear-gradient(90deg, #FEF08A, #BBF7D0)',
+    color: '#14532D',
+    borde: '#22C55E',
+  },
+  {
+    id: 'dia-agua',
+    mes: 3,
+    inicioMD: '03-22',
+    finMD: '03-22',
+    icono: '💧',
+    titulo: '22 de marzo — Día Mundial del Agua',
+    texto: 'Cuidar el agua es compromiso de todos. Promovamos el uso responsable del vital líquido.',
+    bg: 'linear-gradient(90deg, #E0F2FE, #BAE6FD)',
+    color: '#075985',
+    borde: '#38BDF8',
+  },
+  {
+    id: 'mes-marzo',
+    mes: 3,
+    inicioMD: '03-01',
+    finMD: '03-31',
+    icono: '🌸',
+    titulo: 'Marzo — Mes de la Mujer, la Renovación y la Primavera',
+    texto: 'Tiempo de floración, florecimiento de ideas y crecimiento en nuestro quehacer educativo.',
+    bg: 'linear-gradient(90deg, #FAF5FF, #F3E8FF)',
+    color: '#6B21A8',
+    borde: '#C084FC',
+  },
+
+  // =========================================================================
+  // ABRIL
+  // =========================================================================
+  {
+    id: 'dia-tierra',
+    mes: 4,
+    inicioMD: '04-22',
+    finMD: '04-22',
+    icono: '🌍',
+    titulo: '22 de abril — Día Internacional de la Madre Tierra',
+    texto: 'Proteger nuestro entorno y promover la ingeniería verde para las futuras generaciones.',
+    bg: 'linear-gradient(90deg, #DCFCE7, #86EFAC)',
+    color: '#14532D',
+    borde: '#16A34A',
+  },
+  {
+    id: 'dia-libro',
+    mes: 4,
+    inicioMD: '04-23',
+    finMD: '04-23',
+    icono: '📚',
+    titulo: '23 de abril — Día Mundial del Libro y del Derecho de Autor',
+    texto: 'La lectura nutre el espíritu crítico y enriquece la cátedra universitaria.',
+    bg: 'linear-gradient(90deg, #FEF3C7, #FDE68A)',
+    color: '#78350F',
+    borde: '#D97706',
+  },
+  {
+    id: 'dia-nino',
+    mes: 4,
+    inicioMD: '04-30',
+    finMD: '04-30',
+    icono: '🎈',
+    titulo: '30 de abril — Día de las Niñas y los Niños',
+    texto: 'Por una educación de calidad que inspire la curiosidad de las infancias de nuestro país.',
+    bg: 'linear-gradient(90deg, #FED7AA, #FEF08A)',
+    color: '#7C2D12',
+    borde: '#EA580C',
+  },
+  {
+    id: 'mes-abril',
+    mes: 4,
+    inicioMD: '04-01',
+    finMD: '04-30',
+    icono: '📖',
+    titulo: 'Abril — Mes de la Ciencia, la Niñez y la Cultura del Saber',
+    texto: 'Impulsando la investigación y el conocimiento tecnológico al servicio de la sociedad.',
+    bg: 'linear-gradient(90deg, #FFFBEB, #FEF3C7)',
+    color: '#854D0E',
+    borde: '#FBBF24',
+  },
+
+  // =========================================================================
+  // MAYO
+  // =========================================================================
+  {
+    id: 'dia-trabajo',
+    mes: 5,
+    inicioMD: '05-01',
+    finMD: '05-01',
+    icono: '⚒️',
+    titulo: '1 de mayo — Día Internacional del Trabajo',
+    texto: 'Dignificando el esfuerzo y la labor de toda la planta trabajadora y docente del ITD.',
+    bg: 'linear-gradient(90deg, #FEE2E2, #FECACA)',
+    color: '#991B1B',
+    borde: '#EF4444',
+  },
+  {
+    id: 'batalla-puebla',
+    mes: 5,
+    inicioMD: '05-05',
+    finMD: '05-05',
+    icono: '🇲🇽',
+    titulo: '5 de mayo — Conmemoración de la Batalla de Puebla',
+    texto: 'Gesta heroica de 1862 que defendió con valentía la soberanía de la patria.',
+    bg: 'linear-gradient(90deg, #15803D 0%, #FFFFFF 50%, #B91C1C 100%)',
+    color: '#1F2937',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'dia-madre',
+    mes: 5,
+    inicioMD: '05-10',
+    finMD: '05-10',
+    icono: '💐',
+    titulo: '10 de mayo — ¡Feliz Día de las Madres!',
+    texto: 'Todo nuestro cariño y reconocimiento a las mamás maestras, administrativas y colaboradoras del ITD.',
+    bg: 'linear-gradient(90deg, #FBCFE8, #F472B6)',
+    color: '#831843',
+    borde: '#DB2777',
+  },
+  {
+    id: 'dia-maestro',
+    mes: 5,
+    inicioMD: '05-15',
+    finMD: '05-15',
+    icono: '🍎👨‍🏫👩‍🏫',
+    titulo: '15 de mayo — ¡Feliz Día del Maestro y la Maestra!',
+    texto: 'Gracias por su entrega, vocación y pasión por formar a los mejores ingenieros de México. ¡Orgullo ITD!',
+    bg: 'linear-gradient(90deg, #781834, #1B396A)',
+    color: '#ffffff',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'dia-estudiante',
+    mes: 5,
+    inicioMD: '05-23',
+    finMD: '05-23',
+    icono: '🎓',
+    titulo: '23 de mayo — Día del Estudiante',
+    texto: 'Los estudiantes son el corazón y la razón de ser de nuestra querida institución.',
+    bg: 'linear-gradient(90deg, #E0E7FF, #C7D2FE)',
+    color: '#3730A3',
+    borde: '#6366F1',
+  },
+  {
+    id: 'mes-mayo',
+    mes: 5,
+    inicioMD: '05-01',
+    finMD: '05-31',
+    icono: '🎓',
+    titulo: 'Mayo — Mes de la Vocación y Reconocimiento Docente',
+    texto: 'Celebrando con gratitud a quienes dejan huella con su enseñanza diaria.',
+    bg: 'linear-gradient(90deg, #EFF6FF, #DBEAFE)',
+    color: '#1E40AF',
+    borde: '#3B82F6',
+  },
+
+  // =========================================================================
+  // JUNIO
+  // =========================================================================
+  {
+    id: 'medio-ambiente',
+    mes: 6,
+    inicioMD: '06-05',
+    finMD: '06-05',
+    icono: '🌳',
+    titulo: '5 de junio — Día Mundial del Medio Ambiente',
+    texto: 'Comprometidos con el desarrollo sustentable y la preservación de los recursos naturales.',
+    bg: 'linear-gradient(90deg, #DCFCE7, #86EFAC)',
+    color: '#15803D',
+    borde: '#22C55E',
+  },
+  {
+    id: 'dia-tecnm',
+    mes: 6,
+    inicioMD: '06-08',
+    finMD: '06-08',
+    icono: '🇲🇽🎓',
+    titulo: '8 de junio — Día de la Creación del TecNM',
+    texto: 'Celebrando el sistema de educación superior tecnológica más grande de América Latina.',
+    bg: 'linear-gradient(90deg, #1B396A, #3B82F6)',
+    color: '#ffffff',
+    borde: '#93C5FD',
+  },
+  {
+    id: 'dia-padre',
+    mes: 6,
+    inicioMD: '06-15',
+    finMD: '06-21',
+    icono: '👔',
+    titulo: 'Tercer domingo de junio — Día del Padre',
+    texto: 'Felicidades a los papás docentes y trabajadores que inspiran con su ejemplo y dedicación.',
+    bg: 'linear-gradient(90deg, #E0F2FE, #BAE6FD)',
+    color: '#075985',
+    borde: '#38BDF8',
+  },
+  {
+    id: 'mes-junio',
+    mes: 6,
+    inicioMD: '06-01',
+    finMD: '06-30',
+    icono: '🌱',
+    titulo: 'Junio — Mes del Medio Ambiente y Orgullo TecNM',
+    texto: 'Construyendo un futuro tecnológico responsable y amigable con el entorno.',
+    bg: 'linear-gradient(90deg, #F0FDF4, #DCFCE7)',
+    color: '#166534',
+    borde: '#4ADE80',
+  },
+
+  // =========================================================================
+  // JULIO
+  // =========================================================================
+  {
+    id: 'dia-ingeniero',
+    mes: 7,
+    inicioMD: '07-01',
+    finMD: '07-01',
+    icono: '📐⚙️',
+    titulo: '1 de julio — Día del Ingeniero en México',
+    texto: 'Homenaje a los constructores del progreso, la tecnología y el desarrollo nacional. ¡Orgullo de las ingenierías del ITD!',
+    bg: 'linear-gradient(90deg, #1B396A, #D4AF37)',
+    color: '#ffffff',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'fundacion-durango',
+    mes: 7,
+    inicioMD: '07-08',
+    finMD: '07-08',
+    icono: '🏛️',
+    titulo: '8 de julio — Aniversario de la Fundación de la Ciudad de Durango (1563)',
+    texto: 'Celebrando las raíces coloniales, históricas y culturales de nuestra hermosa capital duranguense.',
+    bg: 'linear-gradient(90deg, #FEF3C7, #FDE68A)',
+    color: '#78350F',
+    borde: '#F59E0B',
+  },
+  {
+    id: 'mes-julio',
+    mes: 7,
+    inicioMD: '07-01',
+    finMD: '07-31',
+    icono: '📜',
+    titulo: 'Julio — Mes de Graduaciones y Cierre de Ciclo Escolar',
+    texto: 'Concluyendo metas académicas y preparando nuevas generaciones de profesionistas destacados.',
+    bg: 'linear-gradient(90deg, #F8FAFC, #F1F5F9)',
+    color: '#334155',
+    borde: '#94A3B8',
+  },
+
+  // =========================================================================
+  // AGOSTO
+  // =========================================================================
+  {
+    id: 'aniversario-itd',
+    mes: 8,
+    inicioMD: '08-02',
+    finMD: '08-02',
+    icono: '🎉🏛️',
+    titulo: '2 de agosto — ¡Gran Aniversario del ITD (Fundado en 1948)!',
+    texto: 'Primer tecnológico de la provincia mexicana. 78+ años de excelencia académica, tradición y orgullo Guinda y Blanco.',
+    bg: 'linear-gradient(90deg, #781834, #D4AF37)',
+    color: '#ffffff',
+    borde: '#FDE047',
+  },
+  {
+    id: 'dia-juventud',
+    mes: 8,
+    inicioMD: '08-12',
+    finMD: '08-12',
+    icono: '🌟',
+    titulo: '12 de agosto — Día Internacional de la Juventud',
+    texto: 'La fuerza transformadora de nuestras juventudes impulsa el progreso tecnológico de nuestra región.',
+    bg: 'linear-gradient(90deg, #E0E7FF, #C7D2FE)',
+    color: '#3730A3',
+    borde: '#818CF8',
+  },
+  {
+    id: 'dia-abuelos',
+    mes: 8,
+    inicioMD: '08-28',
+    finMD: '08-28',
+    icono: '👵👴',
+    titulo: '28 de agosto — Día del Adulto Mayor y los Abuelos',
+    texto: 'Sabiduría, experiencia y cariño que fundamentan nuestras familias y sociedad.',
+    bg: 'linear-gradient(90deg, #FEF3C7, #FDE68A)',
+    color: '#78350F',
+    borde: '#F59E0B',
+  },
+  {
+    id: 'mes-agosto',
+    mes: 8,
+    inicioMD: '08-01',
+    finMD: '08-31',
+    icono: '🏛️',
+    titulo: 'Agosto — Mes del Aniversario Institucional del ITD',
+    texto: 'Festejamos con júbilo nuestra historia técnica y la fundación del glorioso Instituto Tecnológico de Durango.',
+    bg: 'linear-gradient(90deg, #FFF7ED, #FFEDD5)',
+    color: '#781834',
+    borde: '#FDBA74',
+  },
+
+  // =========================================================================
+  // SEPTIEMBRE
+  // =========================================================================
+  {
+    id: 'ninos-heroes',
+    mes: 9,
+    inicioMD: '09-13',
+    finMD: '09-13',
+    icono: '🇲🇽',
+    titulo: '13 de septiembre — Gesta Heroica de los Niños Héroes',
+    texto: 'Homenaje a los cadetes del Colegio Militar que defendieron con honor la patria en el Castillo de Chapultepec (1847).',
+    bg: 'linear-gradient(90deg, #F1F5F9, #E2E8F0)',
+    color: '#0F172A',
+    borde: '#94A3B8',
+  },
+  {
+    id: 'grito-independencia',
+    mes: 9,
+    inicioMD: '09-15',
+    finMD: '09-16',
+    icono: '🇲🇽🔔',
+    titulo: '15 y 16 de septiembre — ¡Viva México! Aniversario de la Independencia',
+    texto: 'Honramos a los héroes de la Independencia que nos dieron patria y libertad. ¡Viva México y el orgullo nacional!',
+    bg: 'linear-gradient(90deg, #15803D 0%, #FFFFFF 50%, #DC2626 100%)',
+    color: '#0F172A',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'proteccion-civil',
+    mes: 9,
+    inicioMD: '09-19',
+    finMD: '09-19',
+    icono: '🚨🤝',
+    titulo: '19 de septiembre — Día Nacional de Protección Civil',
+    texto: 'Fomentando la prevención, la solidaridad comunitaria y la cultura de resiliencia ante emergencias.',
+    bg: 'linear-gradient(90deg, #FED7AA, #FDBA74)',
+    color: '#7C2D12',
+    borde: '#EA580C',
   },
   {
     id: 'mes-patrio',
+    mes: 9,
     inicioMD: '09-01',
     finMD: '09-30',
     icono: '🇲🇽',
-    texto: 'Septiembre, mes de la Patria',
-    bg: '#EAF3DE',
+    titulo: 'Septiembre — Mes de la Patria y Orgullo Mexicano',
+    texto: 'Celebramos nuestras raíces, historia y fervor patrio como comunidad técnica duranguense.',
+    bg: 'linear-gradient(90deg, #EAF3DE, #DCFCE7)',
     color: '#173404',
+    borde: '#4ADE80',
+  },
+
+  // =========================================================================
+  // OCTUBRE
+  // =========================================================================
+  {
+    id: 'diversidad-cultural',
+    mes: 10,
+    inicioMD: '10-12',
+    finMD: '10-12',
+    icono: '🌎',
+    titulo: '12 de octubre — Día de la Diversidad Cultural',
+    texto: 'Valorando la riqueza de nuestras comunidades originarias y el encuentro de dos mundos.',
+    bg: 'linear-gradient(90deg, #FEF3C7, #FDE68A)',
+    color: '#78350F',
+    borde: '#D97706',
   },
   {
-    id: 'aniversario-itd',
-    inicioMD: '08-02',
-    finMD: '08-02',
-    icono: '🎉',
-    texto: '2 de agosto — Aniversario del Instituto Tecnológico de Durango',
-    bg: '#FAC775',
-    color: '#412402',
+    id: 'dia-cancer-mama',
+    mes: 10,
+    inicioMD: '10-19',
+    finMD: '10-19',
+    icono: '🎗️💗',
+    titulo: '19 de octubre — Día Internacional de la Lucha contra el Cáncer de Mama',
+    texto: 'La autoexploración y detección temprana salvan vidas. Cuidarte es amarte. Abrazo solidario a todas las guerreras.',
+    bg: 'linear-gradient(90deg, #F43F5E, #EC4899)',
+    color: '#ffffff',
+    borde: '#FDA4AF',
   },
   {
-    id: 'primavera',
-    inicioMD: '03-21',
-    finMD: '03-21',
-    icono: '🌸',
-    texto: '21 de marzo — ¡Bienvenida primavera!',
-    bg: '#F0997B',
-    color: '#4A1B0C',
+    id: 'dia-onu',
+    mes: 10,
+    inicioMD: '10-24',
+    finMD: '10-24',
+    icono: '🌐',
+    titulo: '24 de octubre — Día de las Naciones Unidas (ONU)',
+    texto: 'Trabajando en armonía por la paz mundial, los derechos humanos y el progreso colectivo.',
+    bg: 'linear-gradient(90deg, #E0F2FE, #BAE6FD)',
+    color: '#075985',
+    borde: '#38BDF8',
   },
   {
     id: 'mes-cancer-mama',
+    mes: 10,
     inicioMD: '10-01',
     finMD: '10-31',
     icono: '🎗️',
-    texto: 'Octubre, mes de sensibilización sobre el cáncer de mama',
-    bg: 'linear-gradient(90deg, #F4C0D1, #ED93B1)',
-    color: '#72243E',
+    titulo: 'Octubre Rosa — Mes de Sensibilización sobre el Cáncer de Mama',
+    texto: 'Sumémonos a la concientización y prevención. Cuidar tu salud es un acto de amor propio.',
+    bg: 'linear-gradient(90deg, #FCE7F3, #FBCFE8)',
+    color: '#831843',
+    borde: '#F472B6',
+  },
+
+  // =========================================================================
+  // NOVIEMBRE
+  // =========================================================================
+  {
+    id: 'dia-muertos',
+    mes: 11,
+    inicioMD: '11-01',
+    finMD: '11-02',
+    icono: '🏵️💀🕯️',
+    titulo: '1 y 2 de noviembre — Tradicional Día de Muertos',
+    texto: 'Honramos la memoria y legado de nuestros seres queridos con flor de cempasúchil, altares y profundo respeto.',
+    bg: 'linear-gradient(90deg, #EA580C, #9A3412)',
+    color: '#ffffff',
+    borde: '#FDBA74',
+  },
+  {
+    id: 'revolucion-mexicana',
+    mes: 11,
+    inicioMD: '11-20',
+    finMD: '11-20',
+    icono: '🇲🇽🐎',
+    titulo: '20 de noviembre — Aniversario del Inicio de la Revolución Mexicana (1910)',
+    texto: 'Recordamos la lucha por la justicia social, la democracia y los derechos agrarios y laborales de nuestro pueblo.',
+    bg: 'linear-gradient(90deg, #15803D 0%, #FFFFFF 50%, #B91C1C 100%)',
+    color: '#1F2937',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'dia-naranja',
+    mes: 11,
+    inicioMD: '11-25',
+    finMD: '11-25',
+    icono: '🧡',
+    titulo: '25 de noviembre — Día Internacional de la Eliminación de la Violencia contra las Mujeres',
+    texto: 'En el ITD promovemos una convivencia libre de violencia, con equidad, respeto irrestricto y justicia.',
+    bg: 'linear-gradient(90deg, #FFEDD5, #FED7AA)',
+    color: '#9A3412',
+    borde: '#FB923C',
+  },
+  {
+    id: 'mes-noviembre',
+    mes: 11,
+    inicioMD: '11-01',
+    finMD: '11-30',
+    icono: '🏵️',
+    titulo: 'Noviembre — Mes de las Tradiciones y la Revolución Mexicana',
+    texto: 'Riqueza cultural, historia y conmemoración de los momentos que transformaron a nuestra nación.',
+    bg: 'linear-gradient(90deg, #FFF7ED, #FFEDD5)',
+    color: '#9A3412',
+    borde: '#FB923C',
+  },
+
+  // =========================================================================
+  // DICIEMBRE
+  // =========================================================================
+  {
+    id: 'inclusion-discapacidad',
+    mes: 12,
+    inicioMD: '12-03',
+    finMD: '12-03',
+    icono: '♿🤝',
+    titulo: '3 de diciembre — Día Internacional de las Personas con Discapacidad',
+    texto: 'Construyendo un Tecnológico incluyente, accesible y con igualdad de oportunidades para todos.',
+    bg: 'linear-gradient(90deg, #E0E7FF, #C7D2FE)',
+    color: '#3730A3',
+    borde: '#818CF8',
+  },
+  {
+    id: 'derechos-humanos',
+    mes: 12,
+    inicioMD: '12-10',
+    finMD: '12-10',
+    icono: '🕊️',
+    titulo: '10 de diciembre — Día de los Derechos Humanos',
+    texto: 'La dignidad y los derechos fundamentales son la base de la libertad, la justicia y la paz en el mundo.',
+    bg: 'linear-gradient(90deg, #F0FDF4, #DCFCE7)',
+    color: '#166534',
+    borde: '#4ADE80',
+  },
+  {
+    id: 'navidad',
+    mes: 12,
+    inicioMD: '12-24',
+    finMD: '12-25',
+    icono: '🎄⭐',
+    titulo: '24 y 25 de diciembre — ¡Feliz Nochebuena y Navidad!',
+    texto: 'Que la paz, el amor y la armonía reinen en los hogares de todos los docentes y familias del ITD.',
+    bg: 'linear-gradient(90deg, #991B1B, #166534)',
+    color: '#ffffff',
+    borde: '#FDE047',
+  },
+  {
+    id: 'fin-ano',
+    mes: 12,
+    inicioMD: '12-31',
+    finMD: '12-31',
+    icono: '🎆🥂',
+    titulo: '31 de diciembre — ¡Gracias por otro gran año! Feliz y Próspero Año Nuevo',
+    texto: 'Agradecemos su compromiso educativo durante este año y deseamos grandes bendiciones para el que inicia.',
+    bg: 'linear-gradient(90deg, #1E1B4B, #781834)',
+    color: '#ffffff',
+    borde: '#D4AF37',
+  },
+  {
+    id: 'mes-diciembre',
+    mes: 12,
+    inicioMD: '12-01',
+    finMD: '12-31',
+    icono: '❄️🎄',
+    titulo: 'Diciembre — Mes de la Fraternidad, Paz y Fiestas Decembrinas',
+    texto: 'Tiempo de reflexión, agradecimiento y unión en nuestra gran familia técnica.',
+    bg: 'linear-gradient(90deg, #EFF6FF, #DBEAFE)',
+    color: '#1E3A8A',
+    borde: '#60A5FA',
   },
 ]
 
-function hoyComoMD() {
-  const hoy = new Date()
-  const mm = String(hoy.getMonth() + 1).padStart(2, '0')
-  const dd = String(hoy.getDate()).padStart(2, '0')
+export function hoyComoMD(fecha = new Date()) {
+  const mm = String(fecha.getMonth() + 1).padStart(2, '0')
+  const dd = String(fecha.getDate()).padStart(2, '0')
   return `${mm}-${dd}`
 }
 
-export function obtenerBannerFechaEspecial() {
-  const hoyMD = hoyComoMD()
+export function obtenerBannerFechaEspecial(fecha = new Date()) {
+  const hoyMD = hoyComoMD(fecha)
   return FECHAS_ESPECIALES.find((f) => hoyMD >= f.inicioMD && hoyMD <= f.finMD) || null
+}
+
+export const NOMBRES_MESES = [
+  '',
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+]
+
+export function obtenerFechasPorMes() {
+  const agrupadas = {}
+  for (let m = 1; m <= 12; m++) {
+    agrupadas[m] = {
+      numero: m,
+      nombre: NOMBRES_MESES[m],
+      fechas: FECHAS_ESPECIALES.filter((f) => f.mes === m),
+    }
+  }
+  return agrupadas
 }

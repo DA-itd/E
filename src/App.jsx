@@ -18,7 +18,8 @@ import AdminReportes from './components/AdminReportes'
 import AdminReporteRH from './components/AdminReporteRH'
 import AdminProgramaInstitucional from './components/AdminProgramaInstitucional'
 import AdminBuscarDocente from './components/AdminBuscarDocente'
-import AdminProyectosDocencia from './components/proydoce/AdminProyectosDocencia' // <-- NUEVO IMPORT
+import AdminConstancias from './components/AdminConstancias'
+import AdminProyectosDocencia from './components/proydoce/AdminProyectosDocencia'
 import HistorialCursos from './components/HistorialCursos'
 import PreregistroCurso from './components/PreregistroCurso'
 import ValidarConstancia from './components/ValidarConstancia'
@@ -28,6 +29,7 @@ import AdminAsistenciaHistorial from './components/AdminAsistenciaHistorial'
 import AdminDocentes from './components/AdminDocentes'
 import AdminFormatos from './components/AdminFormatos'
 import AdminRecordatorios from './components/AdminRecordatorios.jsx'
+import AvisosBanner from './components/AvisosBanner'
 
 export default function App() {
   const parametros = new URLSearchParams(window.location.search)
@@ -248,6 +250,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
+      <div className="max-w-5xl mx-auto px-4 pt-3 empty:hidden">
+        <AvisosBanner />
+      </div>
       {seccion === 'inscripcion' && (
         <>
           <BarraSeccion
@@ -331,6 +336,7 @@ export default function App() {
               <AdminConvocatorias prefill={prefillCurso} onPrefillConsumido={() => setPrefillCurso(null)} />
             )}
             {subTabAdmin === 'buscar-docente' && <AdminBuscarDocente />}
+            {subTabAdmin === 'constancias' && <AdminConstancias />}
             {subTabAdmin === 'respaldo' && <AdminRespaldo />}
             {subTabAdmin === 'reportes' && <AdminReportes />}
             {subTabAdmin === 'reporte-rh' && <AdminReporteRH />}
@@ -348,7 +354,9 @@ export default function App() {
                 (ver subTabsAdmin arriba), pero además se protege aquí por si acaso */}
             {subTabAdmin === 'administradores' && esSuperAdmin && <AdminAdministradores />}
             {subTabAdmin === 'formatos' && <AdminFormatos />}
-            {subTabAdmin === 'recordatorios' && <AdminRecordatorios />}
+            {subTabAdmin === 'recordatorios' && (
+              <AdminRecordatorios onIrAConvocatorias={() => setSubTabAdmin('convocatorias')} />
+            )}
           </main>
         </>
       )}

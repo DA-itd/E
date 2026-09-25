@@ -43,32 +43,72 @@ export function coincideDepartamento(deptoCurso: string = '', deptoUsuario: stri
 }
 
 // Determinar el periodo actual según la fecha del sistema (Enero, Junio o Agosto)
-export function obtenerPeriodoActual(): { mes: 'Enero' | 'Junio' | 'Agosto'; nombre: string; anio: number } {
+// Los periodos intersemestrales de capacitación son en Enero, Junio/Julio y Agosto.
+// En los meses regulares de clases (septiembre-diciembre y febrero-mayo), los cursos del periodo anterior están cerrados.
+export function obtenerPeriodoActual(): {
+  mes: 'Enero' | 'Junio' | 'Agosto' | null;
+  nombre: string;
+  anio: number;
+  esPeriodoCerrado: boolean;
+  nombrePeriodoAnterior: string;
+  proximoPeriodo: string;
+} {
   const ahora = new Date();
   const mesNum = ahora.getMonth() + 1; // 1 a 12
   const anio = ahora.getFullYear();
 
-  let mes: 'Enero' | 'Junio' | 'Agosto' = 'Enero';
-  if (mesNum >= 1 && mesNum <= 5) {
-    mes = 'Enero';
+  if (mesNum === 1) {
+    return {
+      mes: 'Enero',
+      nombre: `Periodo Enero ${anio}`,
+      anio,
+      esPeriodoCerrado: false,
+      nombrePeriodoAnterior: `Agosto ${anio - 1}`,
+      proximoPeriodo: `Junio ${anio}`,
+    };
   } else if (mesNum >= 6 && mesNum <= 7) {
-    mes = 'Junio';
+    return {
+      mes: 'Junio',
+      nombre: `Periodo Junio ${anio}`,
+      anio,
+      esPeriodoCerrado: false,
+      nombrePeriodoAnterior: `Enero ${anio}`,
+      proximoPeriodo: `Agosto ${anio}`,
+    };
+  } else if (mesNum === 8) {
+    return {
+      mes: 'Agosto',
+      nombre: `Periodo Agosto ${anio}`,
+      anio,
+      esPeriodoCerrado: false,
+      nombrePeriodoAnterior: `Junio ${anio}`,
+      proximoPeriodo: `Enero ${anio + 1}`,
+    };
+  } else if (mesNum >= 9 && mesNum <= 12) {
+    return {
+      mes: null,
+      nombre: `Periodo Agosto ${anio} (Cerrado)`,
+      anio,
+      esPeriodoCerrado: true,
+      nombrePeriodoAnterior: `Agosto ${anio}`,
+      proximoPeriodo: `Enero ${anio + 1}`,
+    };
   } else {
-    mes = 'Agosto';
+    // Meses 2 a 5 (Febrero a Mayo)
+    return {
+      mes: null,
+      nombre: `Periodo Enero ${anio} (Cerrado)`,
+      anio,
+      esPeriodoCerrado: true,
+      nombrePeriodoAnterior: `Enero ${anio}`,
+      proximoPeriodo: `Junio ${anio}`,
+    };
   }
-
-  return {
-    mes,
-    nombre: `Periodo ${mes} ${anio}`,
-    anio,
-  };
 }
 
-// Evaluar si un curso pertenece a un mes / periodo específico. Si se pasa
-// anioFiltro, también debe coincidir el año (evita mezclar, por ejemplo,
-// "Agosto 2024" con "Agosto 2026" solo por compartir el mismo mes).
+// Evaluar si un curso pertenece a un mes / periodo específico.
 export function coincidePeriodoCurso(c: any, mesFiltro: string, anioFiltro?: number): boolean {
-  if (mesFiltro === 'todos') return true;
+  if (!mesFiltro || mesFiltro === 'todos') return true;
   const mesStr = mesFiltro.toLowerCase();
   const mesNum = mesFiltro === 'Enero' ? 1 : mesFiltro === 'Junio' ? 6 : mesFiltro === 'Agosto' ? 8 : 0;
 
@@ -108,6 +148,7 @@ export default function AdminProyectosDocencia({
   onCrearNuevoCurso,
 }: AdminProyectosDocenciaProps = {}) {
   const [seccionActiva, setSeccionActiva] = useState<'cursos' | 'permisos_deptos'>('cursos');
+  const [modoVista, setModoVista] = useState<'activos' | 'historial'>('activos');
   const [cursos, setCursos] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -137,7 +178,7 @@ export default function AdminProyectosDocencia({
     aniosDisponibles.push(y);
   }
 
-  // Filtros (Para Administradores)
+  // Filtros (Para Administradores y para Historial)
   const [anioSeleccionado, setAnioSeleccionado] = useState<string>('todos');
   const [mesSeleccionado, setMesSeleccionado] = useState<string>('todos');
   const [departamentoFiltro, setDepartamentoFiltro] = useState<string>('todos');
@@ -222,15 +263,51 @@ export default function AdminProyectosDocencia({
     setMensajeExito(`Acceso revocado a ${nombre}`);
   }
 
-  // Filtrado reactivo de cursos
-  const cursosFiltrados = cursos.filter((c) => {
+  // Función para determinar si un curso pertenece a un periodo en curso / activo
+  function esCursoActivo(c: any): boolean {
+    const conv = c.convocatorias;
+    // Si la convocatoria no existe o está marcada como no activa
+    if (!conv || conv.activo === false) return false;
+
+    // Si el periodo del ciclo actual ya cerró (por ejemplo, Septiembre y el curso es de Agosto):
+    if (periodoActual.esPeriodoCerrado) {
+      const esDePeriodoConcluido =
+        conv.mes === 8 ||
+        conv.nombre?.toLowerCase().includes('agosto') ||
+        c.periodo?.toLowerCase().includes('agosto') ||
+        c.semana?.toLowerCase().includes('agosto');
+      if (esDePeriodoConcluido) return false;
+    }
+
+    // Si la fecha de fin de la convocatoria ya pasó
+    const hoy = new Date().toISOString().slice(0, 10);
+    if (conv.fecha_fin && conv.fecha_fin < hoy) return false;
+
+    // Si el curso tiene estatus inactivo o cerrado
+    if (c.status === 'inactivo' || c.estado === 'cerrado' || c.estado === 'concluido') {
+      return false;
+    }
+
+    return true;
+  }
+
+  // Separación clara entre cursos activos del periodo actual e historial de periodos cerrados
+  const cursosActivos = cursos.filter((c) => esCursoActivo(c));
+  const cursosHistorial = cursos.filter((c) => !esCursoActivo(c));
+
+  const baseCursos = modoVista === 'activos' ? cursosActivos : cursosHistorial;
+
+  // Filtrado reactivo de cursos según la vista seleccionada
+  const cursosFiltrados = baseCursos.filter((c) => {
     // REGLA PARA USUARIOS DADOS DE ALTA (JEFES / DEPARTAMENTOS):
     if (esUsuarioDepto && deptoAsignado) {
       if (!coincideDepartamento(c.departamento, deptoAsignado)) {
         return false;
       }
-      if (!coincidePeriodoCurso(c, periodoActual.mes, periodoActual.anio)) {
-        return false;
+      if (modoVista === 'activos' && periodoActual.mes) {
+        if (!coincidePeriodoCurso(c, periodoActual.mes, periodoActual.anio)) {
+          return false;
+        }
       }
       if (busqueda.trim() !== '') {
         const q = busqueda.toLowerCase().trim();
@@ -280,19 +357,9 @@ export default function AdminProyectosDocencia({
     return true;
   });
 
-  const departamentosEnBD = Array.from(
-    new Set(
-      cursos
-        .map((c) => c.departamento?.trim().toUpperCase())
-        .filter((d) => Boolean(d))
-    )
-  ).sort();
-
   function abrirFormato(curso: any) {
-    console.log("📋 Curso seleccionado:", curso);
     if (!curso || !curso.id) {
-      console.error("❌ Error: curso sin ID");
-      alert("El curso no tiene un ID válido. Contacta al administrador.");
+      alert('El curso no tiene un ID válido. Contacta al administrador.');
       return;
     }
     setCursoParaLista(curso);
@@ -318,7 +385,7 @@ export default function AdminProyectosDocencia({
             <p className="text-sm text-itd-navyDark/60 mt-1">
               {esUsuarioDepto ? (
                 <span>
-                  Departamento: <strong className="text-itd-navy font-bold">{deptoAsignado}</strong> · Periodo en curso: <strong className="text-itd-navy font-bold">{periodoActual.nombre}</strong>
+                  Departamento: <strong className="text-itd-navy font-bold">{deptoAsignado}</strong> · Estado: <strong className="text-amber-700 font-bold">{periodoActual.esPeriodoCerrado ? 'Periodo Cerrado' : periodoActual.nombre}</strong>
                 </span>
               ) : (
                 'Consulta de cursos, emisión del Formato Oficial ITD-AD-FO-8 Rev. 1 y gestión de personal autorizado.'
@@ -366,7 +433,86 @@ export default function AdminProyectosDocencia({
       {/* SECCIÓN 1: CURSOS Y LISTAS DE ASISTENCIA */}
       {seccionActiva === 'cursos' && (
         <div className="space-y-4">
-          {esUsuarioDepto ? (
+          {/* BARRA DE NAVEGACIÓN ENTRE CURSOS ACTIVOS E HISTORIAL CERRADO */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white rounded-2xl border border-itd-navy/10 p-4 shadow-xs">
+            <div className="inline-flex rounded-xl border border-slate-200 p-1 bg-slate-100 text-xs font-semibold">
+              <button
+                onClick={() => setModoVista('activos')}
+                className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-2 ${
+                  modoVista === 'activos'
+                    ? 'bg-white text-itd-navy shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-itd-navy'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    cursosActivos.length > 0 ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                  }`}
+                ></span>
+                <span>Cursos Activos ({cursosActivos.length})</span>
+              </button>
+              <button
+                onClick={() => setModoVista('historial')}
+                className={`px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-2 ${
+                  modoVista === 'historial'
+                    ? 'bg-itd-navy text-white shadow-xs font-bold'
+                    : 'text-slate-600 hover:text-itd-navy'
+                }`}
+              >
+                <span>📂</span>
+                <span>Historial de Cursos Cerrados ({cursosHistorial.length})</span>
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-500 flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+              <span>
+                Periodo {periodoActual.nombrePeriodoAnterior}: <strong className="text-amber-800">Cerrado</strong> · Próximo periodo: <strong className="text-itd-navy font-bold">{periodoActual.proximoPeriodo}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* MENSAJE EXCLUSIVO PARA USUARIOS DE DEPARTAMENTO SI ESTÁN EN CURSOS ACTIVOS */}
+          {esUsuarioDepto && modoVista === 'activos' && cursosActivos.length === 0 && (
+            <div className="bg-white rounded-3xl border border-amber-200/80 bg-gradient-to-b from-white to-amber-50/20 shadow-sm p-8 sm:p-12 text-center space-y-4">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-3xl shadow-xs">
+                🏢
+              </div>
+
+              <div className="max-w-lg mx-auto space-y-2">
+                <span className="inline-block px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200">
+                  {deptoAsignado}
+                </span>
+                <h3 className="text-xl font-bold text-itd-navy">
+                  No hay cursos activos en este momento
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  El periodo de capacitación docente de <strong>Agosto {periodoActual.anio}</strong> ha finalizado y se encuentra formalmente cerrado. Actualmente no hay cursos activos para este departamento.
+                </p>
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-600 space-y-1">
+                  <p>
+                    📅 <strong>Próximo periodo de formación:</strong> {periodoActual.proximoPeriodo}.
+                  </p>
+                  <p className="text-slate-500">
+                    Las listas de asistencia del nuevo periodo estarán disponibles en cuanto inicie la convocatoria oficial.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  onClick={() => setModoVista('historial')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-itd-navy hover:bg-itd-navyDark text-white text-xs font-bold transition shadow-sm"
+                >
+                  <span>📂</span>
+                  <span>Ver histórico de cursos cerrados de su departamento ({periodoActual.nombrePeriodoAnterior})</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* VISTA PARA USUARIOS DE DEPARTAMENTO CUANDO ESTÁN EN HISTORIAL */}
+          {esUsuarioDepto && modoVista === 'historial' && (
             <div
               className="rounded-2xl p-5 sm:p-6 shadow-md"
               style={{
@@ -386,21 +532,21 @@ export default function AdminProyectosDocencia({
                     </span>
                     <span
                       className="text-xs font-bold px-2.5 py-0.5 rounded-full"
-                      style={{ background: '#fbbf24', color: '#1e1b4b' }}
+                      style={{ background: '#f59e0b', color: '#1e1b4b' }}
                     >
-                      📌 {periodoActual.nombre}
+                      📂 Historial (Periodo {periodoActual.nombrePeriodoAnterior} Concluido)
                     </span>
                   </div>
                   <h3 className="text-lg font-bold tracking-tight" style={{ color: '#ffffff' }}>
-                    Cursos Disponibles para Descargar Lista de Asistencia
+                    Archivo de Listas de Asistencia (Periodos Cerrados)
                   </h3>
                   <p className="text-xs" style={{ color: '#bfdbfe' }}>
-                    Solo se muestran los cursos pertenecientes a su departamento en el periodo actual. Seleccione el curso deseado para descargar su formato oficial en PDF o Excel.
+                    Se muestran los cursos concluidos pertenecientes a su departamento para descargar o reimprimir el formato oficial en PDF o Excel.
                   </p>
                 </div>
 
-                <div className="w-full md:w-72 shrink-0">
-                  <div className="relative">
+                <div className="flex flex-col sm:flex-row items-center gap-2 shrink-0">
+                  <div className="relative w-full sm:w-60">
                     <input
                       type="text"
                       value={busqueda}
@@ -423,14 +569,50 @@ export default function AdminProyectosDocencia({
                       </button>
                     )}
                   </div>
+                  <button
+                    onClick={() => setModoVista('activos')}
+                    className="px-3 py-2 rounded-xl text-xs font-bold transition shadow-xs whitespace-nowrap"
+                    style={{ background: 'rgba(255,255,255,0.2)', color: '#ffffff' }}
+                  >
+                    ⬅ Cursos Activos
+                  </button>
                 </div>
               </div>
             </div>
-          ) : (
+          )}
+
+          {/* VISTA PARA ADMINISTRADOR GLOBAL EN MODO HISTORIAL O BARRA DE FILTROS */}
+          {!esUsuarioDepto && modoVista === 'historial' && (
+            <div className="rounded-2xl p-4 bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-itd-navy/10 text-itd-navy flex items-center justify-center text-xl shrink-0">
+                  📂
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-itd-navy">
+                    Archivo e Historial de Cursos (Periodos Cerrados)
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    Consulta, filtra y descarga las listas oficiales (Formato ITD-AD-FO-8 Rev. 1) de cursos concluidos en Agosto {periodoActual.anio} y años anteriores.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setModoVista('activos')}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 hover:text-itd-navy text-xs font-semibold transition shrink-0 shadow-xs"
+              >
+                <span>⬅</span>
+                <span>Volver a cursos activos</span>
+              </button>
+            </div>
+          )}
+
+          {/* BARRA DE FILTROS (SOLO SE MUESTRA EN HISTORIAL O SI HAY CURSOS ACTIVOS) */}
+          {!esUsuarioDepto && (modoVista === 'historial' || cursosActivos.length > 0) && (
             <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-5 space-y-3">
               <div className="flex items-center justify-between border-b border-itd-navy/10 pb-2">
                 <span className="text-xs font-semibold text-itd-navy uppercase tracking-wider">
-                  Filtros de Búsqueda de Cursos
+                  Filtros de Búsqueda ({modoVista === 'historial' ? 'Historial de Cursos Cerrados' : 'Cursos Activos'})
                 </span>
                 <span className="text-xs text-itd-navyDark/60 font-semibold">
                   {cursosFiltrados.length} curso(s) encontrados
@@ -506,25 +688,63 @@ export default function AdminProyectosDocencia({
             </div>
           )}
 
-          {/* LISTA DE CURSOS */}
+          {/* ESTADO VACÍO EN MODO ACTIVOS CUANDO NO HAY CURSOS ACTIVOS (MENSAJE INSTITUCIONAL SOLICITADO) */}
+          {!esUsuarioDepto && modoVista === 'activos' && cursosActivos.length === 0 && !cargando && (
+            <div className="bg-white rounded-3xl border border-amber-200/80 bg-gradient-to-b from-white to-amber-50/20 shadow-sm p-8 sm:p-12 text-center space-y-5">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-3xl shadow-xs">
+                🔒
+              </div>
+
+              <div className="max-w-xl mx-auto space-y-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold border border-amber-300">
+                  <span>🟡 Periodo de Capacitación Cerrado</span>
+                </span>
+                <h3 className="text-xl font-bold text-itd-navy">
+                  No hay cursos activos en este momento
+                </h3>
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  El periodo de cursos intersemestrales de <strong>Agosto {periodoActual.anio}</strong> ha concluido formalmente y se encuentra cerrado.
+                  Actualmente no hay convocatorias de cursos activas ni en impartición en este ciclo.
+                </p>
+                <div className="p-3.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-600 space-y-1">
+                  <p>
+                    📅 <strong>Próximo periodo de formación docente:</strong> {periodoActual.proximoPeriodo}.
+                  </p>
+                  <p className="text-slate-500">
+                    Las listas de asistencia y proyectos se habilitarán en cuanto la Coordinación de Actualización Docente publique la nueva convocatoria oficial.
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-2 flex flex-wrap justify-center gap-3">
+                <button
+                  onClick={() => setModoVista('historial')}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-itd-navy hover:bg-itd-navyDark text-white text-xs font-bold transition shadow-sm"
+                >
+                  <span>📂</span>
+                  <span>Consultar histórico de cursos cerrados (Agosto {periodoActual.anio} y anteriores)</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* LISTA DE CURSOS (CUANDO SE MUESTRAN) */}
           {cargando ? (
             <p className="text-center text-itd-navyDark/50 py-12">Cargando cursos desde la base de datos…</p>
           ) : errorMsg ? (
             <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-sm">
               {errorMsg}
             </div>
-          ) : cursosFiltrados.length === 0 ? (
+          ) : (modoVista === 'historial' || (modoVista === 'activos' && cursosActivos.length > 0)) && cursosFiltrados.length === 0 ? (
             <div className="bg-white rounded-2xl border border-itd-navy/10 p-12 text-center text-itd-navyDark/60 space-y-3">
               <p className="text-3xl">📂</p>
               <p className="text-base font-semibold text-itd-navyDark">
                 {esUsuarioDepto
-                  ? `No se encontraron cursos activos para el ${deptoAsignado} en el ${periodoActual.nombre}.`
+                  ? `No se encontraron cursos en el historial para el ${deptoAsignado}.`
                   : 'No se encontraron cursos con los filtros seleccionados.'}
               </p>
               <p className="text-xs text-itd-navyDark/50 max-w-md mx-auto">
-                {esUsuarioDepto
-                  ? 'Si requiere que se habilite un curso o lista para este periodo, comuníquese con la Coordinación de Actualización Docente.'
-                  : 'Selecciona "Todos los años" o "Todos los periodos" para ver la lista completa.'}
+                Selecciona "Todos los años" o "Todos los periodos" para ver la lista completa.
               </p>
               {!esUsuarioDepto && (
                 <button
@@ -540,7 +760,7 @@ export default function AdminProyectosDocencia({
                 </button>
               )}
             </div>
-          ) : (
+          ) : (modoVista === 'historial' || (modoVista === 'activos' && cursosActivos.length > 0)) ? (
             <div className="space-y-3">
               {cursosFiltrados.map((curso) => (
                 <div
@@ -561,6 +781,11 @@ export default function AdminProyectosDocencia({
                           {curso.tipo}
                         </span>
                       )}
+                      {!esCursoActivo(curso) && (
+                        <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-800 font-semibold rounded-full border border-amber-300">
+                          🔒 Periodo Cerrado
+                        </span>
+                      )}
                     </div>
 
                     <h3 className="font-bold text-base text-itd-navy hover:underline">
@@ -578,7 +803,6 @@ export default function AdminProyectosDocencia({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log("🖱️ Click en botón de:", curso.nombre, "ID:", curso.id);
                         abrirFormato(curso);
                       }}
                       className="rounded-xl bg-itd-navy hover:bg-itd-navyDark text-white px-4 py-2.5 text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
@@ -590,7 +814,7 @@ export default function AdminProyectosDocencia({
                 </div>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
       )}
 

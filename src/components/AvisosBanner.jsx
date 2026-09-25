@@ -2,51 +2,70 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
 const ESTILOS_TIPO = {
-  info: { bg: '#0C447C', color: '#ffffff' },
-  exito: { bg: '#3B6D11', color: '#ffffff' },
-  aviso: { bg: '#FAC775', color: '#412402' },
-  urgente: { bg: '#72243E', color: '#ffffff' },
+  info: {
+    bg: '#0E2548',
+    color: '#ffffff',
+    borde: '#1B396A',
+    badge: 'bg-blue-400/20 text-blue-200 border-blue-400/30',
+    icono: '📢',
+  },
+  exito: {
+    bg: '#0E5A3C',
+    color: '#ffffff',
+    borde: '#167B52',
+    badge: 'bg-emerald-400/20 text-emerald-200 border-emerald-400/30',
+    icono: '✅',
+  },
+  aviso: {
+    bg: '#B45309',
+    color: '#ffffff',
+    borde: '#D97706',
+    badge: 'bg-amber-400/20 text-amber-100 border-amber-400/30',
+    icono: '⚠️',
+  },
+  urgente: {
+    bg: '#781834',
+    color: '#ffffff',
+    borde: '#9B2244',
+    badge: 'bg-rose-400/20 text-rose-100 border-rose-400/30',
+    icono: '🚨',
+  },
 }
 
-const ICONOS_TIPO = {
-  info: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="16" x2="12" y2="11" />
-      <circle cx="12" cy="8" r="0.5" fill="currentColor" />
-    </svg>
-  ),
-  exito: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M8 12.5l2.5 2.5L16 9.5" />
-    </svg>
-  ),
-  aviso: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 3l10 18H2L12 3z" />
-      <line x1="12" y1="10" x2="12" y2="14" />
-      <circle cx="12" cy="17" r="0.5" fill="currentColor" />
-    </svg>
-  ),
-  urgente: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <line x1="12" y1="8" x2="12" y2="12.5" />
-      <circle cx="12" cy="16" r="0.5" fill="currentColor" />
-    </svg>
-  ),
-}
-
-export default function AvisosBanner() {
+export default function AvisosBanner({ className = '' }) {
   const [avisos, setAvisos] = useState([])
+  const [descartados, setDescartados] = useState([])
 
   useEffect(() => {
     cargar()
+
+    let channel
+    try {
+      channel = supabase
+        .channel('avisos-publicos-rt')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'avisos' },
+          () => {
+            cargar()
+          }
+        )
+        .subscribe()
+    } catch {
+      // Ignorar si realtime no está habilitado
+    }
+
+    return () => {
+      if (channel) {
+        try {
+          supabase.removeChannel(channel)
+        } catch {
+          // Ignorar error al limpiar canal
+        }
+      }
+    }
   }, [])
 
-  // Si por algo `avisos` no fuera legible sin sesión, esto simplemente no
-  // muestra nada — no rompe la pantalla de login.
   async function cargar() {
     try {
       const { data } = await supabase
@@ -60,43 +79,45 @@ export default function AvisosBanner() {
     }
   }
 
-  if (avisos.length === 0) return null
+  const avisosVisibles = avisos.filter((a) => !descartados.includes(a.id))
+
+  if (avisosVisibles.length === 0) return null
+
+  function descartar(id) {
+    setDescartados((prev) => [...prev, id])
+  }
 
   return (
-    <div className="space-y-2">
-      <style>{`
-        @keyframes avisoEntrada {
-          from { opacity: 0; transform: translateY(-8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes avisoPulso {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.55); }
-          50% { box-shadow: 0 0 0 5px rgba(255,255,255,0); }
-        }
-      `}</style>
-      {avisos.map((a, i) => {
+    <div className={`space-y-2.5 w-full ${className}`}>
+      {avisosVisibles.map((a) => {
         const estilo = ESTILOS_TIPO[a.tipo] || ESTILOS_TIPO.info
         return (
           <div
             key={a.id}
-            className="rounded-xl px-4 py-3 text-sm font-medium text-center shadow-sm flex items-center justify-center gap-2"
+            role="alert"
+            className="rounded-2xl px-4 py-3 sm:px-5 sm:py-3.5 text-xs sm:text-sm font-semibold shadow-md flex items-center justify-between gap-3 border transition-all animate-fade-in"
             style={{
               background: estilo.bg,
               color: estilo.color,
-              animation: `avisoEntrada .45s ease-out ${i * 0.08}s both`,
+              borderColor: estilo.borde,
             }}
           >
-            <span
-              className="shrink-0 rounded-full flex items-center justify-center"
-              style={{
-                width: 20,
-                height: 20,
-                animation: a.tipo === 'urgente' ? 'avisoPulso 1.8s ease-in-out infinite' : undefined,
-              }}
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="text-base sm:text-lg shrink-0 select-none">
+                {estilo.icono}
+              </span>
+              <p className="leading-snug break-words">
+                {a.mensaje}
+              </p>
+            </div>
+
+            <button
+              onClick={() => descartar(a.id)}
+              className="ml-2 text-white/70 hover:text-white font-bold text-xs p-1 rounded-md hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              title="Ocultar aviso"
             >
-              {ICONOS_TIPO[a.tipo] || ICONOS_TIPO.info}
-            </span>
-            <span>{a.mensaje}</span>
+              ✕
+            </button>
           </div>
         )
       })}
