@@ -298,7 +298,7 @@ export default function Login({ onIrAValidar }) {
                       ¿Necesitas verificar un documento?
                     </h4>
                     <p className="text-[11px] sm:text-xs text-slate-600 mt-0.5 leading-snug">
-                      Consulta la autenticidad de constancias o reconocimientos por folio o QR.
+                      Consulta la autenticidad de constancias o reconocimientos por folio institucional.
                     </p>
                   </div>
                 </div>
@@ -309,8 +309,8 @@ export default function Login({ onIrAValidar }) {
                   className="w-full flex items-center justify-between rounded-lg border border-[#B8D2E8] bg-white hover:bg-slate-50 px-3.5 py-2 text-xs font-bold text-[#1B396A] shadow-2xs transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-2">
-                    <span>🔲</span>
-                    <span>Verificar folio o QR</span>
+                    <span>🔍</span>
+                    <span>Verificar folio</span>
                   </div>
                   <span className="text-[#1B396A] font-bold">›</span>
                 </button>
