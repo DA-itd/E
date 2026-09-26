@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { descargarProgramaPDF, descargarProgramaWord } from '../lib/programaInstitucional'
+import { descargarProgramaPDF, descargarProgramaWord } from '../lib/Programainstitucional'
 
 export default function AdminProgramaInstitucional() {
   const [convocatorias, setConvocatorias] = useState([])

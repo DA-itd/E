@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { descargarOficioRegistro } from '../lib/oficio';
-import { descargarCriteriosInstructor } from '../lib/criteriosInstructor';
+import { descargarCriteriosInstructor } from '../lib/Criteriosinstructor';
 
 export default function AdminRespaldo() {
   const [cargando, setCargando] = useState(false);
