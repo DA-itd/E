@@ -1,5 +1,4 @@
 // src/App.jsx
-import AdminRespaldo from './components/AdminRespaldo'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, DOMINIO_PERMITIDO } from './lib/supabaseClient'
 import { obtenerConvocatoriaActivaId } from './lib/convocatorias'
@@ -29,9 +28,14 @@ import AdminAsistenciaHistorial from './components/AdminAsistenciaHistorial'
 import AdminDocentes from './components/AdminDocentes'
 import AdminFormatos from './components/AdminFormatos'
 import AdminRecordatorios from './components/AdminRecordatorios.jsx'
+import AdminRespaldo from './components/AdminRespaldo'
 import AvisosBanner from './components/AvisosBanner'
 
 export default function App() {
+  const [mostrarAviso, setMostrarAviso] = useState(() => {
+  const fechaLimite = new Date('2027-02-01T00:00:00'); // 1 de febrero
+  return new Date() < fechaLimite;
+});
   const parametros = new URLSearchParams(window.location.search)
   const folioAValidar = parametros.get('validar')
 
@@ -98,7 +102,6 @@ export default function App() {
     if (!subTabsAdmin.some((t) => t.id === subTabAdmin)) {
       setSubTabAdmin(subTabsAdmin[0].id)
     }
-
   }, [subTabsAdmin])
 
   async function manejarSesion(session) {
@@ -152,11 +155,6 @@ export default function App() {
     }
   }
 
-  // Al agregar un curso adicional desde "Mis cursos", solo nos saltamos la
-  // pantalla de Datos Personales si el docente ya la confirmó para la
-  // convocatoria que sigue vigente ahora mismo. Si cambió de convocatoria
-  // desde la última vez (o nunca la ha confirmado), lo mandamos primero a
-  // Datos Personales igual que a un docente nuevo.
   async function irAInscribirmeOtroCurso() {
     const convocatoriaActivaId = await obtenerConvocatoriaActivaId()
     const yaConfirmoEstaConvocatoria =
@@ -165,6 +163,32 @@ export default function App() {
     setPasoInicialWizard(yaConfirmoEstaConvocatoria ? 2 : 1)
     setSubTabInscripcion('wizard')
   }
+
+  // Componente del Cintillo Amarillo
+  const CintilloAviso = () =>
+    mostrarAviso ? (
+      <aside
+        aria-label="Aviso de migración de portal"
+        className="bg-amber-100 border-b border-amber-300 text-amber-900 px-4 py-2.5 text-center text-sm font-medium flex items-center justify-between shadow-sm sticky top-0 z-50"
+      >
+        <div className="flex-1 flex items-center justify-center gap-2">
+          <span className="bg-amber-500 text-white text-xs uppercase px-2 py-0.5 rounded-full font-bold">
+            Oficial
+          </span>
+          <span>
+            ¡Bienvenido a la nueva plataforma oficial de Actualización Docente del ITD! Guarda nuestro nuevo enlace en tus favoritos:
+            <span className="ml-1 font-bold underline">act-doc-itd.vercel.app</span>
+          </span>
+        </div>
+        <button
+          onClick={() => setMostrarAviso(false)}
+          className="text-amber-700 hover:text-amber-900 font-bold px-2 py-0.5 rounded hover:bg-amber-200 text-lg leading-none"
+          title="Cerrar aviso"
+        >
+          ×
+        </button>
+      </aside>
+    ) : null
 
   if (mostrarValidador || hashActual.startsWith('#validar')) {
     return (
@@ -197,6 +221,7 @@ export default function App() {
   if (!sesion) {
     return (
       <>
+        <CintilloAviso />
         <Login onIrAValidar={irAValidador} />
         {errorDominio && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-itd-guinda text-white text-sm px-4 py-2 rounded-lg shadow-lg">
@@ -223,33 +248,42 @@ export default function App() {
 
   if (!docente && !esAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="max-w-md text-center bg-white rounded-2xl shadow-lg border border-itd-navy/10 p-8">
-          <h2 className="font-display text-xl font-semibold text-itd-navy mb-2">
-            Correo no encontrado en el catálogo
-          </h2>
-          <p className="text-sm text-itd-navyDark/70 mb-6">
-            Tu cuenta <strong>{sesion?.user?.email}</strong> inició sesión correctamente,
-            pero no está registrada en el catálogo de docentes/personal de Desarrollo
-            Académico. Contacta a la Coordinación para darte de alta.
-          </p>
-          <button
-            onClick={() => supabase.auth.signOut()}
-            className="text-sm text-itd-navy underline"
-          >
-            Cerrar sesión
-          </button>
+      <div className="min-h-screen flex flex-col">
+        <CintilloAviso />
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="max-w-md text-center bg-white rounded-2xl shadow-lg border border-itd-navy/10 p-8">
+            <h2 className="font-display text-xl font-semibold text-itd-navy mb-2">
+              Correo no encontrado en el catálogo
+            </h2>
+            <p className="text-sm text-itd-navyDark/70 mb-6">
+              Tu cuenta <strong>{sesion?.user?.email}</strong> inició sesión correctamente,
+              pero no está registrada en el catálogo de docentes/personal de Desarrollo
+              Académico. Contacta a la Coordinación para darte de alta.
+            </p>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-sm text-itd-navy underline"
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </div>
       </div>
     )
   }
 
   if (seccion === 'menu') {
-    return <MenuPrincipal docente={docenteEfectivo} esAdmin={esAdmin} onIr={irASeccion} />
+    return (
+      <>
+        <CintilloAviso />
+        <MenuPrincipal docente={docenteEfectivo} esAdmin={esAdmin} onIr={irASeccion} />
+      </>
+    )
   }
 
   return (
     <div className="min-h-screen">
+      <CintilloAviso />
       <div className="max-w-5xl mx-auto px-4 pt-3 empty:hidden">
         <AvisosBanner />
       </div>
@@ -350,8 +384,6 @@ export default function App() {
               />
             )}
             {subTabAdmin === 'avisos' && <AdminAvisos />}
-            {/* "administradores" solo se muestra como botón para el súper admin
-                (ver subTabsAdmin arriba), pero además se protege aquí por si acaso */}
             {subTabAdmin === 'administradores' && esSuperAdmin && <AdminAdministradores />}
             {subTabAdmin === 'formatos' && <AdminFormatos />}
             {subTabAdmin === 'recordatorios' && (
