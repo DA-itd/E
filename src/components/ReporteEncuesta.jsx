@@ -62,7 +62,7 @@ export default function ReporteEncuesta() {
   const [filtroPeriodo, setFiltroPeriodo] = useState('')
   const [filtroCurso, setFiltroCurso] = useState('')
   const [filtroDepartamento, setFiltroDepartamento] = useState('')
-  const [filtroGenero, setFiltroGenero] = useState('')
+  // filtroGenero removido
   const [filtroTipo, setFiltroTipo] = useState('')
 
   const [vista, setVista] = useState('preguntas') // 'preguntas' | 'participacion' | 'comentarios'
@@ -116,7 +116,7 @@ export default function ReporteEncuesta() {
       periodos: [...periodos.entries()],
       cursos: [...cursos.entries()].sort((a, b) => a[1].localeCompare(b[1])),
       departamentos: [...departamentos].sort(),
-      generos: ['Hombre', 'Mujer', 'Sin especificar'],
+      generos: [],
       tipos: [...tipos].sort(),
     }
   }, [respuestas, filtroAnio])
@@ -1285,19 +1285,7 @@ export default function ReporteEncuesta() {
             ))}
           </select>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Género</label>
-          <select
-            value={filtroGenero}
-            onChange={(e) => setFiltroGenero(e.target.value)}
-            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
-          >
-            <option value="">Todos</option>
-            {opciones.generos.map((g) => (
-              <option key={g} value={g}>{g}</option>
-            ))}
-          </select>
-        </div>
+        
         <div>
           <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Tipo</label>
           <select
@@ -1596,22 +1584,7 @@ export default function ReporteEncuesta() {
 
           {/* Gráficas secundarias en grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <TarjetaGrafica titulo="Distribución por Género">
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={datosGenero} dataKey="valor" nameKey="nombre" innerRadius={50} outerRadius={80} paddingAngle={2} label={(d) => `${d.nombre} ${(d.percent * 100).toFixed(0)}%`}>
-                    {datosGenero.map((d) => (
-                      <Cell key={d.nombre} fill={colorGenero(d.nombre)} />
-                    ))}
-                  </Pie>
-                  <Legend />
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-              {datosGenero.length === 0 && (
-                <p className="text-xs text-itd-navyDark/40 text-center mt-2">Sin dato de género en las respuestas filtradas.</p>
-              )}
-            </TarjetaGrafica>
+            
 
             <TarjetaGrafica titulo="Tipo (Docente / Profesional)">
               <ResponsiveContainer>

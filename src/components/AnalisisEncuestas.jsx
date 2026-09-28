@@ -91,7 +91,7 @@ export default function AnalisisEncuestas() {
   const [filtroTipo, setFiltroTipo] = useState('todos')
   const [filtroDepto, setFiltroDepto] = useState('todos')
   const [filtroCurso, setFiltroCurso] = useState('todos')
-  const [filtroGenero, setFiltroGenero] = useState('todos')
+  // filtroGenero removido
 
   // Filtro de búsqueda en comentarios
   const [busquedaComentario, setBusquedaComentario] = useState('')
@@ -174,16 +174,10 @@ export default function AnalisisEncuestas() {
       if (filtroTipo !== 'todos' && r.tipo_curso !== filtroTipo) return false
       if (filtroDepto !== 'todos' && r.departamento !== filtroDepto) return false
       if (filtroCurso !== 'todos' && r.curso_id !== filtroCurso) return false
-      if (filtroGenero !== 'todos') {
-        if (filtroGenero === 'Historico/Sin especificar') {
-          if (r.genero) return false
-        } else {
-          if (r.genero !== filtroGenero) return false
-        }
-      }
+
       return true
     })
-  }, [respuestas, filtroAnio, filtroPeriodo, filtroTipo, filtroDepto, filtroCurso, filtroGenero])
+  }, [respuestas, filtroAnio, filtroPeriodo, filtroTipo, filtroDepto, filtroCurso])
 
   // Estadísticas de Preguntas para las respuestas filtradas
   const resultadoPreguntas = useMemo(() => {
@@ -432,12 +426,37 @@ export default function AnalisisEncuestas() {
     ].filter((x) => x.valor > 0)
   }, [respuestasFiltradas])
 
-  // Detección automática de Recomendaciones por Departamento (Vista 6)
+  // Detección automática de Recomendaciones y Análisis de Oferta por Departamento (Vista 6)
+  const ESPECIALIDADES_POR_DEPTO = {
+    'SISTEMAS': ['Desarrollo de Software Seguro y Cloud', 'Inteligencia Artificial Generativa y MLOps', 'Ciberseguridad y Redes de Alta Disponibilidad'],
+    'INDUSTRIAL': ['Lean Six Sigma y Optimización de Procesos', 'Logística, Cadena de Suministro 4.0 y Simulación', 'Gestión de Calidad ISO y Auditorías Integrales'],
+    'MECANICA': ['Modelado y Simulación Avanzada por Elementos Finitos (FEA/CAD)', 'Manufactura Aditiva y Maquinado CNC', 'Mantenimiento Predictivo e Industria 4.0'],
+    'QUIMICA': ['Seguridad e Higiene en Laboratorios Químicos', 'Técnicas de Análisis Instrumental y Bioquímica', 'Gestión de Residuos Peligrosos y Sustentabilidad'],
+    'ELECTR': ['Internet de las Cosas (IoT) y Sistemas Embebidos', 'Automatización con PLC y Robótica Industrial', 'Energías Renovables y Eficiencia Energética'],
+    'BASICAS': ['Estrategias Didácticas para Cálculo y Álgebra Lineal', 'Laboratorios Virtuales para Física y Química Experimental', 'Metodologías Activas para la Enseñanza de Ciencias Exactas'],
+    'ECONOMICO': ['Innovación y Modelos de Negocio Digitales', 'Análisis Financiero, Contabilidad y Finanzas Personales', 'Habilidades Gerenciales y Liderazgo Estratégico'],
+    'GESTION': ['Transformación Digital y Gestión del Talento Humano', 'Dirección de Proyectos bajo Enfoque Ágil (Scrum/PMI)', 'Inteligencia de Negocios y Data Analytics'],
+  }
+
   const recomendacionesPorDepto = useMemo(() => {
     return departamentosAnalizados.map((depto) => {
+      // 1. Obtener cursos reales ofertados/cursados por este departamento
+      const cursosDelDepto = cursosAnalizados.filter(c => {
+        const respDepto = respuestasFiltradas.filter(r => r.curso_id === c.id && (r.departamento_nombre || r.departamento) === depto.nombre)
+        return respDepto.length > 0
+      }).map(c => {
+        const resp = respuestasFiltradas.filter(r => r.curso_id === c.id && (r.departamento_nombre || r.departamento) === depto.nombre)
+        return {
+          nombre: c.nombre,
+          tipo: c.tipo,
+          docentes: resp.length,
+          promedio: c.promedioGeneral
+        }
+      })
+
+      // 2. Minería de texto sobre sugerencias expresadas
       const textoConsolidado = depto.sugerencias.join(' ').toLowerCase()
       const temasEncontrados = []
-
       for (const item of DICCIONARIO_TEMAS) {
         const matches = (textoConsolidado.match(item.regex) || []).length
         if (matches > 0) {
@@ -448,28 +467,35 @@ export default function AnalisisEncuestas() {
           })
         }
       }
-
       temasEncontrados.sort((a, b) => b.frecuencia - a.frecuencia)
 
-      // Fallback si no hay palabras clave detectadas
-      if (temasEncontrados.length === 0) {
-        temasEncontrados.push(
-          { tema: 'Inteligencia Artificial', frecuencia: 1, cursoSugerido: 'IA Aplicada a la Docencia' },
-          { tema: 'Metodologías Activas', frecuencia: 1, cursoSugerido: 'Estrategias de Aprendizaje Activo en el Aula' },
-        )
-      }
+      // 3. Obtener sugerencias específicas del departamento según su disciplina
+      const claveDepto = Object.keys(ESPECIALIDADES_POR_DEPTO).find(k => depto.nombre.toUpperCase().includes(k)) || ''
+      const sugerenciasDisciplina = claveDepto ? ESPECIALIDADES_POR_DEPTO[claveDepto] : [
+        'Metodologías Activas de Enseñanza-Aprendizaje',
+        'Herramientas Digitales y Tecnologías Educativas',
+        'Elaboración de Instrumentos de Evaluación por Competencias'
+      ]
+
+      // Combinar sugerencias detectadas por texto + las de la disciplina del depto
+      const cursosPropuestos = [
+        ...temasEncontrados.map(t => t.cursoSugerido),
+        ...sugerenciasDisciplina
+      ]
+      const cursosUnicosSugeridos = Array.from(new Set(cursosPropuestos)).slice(0, 4)
 
       return {
         depto: depto.nombre,
         totalSugerencias: depto.sugerencias.length,
+        cursosImpartidos: cursosDelDepto,
         temasMayorDemanda: temasEncontrados.slice(0, 3),
-        temasRecurrentes: temasEncontrados.map((t) => t.tema).slice(0, 4),
-        cursosSugeridos: temasEncontrados.map((t) => t.cursoSugerido).slice(0, 3),
+        temasRecurrentes: temasEncontrados.length > 0 ? temasEncontrados.map(t => t.tema).slice(0, 4) : ['Actualización Docente', 'Didáctica'],
+        cursosSugeridos: cursosUnicosSugeridos,
         semaforo: depto.semaforo,
         promedioGeneral: depto.promedioGeneral,
       }
     })
-  }, [departamentosAnalizados])
+  }, [departamentosAnalizados, cursosAnalizados, respuestasFiltradas])
 
   // Datos para Vista 2: Curso seleccionado
   const cursoSeleccionado = useMemo(() => {
@@ -1483,20 +1509,7 @@ export default function AnalisisEncuestas() {
             </select>
           </div>
 
-          {/* Género (Con aclaración explícita para evitar que se filtre a 0) */}
-          <div>
-            <label className="block text-[11px] font-bold text-slate-600 mb-1">Género</label>
-            <select
-              value={filtroGenero}
-              onChange={(e) => setFiltroGenero(e.target.value)}
-              className="w-full text-xs font-semibold px-3 py-2 border border-slate-300 rounded-xl bg-white shadow-2xs focus:ring-2 focus:ring-[#1b396a] focus:outline-hidden"
-            >
-              <option value="todos">👥 Todos los registros</option>
-              <option value="Hombre">Hombre (Registrado)</option>
-              <option value="Mujer">Mujer (Registrada)</option>
-              <option value="Historico/Sin especificar">Histórico / Sin especificar</option>
-            </select>
-          </div>
+          
         </div>
 
         {/* Resumen del filtro activo */}
@@ -1663,99 +1676,7 @@ export default function AnalisisEncuestas() {
             </div>
           </div>
 
-          {/* Aclaración y Gráfica de Género */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <div>
-                <h3 className="font-bold text-sm text-[#1b396a]">Distribución de Género</h3>
-                <p className="text-xs text-slate-500">
-                  Los registros de la aplicación capturan el género; el histórico previo no lo contenía de origen.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <span className="inline-block w-3 h-3 rounded-full bg-[#0284c7]" />
-                <span className="text-slate-600 font-semibold">Hombres</span>
-                <span className="inline-block w-3 h-3 rounded-full bg-[#ec4899] ml-2" />
-                <span className="text-slate-600 font-semibold">Mujeres</span>
-                <span className="inline-block w-3 h-3 rounded-full bg-[#64748b] ml-2" />
-                <span className="text-slate-600 font-semibold">Histórico sin especificar</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {datosGeneroAclarado.map((g) => (
-                <div key={g.nombre} className="p-4 rounded-xl border border-slate-100 bg-slate-50">
-                  <span className="text-xs font-bold text-slate-500">{g.nombre}</span>
-                  <div className="text-2xl font-black mt-1" style={{ color: g.color }}>
-                    {g.valor} <span className="text-xs font-normal text-slate-500">({((g.valor / respuestasFiltradas.length) * 100).toFixed(1)}%)</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Ranking: Top Cursos y Cursos de Oportunidad */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Top Cursos Mejor Evaluados */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-sm text-emerald-800 flex items-center gap-1.5">
-                  <span>🏆</span>
-                  <span>Top Cursos Mejor Evaluados</span>
-                </h3>
-                <span className="text-xs font-semibold text-slate-400">Puntaje general</span>
-              </div>
-              <div className="space-y-3">
-                {cursosAnalizados.slice(0, 5).map((c, i) => (
-                  <div key={c.id} className="p-3 rounded-xl bg-emerald-50/50 border border-emerald-100 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-6 h-6 rounded-full bg-emerald-700 text-white flex items-center justify-center text-xs font-black shrink-0">
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="font-bold text-xs text-[#1b396a] truncate">{c.nombre}</p>
-                        <p className="text-[11px] text-slate-500">{c.departamento} · {c.totalEncuestas} encuestas</p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-sm font-black text-emerald-700">{c.promedioGeneral.toFixed(2)}</span>
-                      <span className="text-[10px] text-slate-400 block">/ 5.00</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Cursos con Oportunidad de Mejora */}
-            <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-sm text-amber-800 flex items-center gap-1.5">
-                  <span>⚠️</span>
-                  <span>Cursos con Oportunidad de Mejora</span>
-                </h3>
-                <span className="text-xs font-semibold text-slate-400">Atención académica</span>
-              </div>
-              <div className="space-y-3">
-                {[...cursosAnalizados].reverse().slice(0, 5).map((c, i) => (
-                  <div key={c.id} className="p-3 rounded-xl bg-amber-50/50 border border-amber-100 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-6 h-6 rounded-full bg-amber-600 text-white flex items-center justify-center text-xs font-black shrink-0">
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="font-bold text-xs text-[#1b396a] truncate">{c.nombre}</p>
-                        <p className="text-[11px] text-slate-500">{c.departamento} · {c.totalEncuestas} encuestas</p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-sm font-black text-amber-700">{c.promedioGeneral.toFixed(2)}</span>
-                      <span className="text-[10px] text-slate-400 block">/ 5.00</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          
 
         </div>
       )}
@@ -2204,14 +2125,31 @@ export default function AnalisisEncuestas() {
                   </div>
 
                   <div>
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                      Cursos Sugeridos para el Próximo Periodo:
+                    {/* Cursos Ofertados / Cursados por este departamento */}
+                    {item.cursosImpartidos && item.cursosImpartidos.length > 0 && (
+                      <div className="mb-3">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                          📚 Cursos Ofertados / Evaluados ({item.cursosImpartidos.length}):
+                        </span>
+                        <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                          {item.cursosImpartidos.map((ci, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-[11px] bg-slate-50 p-1.5 rounded border border-slate-100">
+                              <span className="font-medium text-slate-700 truncate pr-2" title={ci.nombre}>• {ci.nombre}</span>
+                              <span className="font-bold text-[#1b396a] shrink-0">★ {ci.promedio.toFixed(1)} ({ci.docentes} doc.)</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <span className="text-[11px] font-bold text-[#C45500] uppercase tracking-wider block mb-2">
+                      💡 Detección de Necesidades & Propuestas Específicas:
                     </span>
                     <ul className="space-y-1.5 text-xs text-slate-700">
                       {item.cursosSugeridos.map((c, i) => (
-                        <li key={i} className="flex items-center gap-2">
-                          <span className="text-emerald-600 font-bold">✔</span>
-                          <span>{c}</span>
+                        <li key={i} className="flex items-start gap-2 bg-amber-50/60 p-1.5 rounded border border-amber-200/60">
+                          <span className="text-emerald-600 font-bold mt-0.5">✔</span>
+                          <span className="font-medium text-slate-800">{c}</span>
                         </li>
                       ))}
                     </ul>

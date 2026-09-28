@@ -4,7 +4,6 @@ import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ReportesGraficas from './ReportesGraficas'
-import AnalisisEncuestas from './AnalisisEncuestas'
 
 import { dibujarEncabezadoPDF } from '../lib/pdfEncabezado'
 
@@ -12,7 +11,6 @@ const ANIO_ACTUAL = new Date().getFullYear()
 const ANIOS = Array.from({ length: 6 }, (_, i) => ANIO_ACTUAL - i)
 
 export default function AdminReportes() {
-  const [reporteActivo, setReporteActivo] = useState('inscripciones') // 'inscripciones' | 'encuesta'
 
   const [tipoPeriodo, setTipoPeriodo] = useState('actual') // 'actual' | 'trimestre' | 'anio'
   const [anio, setAnio] = useState(ANIO_ACTUAL)
@@ -190,9 +188,7 @@ export default function AdminReportes() {
       <div>
         <h2 className="font-display text-xl font-semibold text-itd-navy mb-1">Reportes</h2>
         <p className="text-sm text-itd-navyDark/60">
-          {reporteActivo === 'inscripciones'
-            ? 'Estadísticas de inscripciones por periodo de capacitación.'
-            : 'Resultados de la encuesta de opinión (ITD-AD-FO-09) por periodo, curso y departamento.'}
+          Estadísticas de inscripciones por periodo de capacitación.
         </p>
       </div>
 
@@ -215,10 +211,7 @@ export default function AdminReportes() {
         </button>
       </div>
 
-      {reporteActivo === 'encuesta' ? (
-        <AnalisisEncuestas />
-      ) : (
-        <>
+
           <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Periodo</label>
@@ -422,8 +415,6 @@ export default function AdminReportes() {
               )}
             </div>
           )}
-        </>
-      )}
     </div>
   )
 }
