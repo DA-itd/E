@@ -583,7 +583,7 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg border border-amber-300 transition-colors shadow-2xs"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-xl shadow-xs transition-colors shadow-2xs"
                   title="Abrir repositorio oficial de constancias de otros años"
                 >
                   <span>📜 Otros años</span>
