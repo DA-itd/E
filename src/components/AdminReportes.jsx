@@ -192,24 +192,6 @@ export default function AdminReportes() {
         </p>
       </div>
 
-      <div className="flex rounded-lg border border-itd-navy/20 overflow-hidden w-fit">
-        <button
-          onClick={() => setReporteActivo('inscripciones')}
-          className={`px-4 py-2 text-sm font-medium ${
-            reporteActivo === 'inscripciones' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'
-          }`}
-        >
-          Inscripciones
-        </button>
-        <button
-          onClick={() => setReporteActivo('encuesta')}
-          className={`px-4 py-2 text-sm font-medium ${
-            reporteActivo === 'encuesta' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'
-          }`}
-        >
-          Encuesta de Opinión
-        </button>
-      </div>
 
 
           <div className="flex flex-wrap items-end gap-3">
