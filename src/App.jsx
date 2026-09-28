@@ -120,6 +120,13 @@ export default function App() {
     setErrorDominio(false)
     setSesion(session)
 
+    // Limpiar el hash de la URL (#access_token=...) para dejar la URL siempre limpia y profesional
+    if (window.location.hash && window.location.hash.includes('access_token')) {
+      try {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      } catch {}
+    }
+
     const { data: docenteData } = await supabase
       .from('docentes')
       .select('*')
