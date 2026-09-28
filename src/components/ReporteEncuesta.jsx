@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import * as XLSX from 'xlsx'
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+} from 'recharts'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, ImageRun, WidthType, AlignmentType } from 'docx'
@@ -17,11 +20,34 @@ const COLORES_DEPARTAMENTO = [
   '#dc2626', '#65a30d', '#9333ea', '#0284c7', '#ca8a04', '#be123c',
 ]
 
+const PREGUNTAS_POR_DEFECTO = [
+  { codigo: 'a1', seccion: 'A', orden: 1, texto: 'Los cursos me ayudaron a mejorar mi desempeño como docente (función, conceptos y herramientas aplicables).' },
+  { codigo: 'a2', seccion: 'A', orden: 2, texto: 'Los cursos contribuyeron a mi desarrollo personal y/o profesional.' },
+  { codigo: 'a3', seccion: 'A', orden: 3, texto: 'He podido aplicar en mi práctica docente cotidiana lo aprendido en los cursos.' },
+  { codigo: 'a4', seccion: 'A', orden: 4, texto: 'Los cursos fortalecieron mi integración y colaboración con compañeros de trabajo.' },
+  { codigo: 'a5', seccion: 'A', orden: 5, texto: 'Los cursos me ayudaron a comprender mejor los procesos del Instituto en mi rol como docente.' },
+  { codigo: 'b1', seccion: 'B', orden: 1, texto: 'Se expuso el objetivo y temario del curso; mostró dominio del contenido abordado.' },
+  { codigo: 'b2', seccion: 'B', orden: 2, texto: 'Fomentó la participación, aclaró dudas y dio retroalimentación a los ejercicios realizados.' },
+  { codigo: 'b3', seccion: 'B', orden: 3, texto: 'Inició y concluyó puntualmente las sesiones.' },
+  { codigo: 'b4', seccion: 'B', orden: 4, texto: 'El material didáctico fue útil y legible a lo largo del curso.' },
+  { codigo: 'b5', seccion: 'B', orden: 5, texto: 'La variedad del material didáctico fue suficiente para apoyar su aprendizaje.' },
+  { codigo: 'b6', seccion: 'B', orden: 6, texto: 'La distribución del tiempo fue adecuada para cubrir el contenido del curso.' },
+  { codigo: 'b7', seccion: 'B', orden: 7, texto: 'Los temas fueron suficientes para alcanzar el objetivo del curso.' },
+  { codigo: 'b8', seccion: 'B', orden: 8, texto: 'El curso comprendió ejercicios de práctica relacionados con el contenido.' },
+  { codigo: 'b9', seccion: 'B', orden: 9, texto: 'El curso cubrió sus expectativas.' },
+  { codigo: 'b10', seccion: 'B', orden: 10, texto: 'Las condiciones del aula (iluminación, ventilación y aseo) fueron adecuadas.' },
+  { codigo: 'b11', seccion: 'B', orden: 11, texto: 'Los servicios de apoyo (sanitarios, café y coordinación del curso) fueron adecuados.' },
+  { codigo: 'c1', seccion: 'C', orden: 1, texto: 'El tema del curso respondía a una necesidad real de mi práctica docente.' },
+  { codigo: 'c2', seccion: 'C', orden: 2, texto: 'Recomendaría este curso a otros colegas del Instituto.' },
+]
+
 function TarjetaGrafica({ titulo, children, alto = 260 }) {
   return (
-    <div className="rounded-2xl border border-itd-navy/10 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold text-itd-navyDark/70 mb-2">{titulo}</h3>
-      <div style={{ width: '100%', height: alto }}>{children}</div>
+    <div className="rounded-2xl border border-itd-navy/10 bg-white p-4 shadow-sm min-w-0">
+      <h3 className="text-sm font-semibold text-itd-navyDark/70 mb-2 truncate">{titulo}</h3>
+      <div style={{ width: '100%', height: alto, minHeight: alto }} className="relative min-w-0">
+        {children}
+      </div>
     </div>
   )
 }
@@ -59,10 +85,11 @@ export default function ReporteEncuesta() {
       if (errBase) throw errBase
       if (errPreg) throw errPreg
       setRespuestas(base || [])
-      setPreguntas(preg || [])
+      setPreguntas(preg && preg.length > 0 ? preg : PREGUNTAS_POR_DEFECTO)
     } catch (err) {
       console.error(err)
       setErrorMsg('No se pudieron cargar las respuestas: ' + err.message)
+      setPreguntas(PREGUNTAS_POR_DEFECTO)
     }
     setCargando(false)
   }
@@ -197,6 +224,34 @@ export default function ReporteEncuesta() {
     return [...mapa.entries()]
       .map(([nombre, valor]) => ({ nombre, valor }))
       .sort((a, b) => b.valor - a.valor)
+  }, [filtradas])
+
+  // Promedios de preguntas ordenadas para la gráfica de barras
+  const datosPromediosSeccionB = useMemo(() => {
+    return resultadoPreguntas
+      .filter((p) => p.seccion === 'B')
+      .map((p) => ({
+        pregunta: p.codigo.toUpperCase(),
+        textoCorto: p.texto.length > 40 ? p.texto.slice(0, 40) + '…' : p.texto,
+        promedio: Number(p.promedio.toFixed(2)),
+      }))
+  }, [resultadoPreguntas])
+
+  // Distribución de impedimentos
+  const datosImpedimentos = useMemo(() => {
+    const mapa = new Map()
+    for (const r of filtradas) {
+      if (!r.impedimentos || !Array.isArray(r.impedimentos)) continue
+      for (const imp of r.impedimentos) {
+        const limp = (imp || '').trim()
+        if (!limp) continue
+        const cat = limp.startsWith('Otro:') ? 'Otro impedimento' : limp
+        mapa.set(cat, (mapa.get(cat) || 0) + 1)
+      }
+    }
+    return [...mapa.entries()]
+      .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+      .sort((a, b) => b.cantidad - a.cantidad)
   }, [filtradas])
 
   function colorGenero(nombre) {
@@ -702,50 +757,87 @@ export default function ReporteEncuesta() {
       )}
 
       {vista === 'graficas' && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <TarjetaGrafica titulo="Distribución por Género">
+        <div className="space-y-5">
+          {/* Criterios de Evaluación B1 a B11 */}
+          <TarjetaGrafica titulo="Promedio de Evaluación del Curso e Instructor (Escala 1 a 5)" alto={320}>
             <ResponsiveContainer>
-              <PieChart>
-                <Pie data={datosGenero} dataKey="valor" nameKey="nombre" innerRadius={50} outerRadius={80} paddingAngle={2} label={(d) => `${d.nombre} ${(d.percent * 100).toFixed(0)}%`}>
-                  {datosGenero.map((d) => (
-                    <Cell key={d.nombre} fill={colorGenero(d.nombre)} />
-                  ))}
-                </Pie>
-                <Legend />
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            {datosGenero.length === 0 && (
-              <p className="text-xs text-itd-navyDark/40 text-center mt-2">Sin dato de género en las respuestas filtradas.</p>
-            )}
-          </TarjetaGrafica>
-
-          <TarjetaGrafica titulo="Tipo (Docente / Profesional)">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={datosTipo} dataKey="valor" nameKey="nombre" innerRadius={50} outerRadius={80} paddingAngle={2} label={(d) => `${d.nombre} ${(d.percent * 100).toFixed(0)}%`}>
-                  {datosTipo.map((d) => (
-                    <Cell key={d.nombre} fill={colorTipo(d.nombre)} />
-                  ))}
-                </Pie>
-                <Legend />
-                <Tooltip />
-              </PieChart>
+              <BarChart data={datosPromediosSeccionB} margin={{ top: 10, right: 20, left: -10, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="pregunta" tick={{ fontSize: 11, fontWeight: 'bold' }} />
+                <YAxis domain={[0, 5]} ticks={[1, 2, 3, 4, 5]} />
+                <Tooltip
+                  formatter={(val) => [`${val} / 5.00`, 'Promedio']}
+                  labelFormatter={(codigo) => {
+                    const item = datosPromediosSeccionB.find((d) => d.pregunta === codigo)
+                    return item ? `${codigo}: ${item.textoCorto}` : codigo
+                  }}
+                />
+                <Bar dataKey="promedio" fill="#1b396a" radius={[6, 6, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           </TarjetaGrafica>
 
-          <TarjetaGrafica titulo="Participación por Departamento">
-            <ResponsiveContainer>
-              <PieChart>
-                <Pie data={datosDepartamentoPie} dataKey="valor" nameKey="nombre" innerRadius={50} outerRadius={80} paddingAngle={2}>
-                  {datosDepartamentoPie.map((d, i) => (
-                    <Cell key={d.nombre} fill={COLORES_DEPARTAMENTO[i % COLORES_DEPARTAMENTO.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </TarjetaGrafica>
+          {/* Gráficas secundarias en grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <TarjetaGrafica titulo="Distribución por Género">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={datosGenero} dataKey="valor" nameKey="nombre" innerRadius={50} outerRadius={80} paddingAngle={2} label={(d) => `${d.nombre} ${(d.percent * 100).toFixed(0)}%`}>
+                    {datosGenero.map((d) => (
+                      <Cell key={d.nombre} fill={colorGenero(d.nombre)} />
+                    ))}
+                  </Pie>
+                  <Legend />
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+              {datosGenero.length === 0 && (
+                <p className="text-xs text-itd-navyDark/40 text-center mt-2">Sin dato de género en las respuestas filtradas.</p>
+              )}
+            </TarjetaGrafica>
+
+            <TarjetaGrafica titulo="Tipo (Docente / Profesional)">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={datosTipo} dataKey="valor" nameKey="nombre" innerRadius={50} outerRadius={80} paddingAngle={2} label={(d) => `${d.nombre} ${(d.percent * 100).toFixed(0)}%`}>
+                    {datosTipo.map((d) => (
+                      <Cell key={d.nombre} fill={colorTipo(d.nombre)} />
+                    ))}
+                  </Pie>
+                  <Legend />
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </TarjetaGrafica>
+
+            <TarjetaGrafica titulo="Participación por Departamento">
+              <ResponsiveContainer>
+                <PieChart>
+                  <Pie data={datosDepartamentoPie} dataKey="valor" nameKey="nombre" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                    {datosDepartamentoPie.map((d, i) => (
+                      <Cell key={d.nombre} fill={COLORES_DEPARTAMENTO[i % COLORES_DEPARTAMENTO.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </TarjetaGrafica>
+          </div>
+
+          {/* Impedimentos detectados si hay datos */}
+          {datosImpedimentos.length > 0 && (
+            <TarjetaGrafica titulo="Impedimentos Detectados para la Aplicación de lo Aprendido" alto={Math.max(180, datosImpedimentos.length * 36)}>
+              <ResponsiveContainer>
+                <BarChart data={datosImpedimentos} layout="vertical" margin={{ left: 20, right: 20, top: 10, bottom: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} />
+                  <YAxis type="category" dataKey="nombre" width={220} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="cantidad" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </TarjetaGrafica>
+          )}
         </div>
       )}
 
