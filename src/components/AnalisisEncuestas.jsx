@@ -1523,7 +1523,7 @@ export default function AnalisisEncuestas() {
             <strong className="text-slate-800">{departamentosAnalizados.length}</strong>
             <span>departamentos</span>
           </div>
-          {(filtroAnio !== 'todos' || filtroPeriodo !== 'todos' || filtroTipo !== 'todos' || filtroDepto !== 'todos' || filtroCurso !== 'todos' || filtroGenero !== 'todos') && (
+          {(filtroAnio !== 'todos' || filtroPeriodo !== 'todos' || filtroTipo !== 'todos' || filtroDepto !== 'todos' || filtroCurso !== 'todos') && (
             <button
               onClick={() => {
                 setFiltroAnio('todos')

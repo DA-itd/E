@@ -62,7 +62,7 @@ export default function ReporteEncuesta() {
   const [filtroPeriodo, setFiltroPeriodo] = useState('')
   const [filtroCurso, setFiltroCurso] = useState('')
   const [filtroDepartamento, setFiltroDepartamento] = useState('')
-  // filtroGenero removido
+  const [filtroGenero, setFiltroGenero] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
 
   const [vista, setVista] = useState('preguntas') // 'preguntas' | 'participacion' | 'comentarios'
