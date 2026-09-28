@@ -486,10 +486,15 @@ export default function Login({ onIrAValidar }) {
             <span>D.R. © Alejandro Calderón Rentería. 2026 · Instituto Tecnológico de Durango</span>
           </div>
 
-          {/* Columna Derecha: Departamento de Desarrollo Académico */}
-          <div className="flex items-center gap-2 text-white/90 font-medium">
-            <span className="text-base">🛡️</span>
-            <span>Departamento de Desarrollo Académico</span>
+          {/* Columna Derecha: Departamento y Versión */}
+          <div className="flex items-center gap-3 text-white/90 font-medium">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base">🛡️</span>
+              <span>Departamento de Desarrollo Académico</span>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-white/10 text-white/80 font-mono text-[11px] font-semibold border border-white/20">
+              v2.1
+            </span>
           </div>
         </div>
       </footer>

@@ -749,10 +749,15 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
       {/* 4. PIE DE PÁGINA INSTITUCIONAL GUINDA                                     */}
       {/* ========================================================================= */}
       <footer className="w-full bg-[#781834] text-white py-3 px-4 sm:px-6 lg:px-8 border-t border-black/10">
-        <div className="max-w-6xl mx-auto flex items-center justify-center text-xs">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2 text-white/90">
             <span className="text-base">🏛️</span>
             <span>D.R. © Alejandro Calderón Rentería. 2026 · Instituto Tecnológico de Durango</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded bg-white/10 text-white/80 font-mono text-[11px] font-semibold border border-white/20">
+              v2.1
+            </span>
           </div>
         </div>
       </footer>

@@ -10,9 +10,14 @@ export default function BarraSeccion({ titulo, subTabs, tabActiva, onCambiarTab,
         >
           ← Menú principal
         </button>
-        <p className="font-display text-sm font-semibold tracking-wide uppercase text-white/90">
-          {titulo}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="font-display text-sm font-semibold tracking-wide uppercase text-white/90">
+            {titulo}
+          </p>
+          <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/75 font-mono text-[10px] font-semibold border border-white/20">
+            v2.1
+          </span>
+        </div>
       </div>
 
       {/* Menú Secundario (Tabs) */}
