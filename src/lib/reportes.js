@@ -108,9 +108,24 @@ export async function calcularReporte(periodo) {
     totalPlantilla++
     if (d.genero === 'Hombre' || d.genero === 'Mujer') totalPlantillaPorGenero[d.genero]++
   }
+  // Helper para traer todos los registros sin topar con el límite por defecto de 1000 de Supabase
+  async function traerTodosLosRegistros(consultaBase) {
+    let todos = []
+    let desde = 0
+    const paso = 1000
+    while (true) {
+      const { data, error } = await consultaBase.range(desde, desde + paso - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      todos = todos.concat(data)
+      if (data.length < paso) break
+      desde += paso
+    }
+    return todos
+  }
 
   // --- Fuente 1: inscripciones activas del ciclo actual ---
-  const { data: inscripcionesActuales, error: errorActuales } = await supabase
+  const queryActuales = supabase
     .from('inscripciones')
     .select(`
       docente_id,
@@ -122,7 +137,7 @@ export async function calcularReporte(periodo) {
     .gte('cursos.fecha_inicio', inicio)
     .lte('cursos.fecha_inicio', fin)
 
-  if (errorActuales) throw errorActuales
+  const inscripcionesActuales = await traerTodosLosRegistros(queryActuales)
 
   // --- Fuente 2: histórico 2022-2026 (sin fecha real, solo año + texto) ---
   let queryHistorico = supabase
@@ -135,8 +150,7 @@ export async function calcularReporte(periodo) {
     queryHistorico = queryHistorico.ilike('fecha_curso_texto', `%${NOMBRE_MES[mes]}%`)
   }
 
-  const { data: historico, error: errorHistorico } = await queryHistorico
-  if (errorHistorico) throw errorHistorico
+  const historico = await traerTodosLosRegistros(queryHistorico)
 
   // --- Unificar ambas fuentes en un mismo formato ---
   const filas = []
