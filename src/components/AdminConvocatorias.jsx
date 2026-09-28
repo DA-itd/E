@@ -45,8 +45,6 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
   const [errorMsg, setErrorMsg] = useState('')
   const [anioFolio, setAnioFolio] = useState(new Date().getFullYear())
   const [mostrarAnioFolio, setMostrarAnioFolio] = useState(false)
-  const [archivandoId, setArchivandoId] = useState(null)
-  const [conteoInscripcionesPorConv, setConteoInscripcionesPorConv] = useState({})
 
   // Octubre a diciembre se lanza la convocatoria de enero del año siguiente,
   // así que en esos meses hay que poder elegir el año del folio. El resto
@@ -75,22 +73,6 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
       .order('mes', { ascending: false })
     setConvocatorias(data || [])
     setCargando(false)
-    cargarConteoInscripciones()
-  }
-
-  // Cuántas inscripciones activas le quedan a cada convocatoria, para saber
-  // si ya se archivó (0 = ya archivada, o nunca tuvo cursos con inscritos).
-  async function cargarConteoInscripciones() {
-    const { data } = await supabase
-      .from('inscripciones')
-      .select('id, cursos!inner(convocatoria_id)')
-      .eq('estado', 'activo')
-    const conteo = {}
-    ;(data || []).forEach((i) => {
-      const cid = i.cursos?.convocatoria_id
-      if (cid) conteo[cid] = (conteo[cid] || 0) + 1
-    })
-    setConteoInscripcionesPorConv(conteo)
   }
 
   async function cargarCursos(convocatoriaId) {
@@ -121,37 +103,6 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
       setErrorMsg('No se pudo actualizar: ' + error.message)
       return
     }
-    cargarConvocatorias()
-  }
-
-  async function archivarInscripciones(conv) {
-    if (
-      !confirm(
-        `¿Archivar TODAS las inscripciones activas de "${conv.nombre}" a historial?\n\n` +
-        `Esto las mueve de "inscripciones" a "inscripciones_historial" y las borra de la ` +
-        `tabla activa (dejan de contar en el reporte del periodo actual, y de aparecer en ` +
-        `Descarga de Constancias / Asistencia).\n\n` +
-        `Solo funciona si TODAS las inscripciones activas de esta convocatoria ya tienen ` +
-        `asistencia revisada (Sí o No, ninguna en blanco). Si falta alguna por revisar, ` +
-        `esta acción de archivado se detiene sola y no mueve ni borra nada — ninguna ` +
-        `inscripción se cancela ni se modifica.`
-      )
-    ) return
-
-    setArchivandoId(conv.id)
-    setErrorMsg('')
-    const { data, error } = await supabase.rpc('archivar_convocatoria_a_historial', {
-      p_convocatoria_id: conv.id,
-    })
-    setArchivandoId(null)
-
-    if (error) {
-      setErrorMsg('No se archivó: ' + error.message)
-      return
-    }
-
-    alert(`Se archivaron ${data} inscripción(es) a historial.`)
-    setCursosPorConvocatoria((prev) => ({ ...prev, [conv.id]: undefined }))
     cargarConvocatorias()
   }
 
@@ -463,7 +414,7 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                     {conv.nombre} · {conv.fecha_inicio} a {conv.fecha_fin}
                   </p>
                 </button>
-                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                <div className="flex items-center gap-3 shrink-0">
                   <button
                     onClick={() => setFormConvocatoria({
                       ...conv,
@@ -484,23 +435,6 @@ export default function AdminConvocatorias({ prefill, onPrefillConsumido }) {
                   >
                     {conv.activo ? 'Dar de baja' : 'Dar de alta'}
                   </button>
-                  {(conteoInscripcionesPorConv[conv.id] || 0) === 0 ? (
-                    <span
-                      className="text-xs font-semibold text-green-700 bg-green-100 border border-green-300 px-3 py-1.5 rounded-lg"
-                      title="Esta convocatoria ya no tiene inscripciones activas (se archivaron, o nunca tuvo)"
-                    >
-                      ✓ Archivada
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => archivarInscripciones(conv)}
-                      disabled={archivandoId === conv.id}
-                      className="text-xs rounded-lg border border-amber-400/50 text-amber-700 px-3 py-1.5 hover:bg-amber-50 disabled:opacity-50"
-                      title="Mueve las inscripciones activas de esta convocatoria a historial. Solo funciona si todas ya tienen asistencia revisada."
-                    >
-                      {archivandoId === conv.id ? 'Archivando…' : 'Archivar a historial'}
-                    </button>
-                  )}
                   <button
                     onClick={() => eliminarConvocatoria(conv)}
                     className="text-xs rounded-lg border border-itd-guinda/30 text-itd-guinda px-3 py-1.5 hover:bg-itd-guinda/5"

@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ReportesGraficas from './ReportesGraficas'
-import ReporteEncuesta from './ReporteEncuesta'
+import AnalisisEncuestas from './AnalisisEncuestas'
 
 import { dibujarEncabezadoPDF } from '../lib/pdfEncabezado'
 
@@ -216,7 +216,7 @@ export default function AdminReportes() {
       </div>
 
       {reporteActivo === 'encuesta' ? (
-        <ReporteEncuesta />
+        <AnalisisEncuestas />
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-3">

@@ -1,3 +1,22 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-itd-navy: #1B396A;
+  --color-itd-navyDark: #122a4d;
+  --color-itd-guinda: #9D2449;
+  --color-itd-guindaDark: #781834;
+  --color-itd-guindaDeep: #531023;
+  --color-itd-gold: #C9A227;
+  --color-itd-sand: #F7F5F0;
+  --font-display: "Fraunces", serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+:focus-visible {
+  outline: 2px solid #C9A227;
+  outline-offset: 2px;
+}

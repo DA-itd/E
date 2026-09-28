@@ -7,10 +7,109 @@ export default function ValidarConstancia({ folio, tipo }) {
   const [resultado, setResultado] = useState(undefined) // undefined = cargando
 
   useEffect(() => {
-    supabase.functions
-      .invoke('validar-constancia', { body: { folio, tipo } })
-      .then(({ data }) => setResultado(data || { valido: false }))
-      .catch(() => setResultado({ valido: false }))
+    async function verificar() {
+      const valor = (folio || '').trim().toUpperCase()
+      if (!valor) {
+        setResultado({ valido: false })
+        return
+      }
+
+      const PREFIJO = 'TNM-054-'
+      const folioCompleto = valor.startsWith('TNM-054-') ? valor : PREFIJO + valor
+
+      // 1. Probar Edge Function si está activa
+      try {
+        const { data: edgeData } = await supabase.functions.invoke('validar-constancia', {
+          body: { folio: valor, tipo },
+        })
+        if (edgeData && edgeData.valido) {
+          setResultado(edgeData)
+          return
+        }
+      } catch {
+        // Continuar con RPC y consultas directas
+      }
+
+      // 2. Probar RPC validar_constancia
+      try {
+        let { data } = await supabase.rpc('validar_constancia', { p_folio: folioCompleto })
+        if (!data || data.length === 0) {
+          const respDirecto = await supabase.rpc('validar_constancia', { p_folio: valor })
+          if (respDirecto.data && respDirecto.data.length > 0) {
+            data = respDirecto.data
+          }
+        }
+
+        if (data && data.length > 0) {
+          const r = data[0]
+          setResultado({
+            valido: true,
+            folio: r.folio || folioCompleto,
+            nombre: r.nombre || '',
+            curso: r.curso || '',
+            fechaTexto: r.fecha_texto || '',
+            tipo: r.tipo || tipo || 'Constancia',
+            departamento: r.departamento || '',
+            horas: r.horas || '',
+          })
+          return
+        }
+      } catch {
+        // Continuar con consulta a tablas
+      }
+
+      // 3. Probar tabla inscripciones
+      try {
+        const { data: ins } = await supabase
+          .from('inscripciones')
+          .select('folio_personal, cursos(nombre, fecha_inicio, fecha_fin, horas, tipo, departamento), docentes(nombre_completo, departamento)')
+          .or(`folio_personal.eq.${valor},folio_personal.eq.${folioCompleto}`)
+          .maybeSingle()
+
+        if (ins && ins.cursos) {
+          setResultado({
+            valido: true,
+            folio: ins.folio_personal || folioCompleto,
+            nombre: ins.docentes?.nombre_completo || '',
+            curso: ins.cursos.nombre || '',
+            fechaInicio: ins.cursos.fecha_inicio,
+            fechaFin: ins.cursos.fecha_fin,
+            tipo: ins.cursos.tipo || tipo || 'Constancia',
+            departamento: ins.cursos.departamento || ins.docentes?.departamento || '',
+            horas: ins.cursos.horas || '',
+          })
+          return
+        }
+      } catch {
+        // Continuar con historial
+      }
+
+      // 4. Probar tabla inscripciones_historial
+      try {
+        const { data: hist } = await supabase
+          .from('inscripciones_historial')
+          .select('folio_personal, nombre_completo, curso')
+          .or(`folio_personal.eq.${valor},folio_personal.eq.${folioCompleto}`)
+          .maybeSingle()
+
+        if (hist) {
+          setResultado({
+            valido: true,
+            folio: hist.folio_personal || folioCompleto,
+            nombre: hist.nombre_completo || '',
+            curso: hist.curso || '',
+            tipo: tipo || 'Constancia',
+          })
+          return
+        }
+      } catch {
+        // No se encontró
+      }
+
+      setResultado({ valido: false })
+    }
+
+    verificar()
   }, [folio, tipo])
 
   function volverAlInicio() {

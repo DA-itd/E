@@ -170,7 +170,7 @@ export default function HistorialCursos({ docente }) {
         <button
           onClick={descargarPDF}
           disabled={generando || cargando}
-          className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-50 whitespace-nowrap"
+          className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-50 whitespace-nowrap cursor-pointer"
         >
           {generando ? 'Generando…' : '⬇ Descargar Kardex (PDF)'}
         </button>

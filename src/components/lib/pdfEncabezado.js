@@ -48,53 +48,30 @@ export async function cargarImagenArrayBuffer(url) {
 // centrado en la parte superior del PDF. Devuelve el startY sugerido para
 // la tabla que sigue (autoTable), dejando espacio debajo del encabezado.
 export async function dibujarEncabezadoPDF(doc, titulo, subtitulos = []) {
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const centerX = pageWidth / 2
-  const leftMargin = 14
-  const rightMargin = 14
-
   try {
     const [logoTecnm, logoItd] = await Promise.all([
       cargarImagenBase64(URL_LOGO_TECNM),
       cargarImagenBase64(URL_LOGO_ITD),
     ])
-    doc.addImage(logoTecnm, 'JPEG', leftMargin, 8, 32, 14)
-    doc.addImage(logoItd, 'PNG', pageWidth - rightMargin - 17, 5, 17, 20)
+    doc.addImage(logoTecnm, 'JPEG', 14, 8, 32, 14)
+    doc.addImage(logoItd, 'PNG', 181, 5, 17, 20)
   } catch (err) {
     console.warn('No se pudieron cargar los logotipos para el PDF:', err)
   }
 
-  // Ancho disponible entre los dos logos para que nunca se encimen
-  const anchoDisponible = pageWidth - (leftMargin + 34 + rightMargin + 18)
-
-  doc.setFontSize(12)
+  doc.setFontSize(13)
   doc.setFont('helvetica', 'bold')
-  doc.setTextColor(27, 57, 106)
+  doc.text(titulo, 105, 15, { align: 'center' })
 
-  const lineasTitulo = doc.splitTextToSize(titulo, anchoDisponible)
-  let y = 13
-  for (const lt of lineasTitulo) {
-    doc.text(lt, centerX, y, { align: 'center' })
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  let y = 21
+  for (const linea of subtitulos) {
+    doc.text(linea, 105, y, { align: 'center' })
     y += 5
   }
-
-  doc.setFontSize(8.5)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(51, 65, 85)
-
-  for (const linea of subtitulos) {
-    if (!linea) continue
-    const lineasSub = doc.splitTextToSize(String(linea), anchoDisponible)
-    for (const ls of lineasSub) {
-      doc.text(ls, centerX, y, { align: 'center' })
-      y += 4.5
-    }
-  }
-
-  y = Math.max(y, 25)
   doc.setDrawColor(27, 57, 106)
-  doc.setLineWidth(0.5)
-  doc.line(leftMargin, y + 1, pageWidth - rightMargin, y + 1)
+  doc.line(14, y + 1, 196, y + 1)
 
   return y + 6
 }

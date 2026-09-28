@@ -1,0 +1,6 @@
+{
+  "name": "Actualización Docente ITD",
+  "description": "Sistema de gestión, inscripción y constancias de Actualización Docente del Instituto Tecnológico de Durango",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

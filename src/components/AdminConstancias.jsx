@@ -250,14 +250,26 @@ export default function AdminConstancias() {
 
   return (
     <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8">
-      <div className="flex items-center justify-between gap-4 mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
         <h2 className="font-display text-xl font-bold text-itd-navy flex items-center gap-2">
           <span>📜</span>
           <span>Constancias y Reconocimientos Oficiales</span>
         </h2>
-        <span className="text-xs bg-itd-navy/5 text-itd-navy font-semibold px-2.5 py-1 rounded-full border border-itd-navy/10">
-          Soporte y Emisión Administrativa
-        </span>
+        <div className="flex items-center gap-2">
+          <a
+            href="https://da-itd.github.io/B"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3 py-1 rounded-lg transition-colors shadow-2xs"
+            title="Abrir repositorio oficial histórico de constancias de otros años"
+          >
+            <span>📜 Constancias de otros años</span>
+            <span>↗</span>
+          </a>
+          <span className="text-xs bg-itd-navy/5 text-itd-navy font-semibold px-2.5 py-1 rounded-full border border-itd-navy/10 hidden sm:inline-block">
+            Soporte Administrativo
+          </span>
+        </div>
       </div>
 
       <p className="text-sm text-itd-navyDark/60 mb-6">
@@ -283,7 +295,7 @@ export default function AdminConstancias() {
               placeholder={
                 cargandoLista
                   ? 'Cargando catálogo…'
-                  : 'Escribe nombre del docente (ej. Alejandro Calderón Rentería, Calderón, etc.)…'
+                  : 'Escribe nombre del docente (ej. Jorge Enrique Loera, Loera, etc.)…'
               }
               disabled={cargandoLista}
               autoFocus

@@ -205,11 +205,35 @@ export default function DescargaConstancias({ docente }) {
         <h2 className="font-display text-xl font-semibold text-itd-navy mb-1">
           Descarga tus Constancias
         </h2>
-        <p className="text-sm text-itd-navyDark/60 mb-6">
+        <p className="text-sm text-itd-navyDark/60 mb-4">
           Aquí aparecen los cursos que ya fueron validados con tu asistencia. Para el periodo de Agosto,
           la descarga está habilitada directamente con tu asistencia aprobada. A partir del próximo periodo,
           se requerirá contar con ambas condiciones (asistencia aprobada y encuesta contestada) para desbloquearla.
         </p>
+
+        {/* Banner destacado: Repositorio de Constancias de otros años */}
+        <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-4 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-2xs">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl shrink-0">📜</span>
+            <div>
+              <p className="text-sm font-bold text-amber-950">
+                ¿Buscas constancias de otros años o periodos anteriores?
+              </p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Consulta el repositorio oficial histórico del Instituto Tecnológico de Durango para ciclos anteriores.
+              </p>
+            </div>
+          </div>
+          <a
+            href="https://da-itd.github.io/B"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-400 bg-white hover:bg-amber-100 px-4 py-2 text-xs font-bold text-amber-900 transition-colors shadow-2xs shrink-0"
+          >
+            <span>📜 Ir a constancias de otros años</span>
+            <span className="text-sm">↗</span>
+          </a>
+        </div>
 
         {aprobadas.length === 0 ? (
           <p className="text-center text-itd-navyDark/50 py-8">

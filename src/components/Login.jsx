@@ -82,7 +82,10 @@ export default function Login({ onIrAValidar }) {
     const { error: errorAuth } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        queryParams: { hd: DOMINIO_PERMITIDO },
+        queryParams: {
+          hd: DOMINIO_PERMITIDO,
+          prompt: 'select_account',
+        },
         redirectTo: window.location.origin + window.location.pathname,
       },
     })

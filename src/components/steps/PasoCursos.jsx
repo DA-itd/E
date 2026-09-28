@@ -24,12 +24,22 @@ export default function PasoCursos({ docente, onSiguiente, onRegresar }) {
     setCargando(true)
     const hoy = new Date().toISOString().slice(0, 10)
 
-    const { data: convData, error: convError } = await supabase
+    let { data: convData, error: convError } = await supabase
       .from('convocatorias')
       .select('*')
       .eq('activo', true)
-      
-      .order('fecha_inicio', { ascending: true })
+      .order('fecha_inicio', { ascending: false })
+
+    if (!convData || convData.length === 0) {
+      const { data: ultimaConv } = await supabase
+        .from('convocatorias')
+        .select('*')
+        .order('fecha_inicio', { ascending: false })
+        .limit(1)
+      if (ultimaConv && ultimaConv.length > 0) {
+        convData = ultimaConv
+      }
+    }
 
     const convIds = (convData || []).map((c) => c.id)
 

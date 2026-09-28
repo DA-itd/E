@@ -100,7 +100,6 @@ export default function ReporteEncuesta() {
     const periodos = new Map()
     const cursos = new Map()
     const departamentos = new Set()
-    const generos = new Set()
     const tipos = new Set()
     for (const r of respuestas) {
       if (r.periodo_anio) anios.add(r.periodo_anio)
@@ -110,7 +109,6 @@ export default function ReporteEncuesta() {
       }
       if (r.curso_id) cursos.set(r.curso_id, r.curso_nombre)
       if (r.departamento) departamentos.add(r.departamento)
-      if (r.genero) generos.add(r.genero)
       if (r.tipo_curso) tipos.add(r.tipo_curso)
     }
     return {
@@ -118,7 +116,7 @@ export default function ReporteEncuesta() {
       periodos: [...periodos.entries()],
       cursos: [...cursos.entries()].sort((a, b) => a[1].localeCompare(b[1])),
       departamentos: [...departamentos].sort(),
-      generos: [...generos].sort(),
+      generos: ['Hombre', 'Mujer', 'Sin especificar'],
       tipos: [...tipos].sort(),
     }
   }, [respuestas, filtroAnio])
@@ -137,7 +135,13 @@ export default function ReporteEncuesta() {
       if (filtroPeriodo && r.convocatoria_id !== filtroPeriodo) return false
       if (filtroCurso && r.curso_id !== filtroCurso) return false
       if (filtroDepartamento && r.departamento !== filtroDepartamento) return false
-      if (filtroGenero && r.genero !== filtroGenero) return false
+      if (filtroGenero) {
+        if (filtroGenero === 'Sin especificar') {
+          if (r.genero) return false
+        } else if (r.genero !== filtroGenero) {
+          return false
+        }
+      }
       if (filtroTipo && r.tipo_curso !== filtroTipo) return false
       return true
     })
@@ -237,6 +241,93 @@ export default function ReporteEncuesta() {
       }))
   }, [resultadoPreguntas])
 
+  // Semáforo por Departamento
+  const departamentosSemaforo = useMemo(() => {
+    const mapa = new Map()
+    for (const r of filtradas) {
+      const depto = r.departamento || 'Sin Departamento'
+      if (!mapa.has(depto)) {
+        mapa.set(depto, {
+          nombre: depto,
+          total: 0,
+          valores: [],
+          cursos: new Set(),
+        })
+      }
+      const d = mapa.get(depto)
+      d.total++
+      if (r.curso_id) d.cursos.add(r.curso_id)
+      for (const p of preguntas) {
+        const v = r[p.codigo]
+        if (typeof v === 'number' && v >= 1 && v <= 5) d.valores.push(v)
+      }
+    }
+    return [...mapa.values()].map((d) => {
+      const promedio = d.valores.length > 0 ? d.valores.reduce((a, b) => a + b, 0) / d.valores.length : 0
+      let semaforo = 'verde'
+      let textoSemaforo = '>= 4.5 (Excelente)'
+      let colorClass = 'bg-emerald-50 text-emerald-800 border-emerald-300'
+      let badgeClass = 'bg-emerald-500'
+      if (promedio < 4.0) {
+        semaforo = 'rojo'
+        textoSemaforo = '< 4.0 (Atención prioritaria)'
+        colorClass = 'bg-rose-50 text-rose-800 border-rose-300'
+        badgeClass = 'bg-rose-500'
+      } else if (promedio < 4.5) {
+        semaforo = 'amarillo'
+        textoSemaforo = '4.0 - 4.49 (Seguimiento)'
+        colorClass = 'bg-amber-50 text-amber-800 border-amber-300'
+        badgeClass = 'bg-amber-500'
+      }
+      return {
+        nombre: d.nombre,
+        total: d.total,
+        totalCursos: d.cursos.size,
+        promedio: Number(promedio.toFixed(2)),
+        semaforo,
+        textoSemaforo,
+        colorClass,
+        badgeClass,
+      }
+    }).sort((a, b) => b.promedio - a.promedio)
+  }, [filtradas, preguntas])
+
+  // Indicador de Impacto por Curso (Satisfacción vs Aplicación práctica)
+  const cursosImpacto = useMemo(() => {
+    const mapa = new Map()
+    for (const r of filtradas) {
+      const cid = r.curso_id || 'sin-id'
+      if (!mapa.has(cid)) {
+        mapa.set(cid, {
+          id: cid,
+          nombre: r.curso_nombre || 'Sin nombre',
+          total: 0,
+          valoresSat: [],
+          valoresImp: [],
+        })
+      }
+      const c = mapa.get(cid)
+      c.total++
+      // Satisfacción B1..B9
+      for (let i = 1; i <= 9; i++) {
+        if (typeof r[`b${i}`] === 'number') c.valoresSat.push(r[`b${i}`])
+      }
+      // Aplicación práctica A3 y C1
+      if (typeof r.a3 === 'number') c.valoresImp.push(r.a3)
+      if (typeof r.c1 === 'number') c.valoresImp.push(r.c1)
+    }
+    return [...mapa.values()].map((c) => {
+      const promSat = c.valoresSat.length > 0 ? c.valoresSat.reduce((a, b) => a + b, 0) / c.valoresSat.length : 0
+      const promImp = c.valoresImp.length > 0 ? c.valoresImp.reduce((a, b) => a + b, 0) / c.valoresImp.length : 0
+      return {
+        ...c,
+        promedioSatisfaccion: Number(promSat.toFixed(2)),
+        promedioImpacto: Number(promImp.toFixed(2)),
+        repetir: promSat >= 4.5 && promImp >= 4.3,
+      }
+    }).sort((a, b) => b.promedioSatisfaccion - a.promedioSatisfaccion)
+  }, [filtradas])
+
   // Distribución de impedimentos
   const datosImpedimentos = useMemo(() => {
     const mapa = new Map()
@@ -324,13 +415,16 @@ export default function ReporteEncuesta() {
     XLSX.writeFile(wb, `Reporte_Encuesta_Opinion_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
-  // Texto de filtros aplicados, reutilizado en el PDF y el Word
+  // Texto de filtros aplicados, reutilizado en el PDF y el Word (en 2 líneas para evitar traslape con logos)
   function resumenFiltros() {
     const periodoTexto = filtroPeriodo
       ? opciones.periodos.find(([id]) => id === filtroPeriodo)?.[1]
       : filtroAnio || 'Todos'
     const cursoTexto = filtroCurso ? opciones.cursos.find(([id]) => id === filtroCurso)?.[1] : 'Todos'
-    return `Periodo: ${periodoTexto} · Curso: ${cursoTexto} · Departamento: ${filtroDepartamento || 'Todos'} · Género: ${filtroGenero || 'Todos'} · Tipo: ${filtroTipo || 'Todos'}`
+    return [
+      `Periodo: ${periodoTexto}  |  Curso: ${cursoTexto}`,
+      `Departamento: ${filtroDepartamento || 'Todos'}  |  Género: ${filtroGenero || 'Todos'}  |  Tipo: ${filtroTipo || 'Todos'}`,
+    ]
   }
 
   const SECCIONES_PREGUNTAS = [
@@ -340,19 +434,21 @@ export default function ReporteEncuesta() {
   ]
 
   async function exportarPDFInforme() {
-    const doc = new jsPDF()
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
     const titulo = 'Reporte de Encuesta de Opinión — ITD-AD-FO-09'
-    const subtitulos = [resumenFiltros()]
+    const subtitulos = resumenFiltros()
 
     let y = await dibujarEncabezadoPDF(doc, titulo, subtitulos)
 
-    doc.setFontSize(11)
+    doc.setFontSize(10.5)
     doc.setFont('helvetica', 'bold')
+    doc.setTextColor(27, 57, 106)
     doc.text('Resumen de Participación', 14, y)
     y += 4
 
     autoTable(doc, {
       startY: y,
+      margin: { left: 14, right: 14 },
       head: [['Indicador', 'Valor']],
       body: [
         ['Total de respuestas', filtradas.length],
@@ -365,56 +461,662 @@ export default function ReporteEncuesta() {
         ],
         ['Primera vez sobre el tema (Sí / No)', `${primeraVez.si} / ${primeraVez.no}`],
       ],
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [27, 57, 106] },
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [27, 57, 106], halign: 'center' },
+      columnStyles: {
+        0: { cellWidth: 120 },
+        1: { cellWidth: 68, halign: 'center' },
+      },
     })
     y = doc.lastAutoTable.finalY + 8
 
     doc.setFontSize(10)
     doc.setFont('helvetica', 'bold')
+    doc.setTextColor(27, 57, 106)
     doc.text('Participantes por curso', 14, y)
     y += 3
     autoTable(doc, {
       startY: y,
+      margin: { left: 14, right: 14 },
       head: [['Curso', 'Participantes']],
       body: participacionPorCurso.map((p) => [p.curso, p.cantidad]),
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [27, 57, 106] },
-      columnStyles: { 0: { cellWidth: 150 } },
+      headStyles: { fillColor: [27, 57, 106], halign: 'center' },
+      columnStyles: {
+        0: { cellWidth: 154 },
+        1: { cellWidth: 34, halign: 'center' },
+      },
     })
     y = doc.lastAutoTable.finalY + 8
 
     doc.setFontSize(10)
     doc.setFont('helvetica', 'bold')
+    doc.setTextColor(27, 57, 106)
     doc.text('Participación por departamento y periodo', 14, y)
     y += 3
     autoTable(doc, {
       startY: y,
+      margin: { left: 14, right: 14 },
       head: [['Periodo', 'Departamento', 'Participantes']],
       body: participacionPorDepartamentoYPeriodo.map((p) => [p.periodo, p.departamento, p.cantidad]),
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [27, 57, 106] },
+      headStyles: { fillColor: [27, 57, 106], halign: 'center' },
+      columnStyles: {
+        0: { cellWidth: 45 },
+        1: { cellWidth: 110 },
+        2: { cellWidth: 33, halign: 'center' },
+      },
     })
 
     for (const [codigoSeccion, tituloSeccion] of SECCIONES_PREGUNTAS) {
       doc.addPage()
       let yy = await dibujarEncabezadoPDF(doc, titulo, subtitulos)
-      doc.setFontSize(11)
+      doc.setFontSize(10.5)
       doc.setFont('helvetica', 'bold')
+      doc.setTextColor(27, 57, 106)
       doc.text(tituloSeccion, 14, yy)
       yy += 4
       const preguntasSeccion = resultadoPreguntas.filter((p) => p.seccion === codigoSeccion)
       autoTable(doc, {
         startY: yy,
+        margin: { left: 14, right: 14 },
         head: [['Pregunta', 'Prom.', '1', '2', '3', '4', '5', 'Total']],
         body: preguntasSeccion.map((p) => [p.texto, p.promedio.toFixed(2), ...p.distribucion, p.total]),
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [27, 57, 106] },
-        columnStyles: { 0: { cellWidth: 95 } },
+        styles: { fontSize: 7.5 },
+        headStyles: { fillColor: [27, 57, 106], halign: 'center' },
+        columnStyles: {
+          0: { cellWidth: 104 },
+          1: { cellWidth: 14, halign: 'center' },
+          2: { cellWidth: 11, halign: 'center' },
+          3: { cellWidth: 11, halign: 'center' },
+          4: { cellWidth: 11, halign: 'center' },
+          5: { cellWidth: 11, halign: 'center' },
+          6: { cellWidth: 11, halign: 'center' },
+          7: { cellWidth: 15, halign: 'center' },
+        },
       })
     }
 
     doc.save(`Informe_Encuesta_Opinion_${new Date().toISOString().slice(0, 10)}.pdf`)
+  }
+
+  // Generación del Formato Oficial para Diagnóstico y Concentrado de Necesidades (ITD-AC-PO-10-01) en PDF
+  // Con 2 páginas exactas, cajetines ISO oficiales y 4 renglones vacíos para completar
+  async function exportarFormatoNecesidadesPDF() {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+    const nombreDepto = filtroDepartamento || 'DEPARTAMENTO DE SISTEMAS Y COMPUTACIÓN'
+
+    // ======================== PÁGINA 1 ========================
+    doc.setDrawColor(27, 57, 106)
+    doc.setLineWidth(0.5)
+    doc.rect(10, 8, 196, 262)
+
+    // Cabecera en 3 casillas según formato oficial ISO
+    doc.rect(10, 8, 36, 26)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(27, 57, 106)
+    doc.text('TECNM / ITD', 28, 22, { align: 'center' })
+
+    doc.rect(46, 8, 122, 26)
+    doc.setFontSize(9.5)
+    doc.text('INSTITUTO TECNOLÓGICO DE DURANGO', 107, 14, { align: 'center' })
+    doc.setFontSize(8)
+    doc.setTextColor(30, 41, 59)
+    doc.text('Formato para Diagnóstico y Concentrado de Necesidades de Formación', 107, 19, { align: 'center' })
+    doc.text('y Actualización Docente y Profesional', 107, 23, { align: 'center' })
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(6.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Referencia a las Normas ISO 9001:2015 7.2, 7.3, ISO 14001:2015 7.2, 7.3, ISO 45001:2018 4.4.2 e ISO 50001:2018 4.5.2', 107, 30, { align: 'center' })
+
+    doc.rect(168, 8, 38, 26)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('Código: ITD-AC-PO-10-01', 187, 15, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(51, 65, 85)
+    doc.text('Revisión: 0', 187, 21, { align: 'center' })
+    doc.text('Página 1 de 2', 187, 27, { align: 'center' })
+
+    // Metadatos
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('Subdirección Académica', 14, 38)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(30, 41, 59)
+    doc.text(`Departamento Académico: ${nombreDepto}`, 14, 43)
+    doc.text(`Fecha de realización del diagnóstico: ${new Date().toLocaleDateString('es-MX')}`, 14, 48)
+
+    // Sección a)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('a) PRIORIZAR LAS ASIGNATURAS EN LAS QUE SE REQUIERA FORMACIÓN O ACTUALIZACIÓN (CARRERA GENÉRICA)', 14, 54)
+
+    const filasBodyA = [
+      [
+        'Asignaturas Básicas / Eje Docente 1',
+        'Estrategias y Metodologías de Aprendizaje Activo en el Aula',
+        '15',
+        'Enero-Junio / Ago-Dic',
+        'Propuesto por Desarrollo Académico (Encuesta)',
+      ],
+      [
+        'Asignaturas Básicas / Eje Docente 2',
+        'Herramientas Digitales e Inteligencia Artificial en la Docencia',
+        '12',
+        'Enero-Junio / Ago-Dic',
+        'Desarrollo Académico ITD',
+      ],
+      ['', '', '', '', ''],
+      ['', '', '', '', ''],
+      ['', '', '', '', ''],
+      ['', '', '', '', ''],
+    ]
+
+    autoTable(doc, {
+      startY: 56,
+      margin: { left: 12, right: 12 },
+      head: [['Asignaturas requeridas', 'Contenidos temáticos requeridos', 'No. Prof.', 'Periodo', 'Facilitadores propuestos']],
+      body: filasBodyA,
+      theme: 'grid',
+      headStyles: { fillColor: [27, 57, 106], fontSize: 7, halign: 'center' },
+      styles: { fontSize: 6.5, minCellHeight: 7 },
+      columnStyles: {
+        0: { cellWidth: 46 },
+        1: { cellWidth: 64 },
+        2: { cellWidth: 16, halign: 'center' },
+        3: { cellWidth: 26, halign: 'center' },
+        4: { cellWidth: 40 },
+      },
+    })
+
+    // Sección b)
+    let currentY = doc.lastAutoTable.finalY + 5
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('b) PRIORIZAR LAS ASIGNATURAS EN LOS MÓDULOS DE ESPECIALIDAD (AVALADOS POR LA ACADEMIA)', 14, currentY)
+
+    const filasBodyB = [
+      [
+        'Módulo de Especialidad 1',
+        'Python y Análisis de Datos Orientados a la Especialidad',
+        '10',
+        'Enero-Junio',
+        'Instructor Especialista en el Área',
+      ],
+      [
+        'Módulo de Especialidad 2',
+        'Automatización, Control y Sistemas Aplicados',
+        '8',
+        'Agosto-Diciembre',
+        'Instructor Especialista en el Área',
+      ],
+      ['', '', '', '', ''],
+      ['', '', '', '', ''],
+      ['', '', '', '', ''],
+      ['', '', '', '', ''],
+    ]
+
+    autoTable(doc, {
+      startY: currentY + 2,
+      margin: { left: 12, right: 12 },
+      head: [['Asignaturas especialidad', 'Contenidos temáticos requeridos', 'No. Prof.', 'Periodo', 'Facilitadores propuestos']],
+      body: filasBodyB,
+      theme: 'grid',
+      headStyles: { fillColor: [27, 57, 106], fontSize: 7, halign: 'center' },
+      styles: { fontSize: 6.5, minCellHeight: 7 },
+      columnStyles: {
+        0: { cellWidth: 46 },
+        1: { cellWidth: 64 },
+        2: { cellWidth: 16, halign: 'center' },
+        3: { cellWidth: 26, halign: 'center' },
+        4: { cellWidth: 40 },
+      },
+    })
+
+    // Firmas Página 1
+    currentY = doc.lastAutoTable.finalY + 6
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(30, 41, 59)
+    doc.text('Jefe del Departamento Académico: _______________________      Firma: ____________________', 14, currentY + 4)
+    doc.text('Presidente(s) de Academia: ___________________________      Firma: ____________________', 14, currentY + 10)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('c.c.p. Subdirección Académica', 14, currentY + 15)
+
+    // ======================== PÁGINA 2 ========================
+    doc.addPage()
+    doc.rect(10, 8, 196, 262)
+
+    doc.rect(10, 8, 36, 26)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(27, 57, 106)
+    doc.text('TECNM / ITD', 28, 22, { align: 'center' })
+
+    doc.rect(46, 8, 122, 26)
+    doc.setFontSize(9.5)
+    doc.text('INSTITUTO TECNOLÓGICO DE DURANGO', 107, 14, { align: 'center' })
+    doc.setFontSize(8)
+    doc.setTextColor(30, 41, 59)
+    doc.text('CONCENTRADO DEL DIAGNÓSTICO DE NECESIDADES DE FORMACIÓN', 107, 19, { align: 'center' })
+    doc.text('Y ACTUALIZACIÓN DOCENTE Y PROFESIONAL', 107, 23, { align: 'center' })
+    doc.setFont('helvetica', 'italic')
+    doc.setFontSize(6.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('Referencia a las Normas ISO 9001:2015 7.2, 7.3, ISO 14001:2015 7.2, 7.3, ISO 45001:2018 4.4.2 e ISO 50001:2018 4.5.2', 107, 30, { align: 'center' })
+
+    doc.rect(168, 8, 38, 26)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('Código: ITD-AC-PO-10-01', 187, 15, { align: 'center' })
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(51, 65, 85)
+    doc.text('Revisión: 0', 187, 21, { align: 'center' })
+    doc.text('Página 2 de 2', 187, 27, { align: 'center' })
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('Subdirección Académica', 14, 38)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(30, 41, 59)
+    doc.text(`Departamento Académico: ${nombreDepto}`, 14, 43)
+    doc.text(`Fecha: ${new Date().toLocaleDateString('es-MX')}`, 14, 48)
+
+    // Sección a) Página 2
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('a) ACTIVIDADES O EVENTOS PARA LA FORMACIÓN Y ACTUALIZACIÓN DOCENTE', 14, 54)
+
+    const filasP2Docente = [
+      [
+        'Curso-Taller: Estrategias y Metodologías de Aprendizaje Activo en el Aula',
+        `${nombreDepto} (15 a 25 profesores)`,
+        'Próximo Periodo Intersemestral',
+      ],
+      [
+        'Curso-Taller: Herramientas Digitales e Inteligencia Artificial en la Docencia',
+        `${nombreDepto} (15 a 25 profesores)`,
+        'Próximo Periodo Intersemestral',
+      ],
+      ['', '', ''],
+      ['', '', ''],
+      ['', '', ''],
+      ['', '', ''],
+    ]
+
+    autoTable(doc, {
+      startY: 56,
+      margin: { left: 12, right: 12 },
+      head: [['Actividad o Evento (Cursos, talleres, conferencias)', 'Carrera(s) atendidas / No. profesores', 'Fecha de realización']],
+      body: filasP2Docente,
+      theme: 'grid',
+      headStyles: { fillColor: [27, 57, 106], fontSize: 7, halign: 'center' },
+      styles: { fontSize: 7, minCellHeight: 8 },
+      columnStyles: {
+        0: { cellWidth: 92 },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 40, halign: 'center' },
+      },
+    })
+
+    // Sección b) Página 2
+    currentY = doc.lastAutoTable.finalY + 6
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(27, 57, 106)
+    doc.text('b) ACTIVIDADES O EVENTOS PARA LA FORMACIÓN Y ACTUALIZACIÓN PROFESIONAL (ESPECIALIDAD)', 14, currentY)
+
+    const filasP2Especialidad = [
+      [
+        'Taller Especializado: Python y Análisis de Datos Aplicados a la Especialidad',
+        `${nombreDepto} (Especialidad)`,
+        'Próximo Periodo Intersemestral',
+      ],
+      [
+        'Taller Especializado: Automatización, Control y Sistemas Aplicados',
+        `${nombreDepto} (Especialidad)`,
+        'Próximo Periodo Intersemestral',
+      ],
+      ['', '', ''],
+      ['', '', ''],
+      ['', '', ''],
+      ['', '', ''],
+    ]
+
+    autoTable(doc, {
+      startY: currentY + 2,
+      margin: { left: 12, right: 12 },
+      head: [['Actividad o Evento (Cursos, talleres, conferencias)', 'Carrera(s) atendidas / No. profesores', 'Fecha de realización']],
+      body: filasP2Especialidad,
+      theme: 'grid',
+      headStyles: { fillColor: [27, 57, 106], fontSize: 7, halign: 'center' },
+      styles: { fontSize: 7, minCellHeight: 8 },
+      columnStyles: {
+        0: { cellWidth: 92 },
+        1: { cellWidth: 60 },
+        2: { cellWidth: 40, halign: 'center' },
+      },
+    })
+
+    // Firmas Página 2
+    currentY = doc.lastAutoTable.finalY + 8
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7.5)
+    doc.setTextColor(30, 41, 59)
+    doc.text('Subdirección Académica: _______________________________      Firma: ____________________', 14, currentY + 4)
+    doc.text('Jefe de Departamento Académico: _______________________      Firma: ____________________', 14, currentY + 10)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6.5)
+    doc.setTextColor(100, 116, 139)
+    doc.text('c.c.p. Archivo', 14, currentY + 15)
+
+    doc.save(`Formato_Necesidades_ITD_AC_PO_10_01_${nombreDepto.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`)
+  }
+
+  // Generación del Formato Oficial para Diagnóstico y Concentrado de Necesidades (ITD-AC-PO-10-01) en Word
+  async function exportarFormatoNecesidadesWord() {
+    const nombreDepto = filtroDepartamento || 'DEPARTAMENTO DE SISTEMAS Y COMPUTACIÓN'
+
+    const filasAGenericas = [
+      new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph('Formación Genérica / Asignaturas Básicas 1')] }),
+          new TableCell({ children: [new Paragraph('Estrategias y Metodologías de Aprendizaje Activo en el Aula')] }),
+          new TableCell({ children: [new Paragraph('15')] }),
+          new TableCell({ children: [new Paragraph('Enero - Junio / Agosto - Diciembre')] }),
+          new TableCell({ children: [new Paragraph('Propuesto por Desarrollo Académico según Encuesta ITD-AD-FO-09')] }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph('Formación Genérica / Asignaturas Básicas 2')] }),
+          new TableCell({ children: [new Paragraph('Herramientas Digitales e Inteligencia Artificial en la Docencia')] }),
+          new TableCell({ children: [new Paragraph('12')] }),
+          new TableCell({ children: [new Paragraph('Enero - Junio / Agosto - Diciembre')] }),
+          new TableCell({ children: [new Paragraph('Desarrollo Académico ITD')] }),
+        ],
+      }),
+      ...Array.from({ length: 4 }).map(() => {
+        return new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+          ],
+        })
+      }),
+    ]
+
+    const tablaAGenerica = new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          tableHeader: true,
+          children: [
+            new TableCell({ children: [new Paragraph({ text: 'Asignaturas en la que se requiere formación o actualización', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Contenidos temáticos en que se requiere la formación o actualización', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'No. profesores', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Periodo (enero-junio / agosto-diciembre)', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Facilitadores propuestos (nombre y datos)', bold: true })] }),
+          ],
+        }),
+        ...filasAGenericas,
+      ],
+    })
+
+    const filasBEspecialidad = [
+      new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph('Módulos de Especialidad 1')] }),
+          new TableCell({ children: [new Paragraph('Python y Análisis de Datos Orientados a la Especialidad')] }),
+          new TableCell({ children: [new Paragraph('10')] }),
+          new TableCell({ children: [new Paragraph('Enero - Junio / Agosto - Diciembre')] }),
+          new TableCell({ children: [new Paragraph('Instructor Especialista Externo / Academia')] }),
+        ],
+      }),
+      new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph('Módulos de Especialidad 2')] }),
+          new TableCell({ children: [new Paragraph('Automatización, Control y Sistemas Aplicados')] }),
+          new TableCell({ children: [new Paragraph('8')] }),
+          new TableCell({ children: [new Paragraph('Enero - Junio / Agosto - Diciembre')] }),
+          new TableCell({ children: [new Paragraph('Instructor Especialista Externo / Academia')] }),
+        ],
+      }),
+      ...Array.from({ length: 4 }).map(() => {
+        return new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+            new TableCell({ children: [new Paragraph(' ')] }),
+          ],
+        })
+      }),
+    ]
+
+    const tablaBEspecialidad = new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          tableHeader: true,
+          children: [
+            new TableCell({ children: [new Paragraph({ text: 'Asignaturas de Especialidad', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Contenidos temáticos requeridos', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'No. profesores', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Periodo', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Facilitadores propuestos', bold: true })] }),
+          ],
+        }),
+        ...filasBEspecialidad,
+      ],
+    })
+
+    const tablaP2Docente = new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          tableHeader: true,
+          children: [
+            new TableCell({ children: [new Paragraph({ text: 'Actividad o Evento (Cursos, talleres, conferencias, etc.)', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Carrera(s) a la que se orienta / No. profesores', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Periodo de realización', bold: true })] }),
+          ],
+        }),
+        new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph('Curso-Taller: Estrategias y Metodologías de Aprendizaje Activo')] }),
+            new TableCell({ children: [new Paragraph(`${nombreDepto} (15 a 25 profesores)`)] }),
+            new TableCell({ children: [new Paragraph('Próximo Periodo Intersemestral')] }),
+          ],
+        }),
+        new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph('Curso-Taller: Herramientas Digitales e Inteligencia Artificial')] }),
+            new TableCell({ children: [new Paragraph(`${nombreDepto} (15 a 25 profesores)`)] }),
+            new TableCell({ children: [new Paragraph('Próximo Periodo Intersemestral')] }),
+          ],
+        }),
+        ...Array.from({ length: 4 }).map(() => {
+          return new TableRow({
+            children: [
+              new TableCell({ children: [new Paragraph(' ')] }),
+              new TableCell({ children: [new Paragraph(' ')] }),
+              new TableCell({ children: [new Paragraph(' ')] }),
+            ],
+          })
+        }),
+      ],
+    })
+
+    const tablaP2Profesional = new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          tableHeader: true,
+          children: [
+            new TableCell({ children: [new Paragraph({ text: 'Actividad o Evento (Cursos, talleres, conferencias, etc.)', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Carrera(s) a la que se orienta / No. profesores', bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: 'Periodo de realización', bold: true })] }),
+          ],
+        }),
+        new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph('Taller Especializado: Python y Análisis de Datos')] }),
+            new TableCell({ children: [new Paragraph(`${nombreDepto} (Especialidad)`)] }),
+            new TableCell({ children: [new Paragraph('Próximo Periodo Intersemestral')] }),
+          ],
+        }),
+        new TableRow({
+          children: [
+            new TableCell({ children: [new Paragraph('Taller Especializado: Automatización y Control Aplicado')] }),
+            new TableCell({ children: [new Paragraph(`${nombreDepto} (Especialidad)`)] }),
+            new TableCell({ children: [new Paragraph('Próximo Periodo Intersemestral')] }),
+          ],
+        }),
+        ...Array.from({ length: 4 }).map(() => {
+          return new TableRow({
+            children: [
+              new TableCell({ children: [new Paragraph(' ')] }),
+              new TableCell({ children: [new Paragraph(' ')] }),
+              new TableCell({ children: [new Paragraph(' ')] }),
+            ],
+          })
+        }),
+      ],
+    })
+
+    const docWord = new Document({
+      sections: [
+        {
+          properties: {},
+          children: [
+            new Paragraph({
+              text: 'INSTITUTO TECNOLÓGICO DE DURANGO',
+              heading: HeadingLevel.HEADING_1,
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({
+              text: 'Formato para Diagnóstico y Concentrado de Necesidades de Formación y Actualización Docente y Profesional',
+              alignment: AlignmentType.CENTER,
+              bold: true,
+            }),
+            new Paragraph({
+              text: 'Código: ITD-AC-PO-10-01   |   Revisión: 0   |   Página 1 de 2',
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({
+              text: 'Referencia a las Normas ISO 9001:2015 7.2, 7.3, ISO 14001:2015 7.2, 7.3, ISO 45001:2018 4.4.2 e ISO 50001:2018 4.5.2',
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Subdirección Académica\n', bold: true }),
+                new TextRun({ text: `Departamento Académico: ${nombreDepto}\n`, bold: true }),
+                new TextRun({ text: `Fecha de realización del diagnóstico: ${new Date().toLocaleDateString('es-MX')}\n` }),
+              ],
+            }),
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              text: 'a) PRIORIZAR LAS ASIGNATURAS EN LAS QUE SE REQUIERA LA FORMACIÓN O ACTUALIZACIÓN DEL PROFESOR EN LA CARRERA GENÉRICA, AVALADOS POR LA ACADEMIA.',
+              bold: true,
+            }),
+            tablaAGenerica,
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              text: 'b) PRIORIZAR LAS ASIGNATURAS EN LAS QUE SE REQUIERA LA FORMACIÓN O ACTUALIZACIÓN DEL PROFESOR EN LOS MÓDULOS DE ESPECIALIDAD, AVALADOS POR LA ACADEMIA.',
+              bold: true,
+            }),
+            tablaBEspecialidad,
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              text: 'Firmas de Validación:',
+              bold: true,
+            }),
+            new Paragraph({
+              children: [
+                new TextRun('Jefe del Departamento Académico: _______________________      Firma: _______________\n\n'),
+                new TextRun('Presidente(s) de Academia: ___________________________      Firma: _______________\n\n'),
+                new TextRun('c.c.p. Subdirección Académica'),
+              ],
+            }),
+          ],
+        },
+        {
+          properties: {},
+          children: [
+            new Paragraph({
+              text: 'INSTITUTO TECNOLÓGICO DE DURANGO',
+              heading: HeadingLevel.HEADING_1,
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({
+              text: 'CONCENTRADO DEL DIAGNÓSTICO DE NECESIDADES DE FORMACIÓN Y ACTUALIZACIÓN DOCENTE Y PROFESIONAL',
+              alignment: AlignmentType.CENTER,
+              bold: true,
+            }),
+            new Paragraph({
+              text: 'Código: ITD-AC-PO-10-01   |   Revisión: 0   |   Página 2 de 2',
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({
+              text: 'Referencia a las Normas ISO 9001:2015 7.2, 7.3, ISO 14001:2015 7.2, 7.3, ISO 45001:2018 4.4.2 e ISO 50001:2018 4.5.2',
+              alignment: AlignmentType.CENTER,
+            }),
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: 'Subdirección Académica\n', bold: true }),
+                new TextRun({ text: `Departamento Académico: ${nombreDepto}\n`, bold: true }),
+                new TextRun({ text: `Fecha: ${new Date().toLocaleDateString('es-MX')}\n` }),
+              ],
+            }),
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              text: 'a) ACTIVIDADES O EVENTOS PARA LA FORMACIÓN Y ACTUALIZACIÓN DOCENTE',
+              bold: true,
+            }),
+            tablaP2Docente,
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              text: 'b) ACTIVIDADES O EVENTOS PARA LA FORMACIÓN Y ACTUALIZACIÓN PROFESIONAL (ESPECIALIDAD)',
+              bold: true,
+            }),
+            tablaP2Profesional,
+            new Paragraph({ text: '' }),
+            new Paragraph({
+              text: 'Firmas de Validación:',
+              bold: true,
+            }),
+            new Paragraph({
+              children: [
+                new TextRun('Subdirección Académica: _______________________________      Firma: _______________\n\n'),
+                new TextRun('Jefe del Departamento Académico: _______________________      Firma: _______________\n\n'),
+                new TextRun('c.c.p. Archivo'),
+              ],
+            }),
+          ],
+        },
+      ],
+    })
+
+    const blob = await Packer.toBlob(docWord)
+    saveAs(blob, `Formato_Necesidades_ITD_AC_PO_10_01_${nombreDepto.replace(/[^a-zA-Z0-9]/g, '_')}.docx`)
   }
 
   function filaWord(celdas, { negritas = false } = {}) {
@@ -627,6 +1329,20 @@ export default function ReporteEncuesta() {
         >
           ⬇ Exportar Word
         </button>
+        <button
+          onClick={exportarFormatoNecesidadesPDF}
+          title="Descargar Formato para Diagnóstico y Concentrado de Necesidades ITD-AC-PO-10-01 (con renglones para completar)"
+          className="rounded-lg bg-slate-800 text-white px-4 py-2 text-sm font-semibold hover:bg-slate-900 cursor-pointer shadow-xs"
+        >
+          📄 Necesidades (PDF)
+        </button>
+        <button
+          onClick={exportarFormatoNecesidadesWord}
+          title="Descargar Formato para Diagnóstico y Concentrado de Necesidades en Word editable (con renglones para completar)"
+          className="rounded-lg bg-indigo-900 text-white px-4 py-2 text-sm font-semibold hover:bg-indigo-950 cursor-pointer shadow-xs"
+        >
+          📝 Necesidades (Word)
+        </button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -654,7 +1370,19 @@ export default function ReporteEncuesta() {
         </div>
       </div>
 
-      <div className="flex rounded-lg border border-itd-navy/20 overflow-hidden w-fit">
+      <div className="flex flex-wrap rounded-lg border border-itd-navy/20 overflow-hidden w-fit">
+        <button
+          onClick={() => setVista('semaforo')}
+          className={`px-4 py-2 text-sm font-medium ${vista === 'semaforo' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+        >
+          🚦 Semáforo Departamentos
+        </button>
+        <button
+          onClick={() => setVista('impacto')}
+          className={`px-4 py-2 text-sm font-medium ${vista === 'impacto' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
+        >
+          🎯 Impacto por Curso
+        </button>
         <button
           onClick={() => setVista('preguntas')}
           className={`px-4 py-2 text-sm font-medium ${vista === 'preguntas' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
@@ -680,6 +1408,95 @@ export default function ReporteEncuesta() {
           Gráficas
         </button>
       </div>
+
+      {vista === 'semaforo' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+            <span className="font-bold text-slate-700">Criterios del Semáforo Institucional:</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold border border-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-600" /> Verde: Mayor o igual a 4.5
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-300">
+              <span className="w-2 h-2 rounded-full bg-amber-600" /> Amarillo: Entre 4.0 y 4.49
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 font-bold border border-rose-300">
+              <span className="w-2 h-2 rounded-full bg-rose-600" /> Rojo: Menor a 4.0
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-itd-navy/20 text-left text-itd-navyDark/70">
+                  <th className="py-2.5 pr-4">Departamento</th>
+                  <th className="py-2.5 pr-3 text-center">Encuestas</th>
+                  <th className="py-2.5 pr-3 text-center">Cursos</th>
+                  <th className="py-2.5 pr-3 text-center">Nivel de Satisfacción</th>
+                  <th className="py-2.5 text-center">Semáforo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {departamentosSemaforo.map((d) => (
+                  <tr key={d.nombre} className="border-b border-itd-navy/10 hover:bg-slate-50/70">
+                    <td className="py-2.5 pr-4 font-medium text-itd-navyDark">{d.nombre}</td>
+                    <td className="py-2.5 pr-3 text-center text-slate-700">{d.total}</td>
+                    <td className="py-2.5 pr-3 text-center text-slate-700">{d.totalCursos}</td>
+                    <td className="py-2.5 pr-3 text-center font-bold text-slate-900">{d.promedio.toFixed(2)}</td>
+                    <td className="py-2.5 text-center">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${d.colorClass}`}>
+                        <span className={`w-2 h-2 rounded-full ${d.badgeClass}`} />
+                        {d.textoSemaforo}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {vista === 'impacto' && (
+        <div className="space-y-4">
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900">
+            <strong>Indicador de Impacto por Curso:</strong> No solo mide la satisfacción del instructor, sino la transferencia real a la práctica docente (A3 y C1). Ayuda a Desarrollo Académico a justificar qué cursos repetir el siguiente semestre.
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-itd-navy/20 text-left text-itd-navyDark/70">
+                  <th className="py-2.5 pr-4">Curso</th>
+                  <th className="py-2.5 pr-3 text-center">Encuestas</th>
+                  <th className="py-2.5 pr-3 text-center">Satisfacción</th>
+                  <th className="py-2.5 pr-3 text-center">Aplicación Práctica (Aula)</th>
+                  <th className="py-2.5 text-center">Decisión Próximo Semestre</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cursosImpacto.map((c) => (
+                  <tr key={c.id} className="border-b border-itd-navy/10 hover:bg-slate-50/70">
+                    <td className="py-2.5 pr-4 font-medium text-itd-navyDark">{c.nombre}</td>
+                    <td className="py-2.5 pr-3 text-center text-slate-700">{c.total}</td>
+                    <td className="py-2.5 pr-3 text-center font-bold text-slate-800">{c.promedioSatisfaccion.toFixed(2)}</td>
+                    <td className="py-2.5 pr-3 text-center font-bold text-slate-800">{c.promedioImpacto.toFixed(2)}</td>
+                    <td className="py-2.5 text-center">
+                      {c.repetir ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          ✓ Repetir Curso
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-300">
+                          Revisar temario
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {vista === 'preguntas' && (
         <div className="overflow-x-auto">

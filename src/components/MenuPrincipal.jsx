@@ -570,7 +570,7 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
                 </p>
               </div>
 
-              <div className="pt-2 flex items-center justify-between">
+              <div className="pt-2 flex items-center justify-between gap-2">
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#C45500] hover:bg-[#a64700] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
@@ -578,11 +578,17 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
                   <span>Ir a constancias</span>
                   <span className="text-sm">›</span>
                 </button>
-                <span className={`text-lg font-bold transition-all group-hover:translate-x-1 ${
-                  esNoche ? 'text-slate-500 group-hover:text-amber-300' : 'text-slate-400 group-hover:text-[#C45500]'
-                }`}>
-                  →
-                </span>
+                <a
+                  href="https://da-itd.github.io/B"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 bg-amber-50 hover:bg-amber-100 px-2.5 py-1.5 rounded-lg border border-amber-300 transition-colors shadow-2xs"
+                  title="Abrir repositorio oficial de constancias de otros años"
+                >
+                  <span>📜 Otros años</span>
+                  <span className="text-xs">↗</span>
+                </a>
               </div>
             </div>
           </div>
@@ -651,35 +657,74 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
         {/* 3.4. PANEL DE ADMINISTRACIÓN (SOLO VISIBLE SI ES ADMINISTRADOR)         */}
         {/* ======================================================================= */}
         {esAdmin && (
-          <div
-            onClick={() => onIr('administracion')}
-            className={`group rounded-2xl border p-5 transition-all flex items-center justify-between cursor-pointer ${
-              esNoche
-                ? 'bg-gradient-to-r from-[#132247] via-[#1c2e5a] to-[#132247] border-slate-800 hover:border-slate-700 shadow-none'
-                : 'bg-gradient-to-r from-slate-100 via-blue-50/70 to-slate-100 border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md'
-            }`}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#3A5A80] text-white flex items-center justify-center text-2xl shrink-0 shadow-xs">
-                ⚙️
+          <div className="space-y-3">
+            <div
+              onClick={() => onIr('administracion')}
+              className={`group rounded-2xl border p-5 transition-all flex items-center justify-between cursor-pointer ${
+                esNoche
+                  ? 'bg-gradient-to-r from-[#132247] via-[#1c2e5a] to-[#132247] border-slate-800 hover:border-slate-700 shadow-none'
+                  : 'bg-gradient-to-r from-slate-100 via-blue-50/70 to-slate-100 border-slate-200 hover:border-slate-300 shadow-xs hover:shadow-md'
+              }`}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-[#3A5A80] text-white flex items-center justify-center text-2xl shrink-0 shadow-xs">
+                  ⚙️
+                </div>
+                <div>
+                  <h4 className={`font-serif text-base font-bold transition-colors ${
+                    esNoche ? 'text-white group-hover:text-blue-300' : 'text-[#1B396A] group-hover:text-blue-800'
+                  }`}>
+                    Panel de Administración
+                  </h4>
+                  <p className={`text-xs mt-0.5 ${esNoche ? 'text-slate-300' : 'text-slate-600'}`}>
+                    Revisión de asistencia, validación, constancias y gestión de cursos.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className={`font-serif text-base font-bold transition-colors ${
-                  esNoche ? 'text-white group-hover:text-blue-300' : 'text-[#1B396A] group-hover:text-blue-800'
-                }`}>
-                  Panel de Administración
-                </h4>
-                <p className={`text-xs mt-0.5 ${esNoche ? 'text-slate-300' : 'text-slate-600'}`}>
-                  Revisión de asistencia, validación, constancias y gestión de cursos.
-                </p>
-              </div>
+
+              <span className={`text-xl font-bold transition-all group-hover:translate-x-1 ${
+                esNoche ? 'text-slate-400 group-hover:text-blue-300' : 'text-slate-400 group-hover:text-[#1B396A]'
+              }`}>
+                →
+              </span>
             </div>
 
-            <span className={`text-xl font-bold transition-all group-hover:translate-x-1 ${
-              esNoche ? 'text-slate-400 group-hover:text-blue-300' : 'text-slate-400 group-hover:text-[#1B396A]'
-            }`}>
-              →
-            </span>
+            {/* Acceso Directo a Análisis de Encuestas */}
+            <div
+              onClick={() => onIr('administracion', 'analisis-encuestas')}
+              className={`group rounded-2xl border p-5 transition-all flex items-center justify-between cursor-pointer ${
+                esNoche
+                  ? 'bg-gradient-to-r from-[#1a2e3b] via-[#12283a] to-[#1a2e3b] border-teal-900 hover:border-teal-700 shadow-none'
+                  : 'bg-gradient-to-r from-emerald-50/80 via-teal-50/60 to-blue-50/70 border-teal-200 hover:border-teal-300 shadow-xs hover:shadow-md'
+              }`}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-teal-700 text-white flex items-center justify-center text-2xl shrink-0 shadow-xs">
+                  📊
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className={`font-serif text-base font-bold transition-colors ${
+                      esNoche ? 'text-white group-hover:text-teal-300' : 'text-[#1B396A] group-hover:text-teal-800'
+                    }`}>
+                      Análisis de Encuestas
+                    </h4>
+                    <span className="bg-teal-100 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      Nuevo
+                    </span>
+                  </div>
+                  <p className={`text-xs mt-0.5 ${esNoche ? 'text-slate-300' : 'text-slate-600'}`}>
+                    Dashboards, semáforo por departamento, impacto de cursos y formato de necesidades.
+                  </p>
+                </div>
+              </div>
+
+              <span className={`text-xl font-bold transition-all group-hover:translate-x-1 ${
+                esNoche ? 'text-slate-400 group-hover:text-teal-300' : 'text-slate-400 group-hover:text-teal-800'
+              }`}>
+                →
+              </span>
+            </div>
           </div>
         )}
 
