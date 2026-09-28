@@ -11,7 +11,6 @@ const ANIO_ACTUAL = new Date().getFullYear()
 const ANIOS = Array.from({ length: 6 }, (_, i) => ANIO_ACTUAL - i)
 
 export default function AdminReportes() {
-
   const [tipoPeriodo, setTipoPeriodo] = useState('actual') // 'actual' | 'trimestre' | 'anio'
   const [anio, setAnio] = useState(ANIO_ACTUAL)
   const [trimestre, setTrimestre] = useState(1)
@@ -168,19 +167,44 @@ export default function AdminReportes() {
     if (!reporte) return
     const doc = new jsPDF()
 
-    const startY = await dibujarEncabezadoPDF(doc, 'Reporte Trimestral de Inscripciones', [
-      `Periodo: ${reporte.rango.inicio} a ${reporte.rango.fin}`,
+    const tituloDoc = tipoPeriodo === 'anio' ? `Reporte Anual de Capacitación ${anio}` : 'Reporte de Inscripciones y Capacitación Docente'
+    const startY = await dibujarEncabezadoPDF(doc, tituloDoc, [
+      `Periodo: ${tituloPeriodo()} (${reporte.rango.inicio} a ${reporte.rango.fin})`,
+      `Fecha de emisión: ${new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })}`,
     ])
 
+    // Tabla con autoTable
     autoTable(doc, {
       startY,
-      head: [['Indicador', 'Valor']],
+      head: [['Indicador / Desglose', 'Total Registros']],
       body: filasPlanas(reporte).map(([a, b]) => [a || '', b === undefined ? '' : String(b)]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [27, 57, 106] },
+      styles: { fontSize: 8.5, cellPadding: 2.2 },
+      headStyles: { fillColor: [27, 57, 106], fontStyle: 'bold' },
+      didParseCell: function (data) {
+        // Resaltar títulos de sección
+        if (
+          data.row.raw[0] &&
+          (data.row.raw[0].startsWith('TOTAL') ||
+            data.row.raw[0].startsWith('LICENCIATURA') ||
+            data.row.raw[0].startsWith('POSGRADO') ||
+            data.row.raw[0].startsWith('DOCENTES ÚNICOS') ||
+            data.row.raw[0].startsWith('SIN PARTICIPAR') ||
+            data.row.raw[0].startsWith('DISTRIBUCIÓN') ||
+            data.row.raw[0].startsWith('CURSOS MÁS') ||
+            data.row.raw[0].startsWith('PARTICIPACIÓN'))
+        ) {
+          data.cell.styles.fontStyle = 'bold'
+          data.cell.styles.fillColor = [241, 245, 249]
+          data.cell.styles.textColor = [27, 57, 106]
+        }
+      },
     })
 
-    doc.save(`Reporte_Trimestral_${reporte.rango.inicio}_a_${reporte.rango.fin}.pdf`)
+    const nombreArchivo =
+      tipoPeriodo === 'anio'
+        ? `Reporte_Capacitacion_Anual_${anio}.pdf`
+        : `Reporte_Inscripciones_${reporte.rango.inicio}_a_${reporte.rango.fin}.pdf`
+    doc.save(nombreArchivo)
   }
 
   return (
@@ -192,9 +216,7 @@ export default function AdminReportes() {
         </p>
       </div>
 
-
-
-          <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3">
             <div>
               <label className="block text-xs font-medium text-itd-navyDark/60 mb-1">Periodo</label>
               <select
@@ -281,9 +303,9 @@ export default function AdminReportes() {
                 </button>
                 <button
                   onClick={exportarPDF}
-                  className="rounded-lg bg-itd-guinda text-white px-4 py-2 text-sm font-semibold hover:opacity-90"
+                  className="rounded-lg bg-itd-guinda text-white px-4 py-2 text-sm font-semibold hover:opacity-90 flex items-center gap-1.5"
                 >
-                  ⬇ Exportar PDF (trimestral)
+                  <span>⬇</span> Exportar PDF con Logos
                 </button>
                 <div className="ml-auto flex rounded-lg border border-itd-navy/20 overflow-hidden">
                   <button
@@ -296,7 +318,7 @@ export default function AdminReportes() {
                     onClick={() => setVista('graficas')}
                     className={`px-4 py-2 text-sm font-medium ${vista === 'graficas' ? 'bg-itd-navy text-white' : 'bg-white text-itd-navyDark'}`}
                   >
-                    Gráficas
+                    Gráficas y Comparativos
                   </button>
                   <button
                     onClick={() => setVista('participantes')}
@@ -321,7 +343,7 @@ export default function AdminReportes() {
                   </table>
                 </div>
               ) : vista === 'graficas' ? (
-                <ReportesGraficas reporte={reporte} />
+                <ReportesGraficas reporte={reporte} anioSeleccionado={anio} tipoPeriodo={tipoPeriodo} />
               ) : (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-end gap-3">

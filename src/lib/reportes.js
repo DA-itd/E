@@ -108,6 +108,7 @@ export async function calcularReporte(periodo) {
     totalPlantilla++
     if (d.genero === 'Hombre' || d.genero === 'Mujer') totalPlantillaPorGenero[d.genero]++
   }
+
   // Helper para traer todos los registros sin topar con el límite por defecto de 1000 de Supabase
   async function traerTodosLosRegistros(consultaBase) {
     let todos = []
@@ -306,4 +307,60 @@ export async function calcularReporte(periodo) {
   )
 
   return reporte
+}
+
+/**
+ * Consulta y calcula el comparativo multi-anual histórico (2022 a año actual)
+ * para gráficas de evolución, inscripciones acumuladas, docentes por género,
+ * tipo de curso, nivel (Licenciatura vs Posgrado) y docentes sin participar.
+ */
+export async function calcularHistoricoMultianual(anios = [2022, 2023, 2024, 2025, 2026]) {
+  const promesas = anios.map(async (anio) => {
+    try {
+      const rep = await calcularReporte({ tipo: 'anio', anio })
+      return {
+        anio: String(anio),
+        totalInscripciones: rep.totalInscripciones || 0,
+        docentesUnicos: rep.docentesUnicos || 0,
+        hombres: rep.porGenero?.Hombre || 0,
+        mujeres: rep.porGenero?.Mujer || 0,
+        tipoDocente: rep.porTipo?.Docente || 0,
+        tipoProfesional: rep.porTipo?.Profesional || 0,
+        licenciatura: rep.licenciatura?.total || 0,
+        posgrado: rep.posgrado?.total || 0,
+        sinParticipar: rep.sinParticipar?.total || 0,
+        cobertura: rep.porcentajeParticipacion || 0,
+      }
+    } catch (e) {
+      console.warn(`Error al calcular histórico para ${anio}:`, e)
+      return {
+        anio: String(anio),
+        totalInscripciones: 0,
+        docentesUnicos: 0,
+        hombres: 0,
+        mujeres: 0,
+        tipoDocente: 0,
+        tipoProfesional: 0,
+        licenciatura: 0,
+        posgrado: 0,
+        sinParticipar: 0,
+        cobertura: 0,
+      }
+    }
+  })
+
+  const resultados = await Promise.all(promesas)
+  resultados.sort((a, b) => Number(a.anio) - Number(b.anio))
+
+  // Calcular acumulado progresivo
+  let acumulado = 0
+  const conAcumulado = resultados.map((r) => {
+    acumulado += r.totalInscripciones
+    return {
+      ...r,
+      totalAcumulado: acumulado,
+    }
+  })
+
+  return conAcumulado
 }
