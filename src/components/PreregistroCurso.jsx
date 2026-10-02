@@ -34,6 +34,10 @@ const ESTADO_LABEL = {
   aprobado: { texto: 'Aprobado', clase: 'bg-green-100 text-green-700' },
 };
 
+// Límite estricto de tamaño de archivo: 3 MB
+const MAX_PESO_BYTES = 3 * 1024 * 1024;
+const MAX_PESO_MB = 3;
+
 function formVacio() {
   return {
     curso: '',
@@ -64,7 +68,7 @@ function etiquetaPeriodo(p) {
 }
 
 function aMayusculas(texto) {
-  return texto.toUpperCase();
+  return texto ? texto.toUpperCase() : '';
 }
 
 export default function PreregistroCurso({ docente, onSalir }) {
@@ -95,78 +99,136 @@ export default function PreregistroCurso({ docente, onSalir }) {
   }, []);
 
   async function cargarDocentes() {
-    const { data } = await supabase
-      .from('docentes')
-      .select('nombre_completo')
-      .order('nombre_completo', { ascending: true });
-    
-    if (data) setDocentesNombres(data.map(d => d.nombre_completo));
+    try {
+      const { data } = await supabase
+        .from('docentes')
+        .select('nombre_completo')
+        .order('nombre_completo', { ascending: true });
+      if (data) setDocentesNombres(data.map(d => d.nombre_completo));
+    } catch (err) {
+      console.warn('Error cargando docentes:', err);
+    }
   }
 
   async function cargarFormatos() {
-    const { data } = await supabase.storage.from('documentos_preregistro').list('formatos_plantillas');
-    if (data) {
-      setFormatosDescargables(data.filter(a => a.name !== '.emptyFolderPlaceholder' && a.name !== '.emptyFolder'));
+    try {
+      const { data } = await supabase.storage.from('documentos_preregistro').list('formatos_plantillas');
+      if (data) {
+        setFormatosDescargables(data.filter(a => a.name !== '.emptyFolderPlaceholder' && a.name !== '.emptyFolder'));
+      }
+    } catch (err) {
+      console.warn('Error cargando formatos descargables:', err);
     }
   }
 
   async function descargarFormatoOPlantilla(nombre) {
-    const { data } = await supabase.storage.from('documentos_preregistro').download(`formatos_plantillas/${nombre}`);
-    if (data) {
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombre;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+    try {
+      const { data, error } = await supabase.storage.from('documentos_preregistro').download(`formatos_plantillas/${nombre}`);
+      if (error) throw error;
+      if (data) {
+        const url = URL.createObjectURL(data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombre;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      alert('No se pudo descargar la plantilla: ' + err.message);
     }
   }
 
   async function cargar() {
-    const { data } = await supabase
-      .from('preregistro_cursos')
-      .select('*, docentes(nombre_completo, email, departamento)')
-      .eq('docente_id', docente.id)
-      .order('created_at', { ascending: false });
-    setMisPreregistros(data || []);
+    try {
+      let query = supabase
+        .from('preregistro_cursos')
+        .select('*, docentes(nombre_completo, email, departamento)')
+        .order('created_at', { ascending: false });
 
-    if (data && data.length > 0) {
-      cargarEvaluaciones(data.map(item => item.id));
+      if (docente?.id) {
+        query = query.eq('docente_id', docente.id);
+      }
+
+      const { data } = await query;
+      setMisPreregistros(data || []);
+
+      if (data && data.length > 0) {
+        cargarEvaluaciones(data.map(item => item.id));
+      }
+    } catch (err) {
+      console.warn('Error cargando preregistros:', err);
+      setMisPreregistros([]);
     }
   }
 
   async function cargarEvaluaciones(preregistroIds) {
-    if (preregistroIds.length === 0) return;
-    const { data } = await supabase
-      .from('evaluaciones_instructores')
-      .select('*')
-      .in('preregistro_id', preregistroIds);
+    if (!preregistroIds || preregistroIds.length === 0) return;
+    try {
+      const { data } = await supabase
+        .from('evaluaciones_instructores')
+        .select('*')
+        .in('preregistro_id', preregistroIds);
 
-    if (data) {
-      const mapa = {};
-      data.forEach(evalItem => { mapa[evalItem.preregistro_id] = evalItem; });
-      setEvaluacionesExistentes(mapa);
+      if (data) {
+        const mapa = {};
+        data.forEach(evalItem => { mapa[evalItem.preregistro_id] = evalItem; });
+        setEvaluacionesExistentes(mapa);
+      }
+    } catch (err) {
+      console.warn('Error cargando evaluaciones:', err);
     }
   }
 
   async function cargarConvocatoria() {
-    const { data } = await supabase
-      .from('convocatorias')
-      .select('periodo1_inicio, periodo1_fin, periodo2_inicio, periodo2_fin')
-      .eq('activo', true)
-      .not('periodo1_inicio', 'is', null)
-      .order('fecha_inicio', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    setConvocatoria(data);
+    try {
+      const { data } = await supabase
+        .from('convocatorias')
+        .select('periodo1_inicio, periodo1_fin, periodo2_inicio, periodo2_fin')
+        .eq('activo', true)
+        .not('periodo1_inicio', 'is', null)
+        .order('fecha_inicio', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      setConvocatoria(data);
+    } catch (err) {
+      console.warn('Error cargando convocatoria:', err);
+    }
   }
 
   function validarLugar(lugar, modalidad) {
     if (modalidad === 'Virtual') return true;
-    const l = lugar.trim().toUpperCase();
+    const l = (lugar || '').trim().toUpperCase();
     return PREFIJOS_LUGAR_VALIDOS.some((prefijo) => l.startsWith(prefijo));
+  }
+
+  // Manejo de archivo con validación estricta de 3 MB
+  function handleSeleccionarArchivo(tipo, e) {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setArchivos(prev => ({ ...prev, [tipo]: null }));
+      return;
+    }
+
+    // Validar tipo PDF
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      alert(`El archivo "${file.name}" no es un PDF válido. Por favor sube únicamente documentos en formato PDF.`);
+      e.target.value = '';
+      setArchivos(prev => ({ ...prev, [tipo]: null }));
+      return;
+    }
+
+    // Validar límite de 3 MB
+    if (file.size > MAX_PESO_BYTES) {
+      const pesoArchivoMB = (file.size / (1024 * 1024)).toFixed(2);
+      alert(`⚠️ El archivo "${file.name}" supera el límite permitido de ${MAX_PESO_MB} MB (pesa ${pesoArchivoMB} MB).\n\nPara evitar saturar el almacenamiento de la institución, comprímelo antes de subirlo.`);
+      e.target.value = '';
+      setArchivos(prev => ({ ...prev, [tipo]: null }));
+      return;
+    }
+
+    setArchivos(prev => ({ ...prev, [tipo]: file }));
   }
 
   async function guardar(e) {
@@ -186,8 +248,8 @@ export default function PreregistroCurso({ docente, onSalir }) {
     if (!form.jefatura_cargo.trim()) faltantes.push('Cargo del jefe(a) de departamento');
     if (!form.oficio_no.trim()) faltantes.push('Número de oficio');
     
-    if (!archivos.cvu) faltantes.push('Archivo PDF 1 (CVU)');
-    if (!archivos.fichaTecnica) faltantes.push('Archivo PDF 2 (Ficha Técnica)');
+    if (!archivos.cvu) faltantes.push('Archivo PDF 1 (CVU - Máx 3 MB)');
+    if (!archivos.fichaTecnica) faltantes.push('Archivo PDF 2 (Ficha Técnica - Máx 3 MB)');
 
     if (faltantes.length) {
       setErrorMsg('Faltan campos/archivos por llenar: ' + faltantes.join(', '));
@@ -195,7 +257,7 @@ export default function PreregistroCurso({ docente, onSalir }) {
     }
 
     if (!validarLugar(form.lugar, form.modalidad)) {
-      setErrorMsg('El "Lugar" debe ser específico. Si es virtual, deja el campo vacío y elige modalidad Virtual.');
+      setErrorMsg('El "Lugar" debe ser específico (ej. AULA 3, TALLER, SALA...). Si es virtual, elige modalidad Virtual.');
       return;
     }
 
@@ -205,7 +267,7 @@ export default function PreregistroCurso({ docente, onSalir }) {
     const { data: nuevoRegistro, error } = await supabase.from('preregistro_cursos').insert({
       ...form,
       dirigido_a: dirigidoAFinal,
-      docente_id: docente.id,
+      docente_id: docente?.id || null,
       duracion_horas: Number(form.duracion_horas),
     }).select().single();
 
@@ -222,11 +284,11 @@ export default function PreregistroCurso({ docente, onSalir }) {
       const subidas = [
         supabase.storage.from(bucket).upload(`${registroId}/1_cvu_instructor.pdf`, archivos.cvu, {
           cacheControl: '3600',
-          upsert: false
+          upsert: true
         }),
         supabase.storage.from(bucket).upload(`${registroId}/2_ficha_tecnica.pdf`, archivos.fichaTecnica, {
           cacheControl: '3600',
-          upsert: false
+          upsert: true
         })
       ];
       const resultados = await Promise.all(subidas);
@@ -237,7 +299,7 @@ export default function PreregistroCurso({ docente, onSalir }) {
       
     } catch (uploadError) {
       console.error('Error al subir los archivos:', uploadError);
-      setErrorMsg('El registro se guardó, pero hubo un error al subir los archivos PDF.');
+      setErrorMsg('El registro se guardó en la base de datos, pero hubo un detalle al subir los archivos PDF a Storage.');
       setGuardando(false);
       return;
     }
@@ -267,6 +329,14 @@ export default function PreregistroCurso({ docente, onSalir }) {
     await cargar();
   }
 
+  // Generar URL pública para previsualizar/descargar documentos subidos
+  function obtenerUrlArchivo(registroId, nombreArchivo) {
+    const { data } = supabase.storage
+      .from('documentos_preregistro')
+      .getPublicUrl(`${registroId}/${nombreArchivo}`);
+    return data.publicUrl;
+  }
+
   const fechasPeriodo1 = convocatoria?.periodo1_inicio && convocatoria?.periodo1_fin
     ? formatearRangoFechas(convocatoria.periodo1_inicio, convocatoria.periodo1_fin)
     : null;
@@ -280,7 +350,7 @@ export default function PreregistroCurso({ docente, onSalir }) {
       {onSalir && (
         <button 
           onClick={onSalir}
-          className="mb-6 text-sm font-medium text-itd-navy/70 hover:text-itd-navy flex items-center gap-1"
+          className="mb-6 text-sm font-medium text-itd-navy/70 hover:text-itd-navy flex items-center gap-1 cursor-pointer"
         >
           ← Volver al menú principal
         </button>
@@ -291,14 +361,14 @@ export default function PreregistroCurso({ docente, onSalir }) {
           ℹ️ Información Importante
         </h3>
         <p className="text-sm text-itd-navyDark/80">
-          En esta sección podrás proponer un curso y subir la documentación requerida (CVU y Ficha Técnica). 
+          En esta sección podrás proponer un curso y subir la documentación requerida (CVU y Ficha Técnica, <strong>máximo 3 MB por archivo</strong>). 
           Una vez enviada la propuesta y realizada la evaluación del instructor, los administradores revisarán 
           la información. <strong>Si el curso es autorizado, se publicará oficialmente para que los docentes 
           puedan inscribirse.</strong> 
         </p>
       </div>
 
-      {/* SECCIÓN NUEVA: FORMATOS DESCARGABLES */}
+      {/* SECCIÓN: FORMATOS DESCARGABLES */}
       {formatosDescargables.length > 0 && (
         <div className="mb-8 p-5 bg-blue-50/50 rounded-xl border border-blue-100 shadow-sm">
           <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
@@ -312,7 +382,7 @@ export default function PreregistroCurso({ docente, onSalir }) {
               <button
                 key={f.name}
                 onClick={() => descargarFormatoOPlantilla(f.name)}
-                className="text-xs font-semibold bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-50 shadow-sm flex items-center gap-2 transition-all"
+                className="text-xs font-semibold bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-50 shadow-sm flex items-center gap-2 transition-all cursor-pointer"
               >
                 📄 {f.name}
               </button>
@@ -330,23 +400,16 @@ export default function PreregistroCurso({ docente, onSalir }) {
         </div>
         <button
           onClick={() => setFormAbierto((v) => !v)}
-          disabled={!convocatoria}
-          className="shrink-0 rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-40"
+          className="shrink-0 rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark cursor-pointer transition-colors shadow-2xs"
         >
           {formAbierto ? 'Cancelar' : '+ Proponer curso'}
         </button>
       </div>
 
-      {!convocatoria && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
-          Por ahora no hay una convocatoria activa con fechas de periodo publicadas.
-        </p>
-      )}
-
-      {formAbierto && convocatoria && (
+      {formAbierto && (
         <form key={formKey} onSubmit={guardar} className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-itd-navy/10 pt-6">
           <div className="sm:col-span-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-            ⚠️ Cuida la ortografía y los acentos. <strong>Todos los campos y documentos PDF son obligatorios.</strong>
+            ⚠️ Cuida la ortografía y los acentos. <strong>Todos los campos y documentos PDF son obligatorios (máx. 3 MB c/u).</strong>
           </div>
 
           {errorMsg && <p className="sm:col-span-2 text-sm font-medium text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">{errorMsg}</p>}
@@ -398,8 +461,8 @@ export default function PreregistroCurso({ docente, onSalir }) {
           <div className="sm:col-span-2">
             <label className="block text-sm font-medium text-itd-navyDark/70 mb-1">Dirigido a</label>
             <div className="flex gap-4">
-              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={alcanceDirigido === 'MISMO'} onChange={() => setAlcanceDirigido('MISMO')} /> Personal del mismo departamento</label>
-              <label className="flex items-center gap-2 text-sm"><input type="radio" checked={alcanceDirigido === 'TODO_ITD'} onChange={() => setAlcanceDirigido('TODO_ITD')} /> Todo el personal del ITD</label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" checked={alcanceDirigido === 'MISMO'} onChange={() => setAlcanceDirigido('MISMO')} /> Personal del mismo departamento</label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" checked={alcanceDirigido === 'TODO_ITD'} onChange={() => setAlcanceDirigido('TODO_ITD')} /> Todo el personal del ITD</label>
             </div>
           </div>
 
@@ -418,29 +481,63 @@ export default function PreregistroCurso({ docente, onSalir }) {
             </div>
           </div>
 
+          {/* SECCIÓN DE CARGA DE ARCHIVOS CON VALIDACIÓN DE 3 MB */}
           <div className="sm:col-span-2 mt-4 space-y-4 bg-itd-sand/10 rounded-xl p-4 border border-itd-navy/10">
-            <h3 className="text-sm font-semibold text-itd-navyDark border-b border-itd-navy/10 pb-2">
-              Documentos requeridos para revisión (Solo PDF)
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-itd-navy/10 pb-2">
+              <h3 className="text-sm font-semibold text-itd-navyDark">
+                Documentos requeridos para revisión (Solo PDF)
+              </h3>
+              <span className="text-[11px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                ⚠️ Límite: Máximo 3 MB por archivo
+              </span>
+            </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">1. CVU - Currículum del Instructor *</label>
-                <input type="file" accept="application/pdf" required onChange={(e) => setArchivos({...archivos, cvu: e.target.files[0]})} className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white" />
+                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">
+                  1. CVU - Currículum del Instructor * <span className="text-gray-400 font-normal">(Máx 3 MB)</span>
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  required
+                  onChange={(e) => handleSeleccionarArchivo('cvu', e)}
+                  className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white file:cursor-pointer cursor-pointer"
+                />
+                {archivos.cvu && (
+                  <p className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
+                    ✓ Archivo listo: {archivos.cvu.name} ({(archivos.cvu.size / (1024 * 1024)).toFixed(2)} MB)
+                  </p>
+                )}
               </div>
+
               <div>
-                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">2. Ficha Técnica del Curso *</label>
-                <input type="file" accept="application/pdf" required onChange={(e) => setArchivos({...archivos, fichaTecnica: e.target.files[0]})} className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white" />
+                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">
+                  2. Ficha Técnica del Curso * <span className="text-gray-400 font-normal">(Máx 3 MB)</span>
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  required
+                  onChange={(e) => handleSeleccionarArchivo('fichaTecnica', e)}
+                  className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white file:cursor-pointer cursor-pointer"
+                />
+                {archivos.fichaTecnica && (
+                  <p className="text-[11px] text-emerald-700 font-medium mt-1 flex items-center gap-1">
+                    ✓ Archivo listo: {archivos.fichaTecnica.name} ({(archivos.fichaTecnica.size / (1024 * 1024)).toFixed(2)} MB)
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
-          <button type="submit" disabled={guardando} className="sm:col-span-2 rounded-lg bg-itd-navy text-white px-4 py-3 text-sm font-semibold hover:bg-itd-navyDark disabled:opacity-50 mt-2">
+          <button type="submit" disabled={guardando} className="sm:col-span-2 rounded-lg bg-itd-navy text-white px-4 py-3 text-sm font-semibold hover:bg-itd-navyDark disabled:opacity-50 mt-2 cursor-pointer shadow-sm">
             {guardando ? 'Guardando propuesta...' : 'Enviar propuesta'}
           </button>
         </form>
       )}
 
+      {/* SECCIÓN: MIS PROPUESTAS CON BOTONES DE VISUALIZACIÓN */}
       <div className="mt-8">
         <h3 className="text-sm font-semibold text-itd-navyDark/70 mb-3">Mis propuestas</h3>
         {!misPreregistros ? (
@@ -458,7 +555,7 @@ export default function PreregistroCurso({ docente, onSalir }) {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <p className="font-semibold text-itd-navyDark">{item.curso}</p>
-                      <p className="text-xs text-itd-navyDark/50 mt-1">{etiquetaPeriodo(item.periodo)}</p>
+                      <p className="text-xs text-itd-navyDark/50 mt-1">{etiquetaPeriodo(item.periodo)} · {item.duracion_horas} hrs</p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <span className={`shrink-0 text-xs font-medium px-2 py-1 rounded-full ${estado.clase}`}>
@@ -476,15 +573,37 @@ export default function PreregistroCurso({ docente, onSalir }) {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex gap-3 flex-wrap items-center bg-itd-sand/20 p-2.5 rounded-lg border border-itd-navy/5">
+                  {/* BARRA DE ACCIONES Y ARCHIVOS */}
+                  <div className="mt-4 flex gap-2.5 flex-wrap items-center bg-itd-sand/20 p-2.5 rounded-lg border border-itd-navy/5">
+                    {/* Botones para ver los PDFs subidos */}
+                    <a
+                      href={obtenerUrlArchivo(item.id, '1_cvu_instructor.pdf')}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-semibold text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 rounded-lg px-3 py-2 shadow-2xs flex items-center gap-1.5 transition-all"
+                      title="Ver o descargar el CVU del instructor registrado para este curso"
+                    >
+                      📄 Ver mi CVU
+                    </a>
+
+                    <a
+                      href={obtenerUrlArchivo(item.id, '2_ficha_tecnica.pdf')}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-semibold text-blue-700 border border-blue-200 bg-white hover:bg-blue-50 rounded-lg px-3 py-2 shadow-2xs flex items-center gap-1.5 transition-all"
+                      title="Ver o descargar la Ficha Técnica registrada para este curso"
+                    >
+                      📄 Ver mi Ficha Técnica
+                    </a>
+
                     {item.estado === 'pendiente' && !evaluacion && (
-                      <div className="flex items-center gap-2 mr-2">
+                      <div className="flex items-center gap-2">
                         <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider animate-pulse flex items-center gap-1">
-                          ⚠️ ¡Siguiente paso requerido! 👉
+                          ⚠️ Siguiente paso:
                         </span>
                         <button 
                           onClick={() => abrirEvaluacion(item)} 
-                          className="text-xs font-bold text-purple-700 bg-purple-50 border-2 border-purple-400 rounded-lg px-4 py-2 hover:bg-purple-100 flex items-center gap-1 shadow-sm transition-all"
+                          className="text-xs font-bold text-purple-700 bg-purple-50 border-2 border-purple-400 rounded-lg px-3 py-2 hover:bg-purple-100 flex items-center gap-1 shadow-sm transition-all cursor-pointer"
                         >
                           📋 Evaluar Instructor
                         </button>
@@ -492,29 +611,29 @@ export default function PreregistroCurso({ docente, onSalir }) {
                     )}
 
                     {item.oficio_no && (
-                      <button onClick={() => descargarOficioRegistro(item, convocatoria)} className="text-xs font-medium text-itd-navy border border-itd-navy/20 bg-white rounded-lg px-3 py-2 hover:bg-itd-sand shadow-sm transition-all">
-                        📄 Oficio Registro (No. {String(item.oficio_no).split('/')[0].trim()}/{new Date(item.created_at).getFullYear()})
+                      <button onClick={() => descargarOficioRegistro(item, convocatoria)} className="text-xs font-medium text-itd-navy border border-itd-navy/20 bg-white rounded-lg px-3 py-2 hover:bg-itd-sand shadow-2xs transition-all cursor-pointer">
+                        📄 Oficio Registro ({String(item.oficio_no).split('/')[0].trim()}/{new Date(item.created_at).getFullYear()})
                       </button>
                     )}
 
                     {evaluacion && (
-                       <button 
-                         onClick={async () => {
-                           try {
-                             await descargarCriteriosInstructor({
-                               ...evaluacion,
-                               curso_nombre: evaluacion.curso_nombre || item.curso,
-                               instructor_nombre: evaluacion.instructor_nombre || item.docentes?.nombre_completo,
-                               jefe_departamento: evaluacion.jefe_departamento || item.nombre_jefe,
-                               cargo_evaluador: evaluacion.cargo_evaluador || item.jefatura_cargo
-                             });
-                           } catch (error) {
-                             alert("Error al generar el PDF: " + error.message);
-                           }
-                         }} 
-                         className="text-xs font-medium text-purple-700 border border-purple-300 bg-white rounded-lg px-3 py-2 hover:bg-purple-50 shadow-sm transition-all"
-                       >
-                        📄 Descargar Criterios de Evaluación
+                      <button 
+                        onClick={async () => {
+                          try {
+                            await descargarCriteriosInstructor({
+                              ...evaluacion,
+                              curso_nombre: evaluacion.curso_nombre || item.curso,
+                              instructor_nombre: evaluacion.instructor_nombre || item.docentes?.nombre_completo,
+                              jefe_departamento: evaluacion.jefe_departamento || item.nombre_jefe,
+                              cargo_evaluador: evaluacion.cargo_evaluador || item.jefatura_cargo
+                            });
+                          } catch (error) {
+                            alert("Error al generar el PDF: " + error.message);
+                          }
+                        }} 
+                        className="text-xs font-medium text-purple-700 border border-purple-300 bg-white rounded-lg px-3 py-2 hover:bg-purple-50 shadow-2xs transition-all cursor-pointer"
+                      >
+                        📄 Criterios de Evaluación
                       </button>
                     )}
                   </div>
