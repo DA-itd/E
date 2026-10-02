@@ -147,7 +147,7 @@ export default function AdminConstancias() {
     let inscripcionesActivas = []
     let historialConCurso = []
 
-        if (item.tipoElemento === 'docente' && item.id && !item.id.startsWith('inst_')) {
+    if (item.tipoElemento === 'docente' && item.id && !item.id.startsWith('inst_')) {
       try {
         const { data: insData } = await supabase
           .from('inscripciones')
@@ -159,74 +159,35 @@ export default function AdminConstancias() {
 
         inscripcionesActivas = (insData || []).map((i) => ({ ...i, origen: 'activa' }))
 
-        // Historial previo: busca por email O por nombre (por si el correo cambió)
-                 // Historial previo: 2 consultas separadas y unir en JS.
-        // (Un solo .or() anidado rompe PostgREST con acentos y comas.)
-        const emailBusqueda = item.email && item.email.includes('@') ? item.email : null
-        const nombreBusqueda = item.nombre_completo || null
+        // Historial previo
+        if (item.email && item.email.includes('@')) {
+          const { data: histData } = await supabase
+            .from('inscripciones_historial')
+            .select('id, folio_personal, folio_curso, asistencia_aprobada')
+            .ilike('email', item.email)
+            .eq('asistencia_aprobada', 'Sí')
 
-        const filtrosHistorial = []
-        if (emailBusqueda) filtrosHistorial.push(`email.ilike.${emailBusqueda}`)
-        if (nombreBusqueda) filtrosHistorial.push(`nombre_completo.ilike.%${nombreBusqueda}%`)
+          if (histData && histData.length > 0) {
+            const folios = [...new Set(histData.map((h) => h.folio_curso).filter(Boolean))]
+            const { data: cursosPorFolio } = await supabase
+              .from('cursos')
+              .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento')
+              .in('folio', folios)
 
-        const consultasHistorial = []
-
-        if (emailBusqueda) {
-          consultasHistorial.push(
-            supabase
-              .from('inscripciones_historial')
-              .select('id, folio_personal, folio_curso, asistencia_aprobada, curso, anio, horas, tipo, departamento, fecha_curso_texto')
-              .ilike('email', emailBusqueda)
-              .in('asistencia_aprobada', ['Si', 'Sí', 'si', 'sí'])
-          )
-        }
-
-        if (nombreBusqueda) {
-          consultasHistorial.push(
-            supabase
-              .from('inscripciones_historial')
-              .select('id, folio_personal, folio_curso, asistencia_aprobada, curso, anio, horas, tipo, departamento, fecha_curso_texto')
-              .ilike('nombre_completo', `%${nombreBusqueda}%`)
-              .in('asistencia_aprobada', ['Si', 'Sí', 'si', 'sí'])
-          )
-        }
-
-        const resultadosHistorial = await Promise.all(consultasHistorial)
-
-        // Unir resultados y quitar duplicados por id
-        const mapaHist = new Map()
-        for (const res of resultadosHistorial) {
-          if (res.error) {
-            console.warn('Error en consulta historial:', res.error)
-            continue
+            const mapaCursos = Object.fromEntries((cursosPorFolio || []).map((c) => [c.folio, c]))
+            historialConCurso = histData
+              .map((h) => {
+                const curso = mapaCursos[h.folio_curso]
+                if (!curso) return null
+                return {
+                  id: h.id,
+                  folio_personal: h.folio_personal,
+                  origen: 'historial',
+                  cursos: curso,
+                }
+              })
+              .filter(Boolean)
           }
-          for (const fila of res.data || []) {
-            mapaHist.set(fila.id, fila)
-          }
-        }
-        const histData = Array.from(mapaHist.values())
-
-        if (histData && histData.length > 0) {
-
-          const folios = [...new Set(histData.map((h) => h.folio_curso).filter(Boolean))]
-          const { data: cursosPorFolio } = await supabase
-            .from('cursos')
-            .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento')
-            .in('folio', folios)
-
-          const mapaCursos = Object.fromEntries((cursosPorFolio || []).map((c) => [c.folio, c]))
-          historialConCurso = histData
-            .map((h) => {
-              const curso = mapaCursos[h.folio_curso]
-              if (!curso) return null
-              return {
-                id: h.id,
-                folio_personal: h.folio_personal,
-                origen: 'historial',
-                cursos: curso,
-              }
-            })
-            .filter(Boolean)
         }
       } catch (err) {
         console.warn('Error cargando inscripciones:', err)

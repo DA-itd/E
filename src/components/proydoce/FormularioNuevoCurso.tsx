@@ -96,8 +96,8 @@ export default function FormularioNuevoCurso({ onCursoCreado, onVolver }: Props)
 
     try {
       const cursos = getLocalCursos();
-      cursos.forEach(c: any) => {
-        (c.participantes || []).forEach((p: any)  => {
+      cursos.forEach(c => {
+        (c.participantes || []).forEach(p => {
           const nom = (p.nombre_completo || '').trim();
           if (nom) {
             const k = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');

@@ -1,154 +1,258 @@
 // src/lib/criteriosInstructor.js
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { dibujarEncabezadoPDF } from './pdfEncabezado';
+// Genera el PDF "Criterios para seleccionar instructor (a)" (ITD-AD-FO-06).
+//
+// La plantilla base (Instructores_minimal.pdf) SOLO trae el encabezado
+// institucional (logo + código SGI) y el pie de página -- igual que
+// oficio_registro_blanco.pdf. Todo el cuerpo (título, tabla, líneas,
+// texto) se dibuja aquí, para que nada quede "quemado" en el PDF y
+// cualquier dato (incluido el Vo.Bo.) se pueda cambiar sin tocar la
+// plantilla.
 
-// Generación oficial y descarga en PDF de Criterios para seleccionar instructor (ITD-AD-FO-06)
-export async function descargarCriteriosInstructor(evaluacion) {
+import { PDFDocument, rgb } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+import { supabase } from './supabaseClient';
+
+const ALTO_PAGINA = 792;
+const BASE = import.meta.env.BASE_URL;
+const NEGRO = rgb(0.1, 0.1, 0.1);
+const AZUL = rgb(0.106, 0.224, 0.416);
+const VERDE = rgb(0, 0.5, 0);
+const ROJO = rgb(0.75, 0, 0);
+
+// Valores por defecto del Vo.Bo. institucional, usados solo si la tabla
+// `configuracion` no tiene los registros vobo_nombre / vobo_cargo.
+const VOBO_NOMBRE_DEFAULT = 'Adriana Eréndira Murillo';
+const VOBO_CARGO_DEFAULT = 'Subdirección Académica';
+
+function descargarPDFLocal(bytes, nombreArchivo) {
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombreArchivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function y(top) {
+  return ALTO_PAGINA - top;
+}
+
+function texto(page, str, x, top, font, tam, color = NEGRO) {
+  if (str === null || str === undefined || str === '') return;
+  page.drawText(String(str), { x, y: y(top), size: tam, font, color });
+}
+
+function textoCentrado(page, str, xIzq, xDer, top, font, tam, color = NEGRO) {
+  if (str === null || str === undefined || str === '') return;
+  const s = String(str);
+  const ancho = font.widthOfTextAtSize(s, tam);
+  const x = xIzq + (xDer - xIzq - ancho) / 2;
+  page.drawText(s, { x, y: y(top), size: tam, font, color });
+}
+
+function linea(page, x1, top, x2, grosor = 0.75) {
+  page.drawLine({ start: { x: x1, y: y(top) }, end: { x: x2, y: y(top) }, thickness: grosor, color: NEGRO });
+}
+
+function lineaV(page, x, top1, top2, grosor = 0.75) {
+  page.drawLine({ start: { x, y: y(top1) }, end: { x, y: y(top2) }, thickness: grosor, color: NEGRO });
+}
+
+function limpiarNombre(t) {
+  if (!t) return '';
+  const m = t.match(/^([^(]+)/);
+  return m ? m[0].trim() : t.trim();
+}
+
+// Los nombres de docentes vienen guardados en MAYÚSCULAS en la base de datos;
+// para que se vean igual que el nombre del Vo.Bo. (capturado en minúsculas/
+// mayúsculas normales) los mostramos en formato título en el PDF.
+function aTitulo(t) {
+  if (!t) return '';
+  return t
+    .toLowerCase()
+    .split(' ')
+    .map((palabra) => (palabra ? palabra.charAt(0).toUpperCase() + palabra.slice(1) : ''))
+    .join(' ');
+}
+
+async function obtenerConfigVoBo() {
   try {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+    const { data } = await supabase
+      .from('configuracion')
+      .select('clave, valor')
+      .in('clave', ['vobo_nombre', 'vobo_cargo']);
+    const map = Object.fromEntries((data || []).map((r) => [r.clave, r.valor]));
+    return {
+      nombre: map.vobo_nombre || VOBO_NOMBRE_DEFAULT,
+      cargo: map.vobo_cargo || VOBO_CARGO_DEFAULT,
+    };
+  } catch {
+    return { nombre: VOBO_NOMBRE_DEFAULT, cargo: VOBO_CARGO_DEFAULT };
+  }
+}
 
-    const startY = await dibujarEncabezadoPDF(
-      doc,
-      'CRITERIOS PARA SELECCIONAR INSTRUCTOR (A)',
-      [
-        'Formato: ITD-AD-FO-06 · Coordinación de Actualización Docente',
-        'Departamento de Desarrollo Académico',
-      ]
+const CRITERIOS_TEXTO = [
+  ['1. Formación profesional relacionada a la ', 'capacitación a impartir.'],
+  ['2. Experiencia en capacitación y en la temática a ', 'impartir.'],
+  ['3. Materiales didácticos a utilizar.'],
+  ['4. Empresas diferentes en las que ha participado ', 'como instructor (a).'],
+  ['5. Certificaciones y acreditaciones relacionadas ', 'al área de capacitación.'],
+];
+
+// Coordenadas de la tabla (idénticas a la plantilla original ITD-AD-FO-06)
+const TABLA = {
+  xIzq: 56.2,
+  xDer: 555.9,
+  colCriterio: 307.2,
+  cols: [307.2, 340.9, 374.7, 408.3, 442.1, 472.7],
+  yTop: 264.2,
+  filas: [289.4, 327.1, 365.0, 393.6, 431.5, 469.2], // fin de cada fila (header + 5 criterios)
+  yBottom: 484.1,
+};
+const Y_SCORE = [315.4, 353.2, 380.2, 419.7, 457.5]; // baseline del puntaje de cada fila
+
+/**
+ * Genera y descarga el PDF de criterios para seleccionar instructor.
+ * `item`: instructor_nombre, fecha_evaluacion, curso_nombre, empresa_plantel,
+ * criterio_1..criterio_5, aceptado (bool), jefe_departamento, cargo_evaluador.
+ */
+export async function descargarCriteriosInstructor(item) {
+  try {
+    // ===== 1. Plantilla base (solo encabezado + pie) =====
+    const resp = await fetch(`${BASE}plantillas/Instructores_minimal.pdf`);
+    if (!resp.ok) throw new Error('No se encontró la plantilla de criterios de instructor');
+    const pdfDoc = await PDFDocument.load(await resp.arrayBuffer());
+
+    pdfDoc.registerFontkit(fontkit);
+    const [regularBytes, boldBytes] = await Promise.all([
+      fetch(`${BASE}fuentes/Roboto-Regular.ttf`).then((r) => r.arrayBuffer()),
+      fetch(`${BASE}fuentes/Roboto-Bold.ttf`).then((r) => r.arrayBuffer()),
+    ]);
+    const fN = await pdfDoc.embedFont(regularBytes);
+    const fB = await pdfDoc.embedFont(boldBytes);
+    const page = pdfDoc.getPages()[0];
+
+    const vobo = await obtenerConfigVoBo();
+
+    // ===== 2. TÍTULO =====
+    textoCentrado(page, 'Criterios para seleccionar instructor (a)', 56, 556, 141.7, fB, 12);
+
+    // ===== 3. DATOS GENERALES =====
+    texto(page, 'Nombre del instructor (a):', 56.8, 187.2, fB, 11);
+    texto(page, (item.instructor_nombre || '').toUpperCase(), 197, 186, fN, 10.5, AZUL);
+    linea(page, 186.6, 189.5, 548.0);
+
+    texto(page, 'Fecha de evaluación:', 56.8, 206.4, fN, 11);
+    const fecha = item.fecha_evaluacion ? new Date(item.fecha_evaluacion + 'T00:00:00') : new Date();
+    texto(page, fecha.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }), 172, 205, fN, 10);
+    linea(page, 163.2, 206.9, 550.2);
+
+    texto(page, 'Nombre del curso a impartir:', 56.8, 225.4, fB, 11);
+    texto(page, (item.curso_nombre || '').toUpperCase(), 212, 224, fN, 9.5, AZUL);
+    linea(page, 173.7, 225.0, 560.8);
+
+    texto(page, 'Nombre de la empresa o plantel:', 56.8, 244.4, fN, 11);
+    texto(page, (item.empresa_plantel || 'ITD').toUpperCase(), 221, 243, fN, 9.5);
+    linea(page, 217.9, 246.2, 550.2);
+
+    // ===== 4. TABLA DE CRITERIOS =====
+    // bordes horizontales
+    linea(page, TABLA.xIzq, TABLA.yTop, TABLA.xDer, 1);
+    TABLA.filas.forEach((t) => linea(page, TABLA.xIzq, t, TABLA.xDer));
+    linea(page, TABLA.xIzq, TABLA.yBottom, TABLA.xDer, 1);
+    // bordes verticales: exteriores en toda la altura
+    lineaV(page, TABLA.xIzq, TABLA.yTop, TABLA.yBottom, 1);
+    lineaV(page, TABLA.xDer, TABLA.yTop, TABLA.yBottom, 1);
+    // columnas 1-5: solo hasta el final de la fila 5 (no cruzan el renglón de TOTAL general)
+    [TABLA.cols[0], TABLA.cols[1], TABLA.cols[2], TABLA.cols[3], TABLA.cols[4]].forEach((x) =>
+      lineaV(page, x, TABLA.yTop, TABLA.filas[4])
     );
+    // columna TOTAL: cruza hasta el fondo de la tabla (incluye el renglón de total general)
+    lineaV(page, TABLA.cols[5], TABLA.yTop, TABLA.yBottom);
 
-    const left = 14;
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const right = pageWidth - 14;
-
-    // Metadatos
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(27, 57, 106);
-    doc.text('DATOS DE LA EVALUACIÓN', left, startY + 2);
-
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(30, 41, 59);
-
-    const metaY = startY + 7;
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(203, 213, 225);
-    doc.roundedRect(left, metaY, right - left, 20, 2, 2, 'FD');
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Instructor:', left + 4, metaY + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.text(String(evaluacion.instructor_nombre || '---').toUpperCase(), left + 24, metaY + 6);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Fecha:', left + 120, metaY + 6);
-    doc.setFont('helvetica', 'normal');
-    doc.text(String(evaluacion.fecha_evaluacion || new Date().toLocaleDateString('es-MX')), left + 135, metaY + 6);
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Curso:', left + 4, metaY + 14);
-    doc.setFont('helvetica', 'normal');
-    const cursoTexto = doc.splitTextToSize(String(evaluacion.curso_nombre || '---').toUpperCase(), 150);
-    doc.text(cursoTexto, left + 20, metaY + 14);
-
-    const criterios = [
-      { num: '1', label: 'Formación profesional relacionada a la capacitación a impartir.', val: evaluacion.criterio_1 },
-      { num: '2', label: 'Experiencia en capacitación y en la temática a impartir.', val: evaluacion.criterio_2 },
-      { num: '3', label: 'Materiales didácticos a utilizar.', val: evaluacion.criterio_3 },
-      { num: '4', label: 'Empresas diferentes en las que ha participado como instructor(a).', val: evaluacion.criterio_4 },
-      { num: '5', label: 'Certificaciones y acreditaciones relacionadas al área de capacitación.', val: evaluacion.criterio_5 },
+    // encabezados de columna
+    textoCentrado(page, 'CRITERIO', TABLA.xIzq, TABLA.colCriterio, 288.7, fB, 11);
+    const centros1a5 = [
+      [TABLA.cols[0], TABLA.cols[1]],
+      [TABLA.cols[1], TABLA.cols[2]],
+      [TABLA.cols[2], TABLA.cols[3]],
+      [TABLA.cols[3], TABLA.cols[4]],
+      [TABLA.cols[4], TABLA.cols[5]],
     ];
-
-    const bodyTable = criterios.map(c => [
-      c.num,
-      c.label,
-      '1 - 5',
-      c.val !== undefined && c.val !== null ? String(c.val) : '-'
-    ]);
-
-    const totalPuntos = evaluacion.puntuacion_total ?? (
-      Number(evaluacion.criterio_1 || 0) +
-      Number(evaluacion.criterio_2 || 0) +
-      Number(evaluacion.criterio_3 || 0) +
-      Number(evaluacion.criterio_4 || 0) +
-      Number(evaluacion.criterio_5 || 0)
+    ['1', '2', '3', '4', '5'].forEach((n, i) =>
+      textoCentrado(page, n, centros1a5[i][0], centros1a5[i][1], 282.7, fB, 11)
     );
+    textoCentrado(page, 'TOTAL', TABLA.cols[5], TABLA.xDer, 282.7, fB, 11);
 
-    bodyTable.push([
-      '',
-      { content: 'TOTAL DE PUNTOS EVALUADOS (MÁXIMO 25 PTS):', styles: { fontStyle: 'bold', halign: 'right' } },
-      '',
-      { content: String(totalPuntos), styles: { fontStyle: 'bold', halign: 'center', textColor: [27, 57, 106], fontSize: 10 } }
-    ]);
-
-    autoTable(doc, {
-      startY: metaY + 24,
-      head: [['No.', 'Criterio de Selección', 'Escala', 'Puntaje']],
-      body: bodyTable,
-      theme: 'grid',
-      headStyles: { fillColor: [27, 57, 106], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8.5 },
-      styles: { fontSize: 8.5, cellPadding: 3, textColor: [30, 41, 59] },
-      columnStyles: {
-        0: { cellWidth: 10, halign: 'center' },
-        1: { cellWidth: 125 },
-        2: { cellWidth: 20, halign: 'center' },
-        3: { cellWidth: 25, halign: 'center' },
-      },
+    // texto de cada criterio (dos líneas cuando aplica)
+    const yLinea1 = [313.9, 351.7, 391.2, 418.2, 456.0];
+    const yLinea2 = [326.5, 364.3, null, 430.8, 468.6];
+    CRITERIOS_TEXTO.forEach((lineas, i) => {
+      texto(page, lineas[0], 61.7, yLinea1[i], fN, 11);
+      if (lineas[1]) texto(page, lineas[1], 73.0, yLinea2[i], fN, 11);
     });
 
-    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY + 8 : 170;
+    // puntuación de cada criterio + total general
+    for (let i = 0; i < 5; i++) {
+      const valor = item[`criterio_${i + 1}`];
+      textoCentrado(page, valor ?? '-', TABLA.cols[5], TABLA.xDer, Y_SCORE[i], fB, 12, AZUL);
+    }
+    const total = [1, 2, 3, 4, 5].reduce((s, i) => s + (Number(item[`criterio_${i}`]) || 0), 0);
+    textoCentrado(page, total, TABLA.cols[5], TABLA.xDer, 483.4, fB, 13, AZUL);
 
-    // Dictamen
-    const dictamenAceptado = evaluacion.aceptado ?? (totalPuntos >= 15);
-    doc.setFillColor(dictamenAceptado ? 240 : 254, dictamenAceptado ? 253 : 242, dictamenAceptado ? 244 : 242);
-    doc.setDrawColor(dictamenAceptado ? 134 : 252, dictamenAceptado ? 239 : 165, dictamenAceptado ? 172 : 165);
-    doc.roundedRect(left, finalY, right - left, 12, 2, 2, 'FD');
+    // ===== 5. NOTA + ESCALA DE REFERENCIA =====
+    texto(page, 'Nota: Evaluar considerando la siguiente escala', 47.8, 508.2, fN, 11);
 
-    doc.setFontSize(9.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(dictamenAceptado ? 22 : 185, dictamenAceptado ? 101 : 28, dictamenAceptado ? 52 : 28);
-    doc.text(
-      `DICTAMEN OFICIAL: ${dictamenAceptado ? '✓ INSTRUCTOR ACEPTADO PARA EL PROGRAMA' : '✗ INSTRUCTOR NO ACEPTADO'} (${totalPuntos}/25 PTS)`,
-      left + 5,
-      finalY + 7.5
-    );
+    const escalaX = [57.0, 161.3, 251.4, 350.3, 449.4, 557.4];
+    linea(page, escalaX[0], 521.5, escalaX[5]);
+    linea(page, escalaX[0], 534.7, escalaX[5]);
+    escalaX.forEach((x) => lineaV(page, x, 521.3, 534.9));
+    const escalaTextos = ['1        Malo', '2      Regular', '3         Bien', '4    Muy bien', '5    Excelente'];
+    escalaTextos.forEach((t, i) => texto(page, t, escalaX[i] + 6, 534.0, fN, 11));
 
-    // Firmas
-    const firmasY = finalY + 36;
-    const anchoFirma = 75;
+    // ===== 6. ACEPTADO =====
+    texto(page, 'Aceptado :', 405.0, 561.0, fB, 11);
+    const aceptadoTxt = item.aceptado ? 'SÍ' : 'NO';
+    texto(page, aceptadoTxt, 490, 560, fB, 12, item.aceptado ? VERDE : ROJO);
+    linea(page, 483.0, 559.8, 556.3);
 
-    // Evaluador
-    doc.setDrawColor(51, 65, 85);
-    doc.setLineWidth(0.4);
-    doc.line(left + 5, firmasY, left + 5 + anchoFirma, firmasY);
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(15, 23, 42);
-    doc.text(String(evaluacion.jefe_departamento || 'EVALUADOR').toUpperCase(), left + 5 + anchoFirma / 2, firmasY + 4, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text(String(evaluacion.cargo_evaluador || 'Jefe(a) de Departamento'), left + 5 + anchoFirma / 2, firmasY + 8, { align: 'center' });
+    // ===== 7. EVALUÓ / VO.BO. =====
+    textoCentrado(page, 'Evaluó', 47.7, 276.0, 599.5, fN, 11);
+    textoCentrado(page, 'Vo.Bo.', 324.0, 559.4, 599.5, fN, 11);
 
-    // Coordinación
-    const coordX = right - anchoFirma - 5;
-    doc.line(coordX, firmasY, coordX + anchoFirma, firmasY);
-    doc.setFontSize(8.5);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ALEJANDRO CALDERÓN RENTERÍA', coordX + anchoFirma / 2, firmasY + 4, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.text('Coordinador de Actualización Docente · Vo. Bo.', coordX + anchoFirma / 2, firmasY + 8, { align: 'center' });
+    // línea Evaluó: la línea va primero, luego nombre del jefe y cargo debajo
+    // (misma disposición que el lado de Vo.Bo., para que no queden asimétricos)
+    linea(page, 47.7, 639.3, 276.0);
+    textoCentrado(page, aTitulo(limpiarNombre(item.jefe_departamento || '')), 47.7, 276.0, 651.8, fB, 11);
+    textoCentrado(page, item.cargo_evaluador || '', 47.7, 276.0, 664.5, fN, 10);
 
-    // Pie
-    doc.setFontSize(7);
-    doc.setTextColor(148, 163, 184);
-    doc.text('ITD-AD-FO-06 · Sistema Institucional de Capacitación Docente', left, doc.internal.pageSize.getHeight() - 8);
+    // línea Vo.Bo.: nombre y cargo configurables (institucional)
+    linea(page, 324.0, 639.3, 559.4);
+    textoCentrado(page, vobo.nombre, 324.0, 559.4, 651.8, fB, 11);
+    textoCentrado(page, vobo.cargo, 324.0, 559.4, 664.5, fN, 10);
 
-    const nombreLimpio = String(evaluacion.instructor_nombre || 'Instructor').replace(/[^a-zA-Z0-9]/g, '_');
-    doc.save(`Criterios_Instructor_${nombreLimpio}.pdf`);
-  } catch (err) {
-    console.error('Error generando PDF de criterios:', err);
-    alert('No se pudo generar el documento PDF de criterios: ' + (err.message || err));
+    // ===== 8. FECHA DE GENERACIÓN =====
+    const fechaGen = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+    texto(page, 'DA', 56.8, 681.5, fB, 8);
+    texto(page, fechaGen, 73, 681.5, fN, 8);
+
+    // ===== 9. Guardar y descargar =====
+    const bytes = await pdfDoc.save();
+    
+    // Si pasaron la bandera "retornarBytes" (desde el Respaldo ZIP), lo devolvemos crudo
+    if (item.retornarBytes) return bytes; 
+
+    // Aquí forzamos la descarga directa en lugar de intentar abrir una pestaña nueva
+    const nombreLimpio = (item.curso_nombre || 'Criterios').replace(/[^a-zA-Z0-9 áéíóúñÑ]/g, "_").trim();
+    descargarPDFLocal(bytes, `Criterios_${nombreLimpio}.pdf`);
+    
+    return true;
+    } catch (error) {
+    console.error('❌ Error al generar PDF de criterios de instructor:', error);
+    throw new Error('No se pudo generar el PDF: ' + error.message);
   }
 }
