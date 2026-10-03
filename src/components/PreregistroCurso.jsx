@@ -609,70 +609,194 @@ export default function PreregistroCurso({ docente, onSalir }) {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex gap-3 flex-wrap items-center bg-itd-sand/20 p-2.5 rounded-lg border border-itd-navy/5">
-                    {item.estado === 'pendiente' && !evaluacion && (
-                      <div className="flex items-center gap-2 mr-2">
-                        <span className="text-[11px] font-bold text-red-600 uppercase tracking-wider animate-pulse flex items-center gap-1">
-                          ⚠️ ¡Siguiente paso requerido! 👉
-                        </span>
-                        <button 
-                          onClick={() => abrirEvaluacion(item)} 
-                          className="text-xs font-bold text-purple-700 bg-purple-50 border-2 border-purple-400 rounded-lg px-4 py-2 hover:bg-purple-100 flex items-center gap-1 shadow-sm transition-all"
-                        >
-                          📋 Evaluar Instructor
-                        </button>
+                  {/* Alerta de acción requerida si falta evaluación */}
+                  {item.estado === 'pendiente' && !evaluacion && (
+                    <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">⚠️</span>
+                        <p className="text-xs font-bold text-amber-800">
+                          Siguiente paso requerido: Evaluar al instructor para completar el expediente.
+                        </p>
                       </div>
-                    )}
-
-                    {item.oficio_no && (
-                      <button onClick={() => descargarOficioRegistro(item, convocatoria)} className="text-xs font-medium text-itd-navy border border-itd-navy/20 bg-white rounded-lg px-3 py-2 hover:bg-itd-sand shadow-sm transition-all">
-                        📄 Oficio Registro (No. {String(item.oficio_no).split('/')[0].trim()}/{new Date(item.created_at).getFullYear()})
+                      <button 
+                        onClick={() => abrirEvaluacion(item)} 
+                        className="text-xs font-bold text-white bg-purple-700 hover:bg-purple-800 rounded-lg px-3.5 py-1.5 shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                      >
+                        <span>📋 Evaluar Instructor</span>
                       </button>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Botones de visualización para el docente */}
-                    <button
-                      type="button"
-                      onClick={() => abrirDocumento(item.id, 'cvu')}
-                      className="text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-2 shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title="Abrir CVU del Instructor cargado en Supabase"
-                    >
-                      <span>📄</span>
-                      <span>Ver mi CVU</span>
-                      <span className="text-[10px]">↗</span>
-                    </button>
+                  {/* ============================================================= */}
+                  {/* EXPEDIENTE DEL CURSO: 4 DOCUMENTOS ENUMERADOS VISUALMENTE     */}
+                  {/* ============================================================= */}
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <span>📁</span>
+                        <span>Expediente de la Propuesta (4 Documentos)</span>
+                      </p>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        Generados por sistema y cargados por docente
+                      </span>
+                    </div>
 
-                    <button
-                      type="button"
-                      onClick={() => abrirDocumento(item.id, 'fichaTecnica')}
-                      className="text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg px-3 py-2 shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title="Abrir Ficha Técnica del Curso cargada en Supabase"
-                    >
-                      <span>📄</span>
-                      <span>Ver mi Ficha Técnica</span>
-                      <span className="text-[10px]">↗</span>
-                    </button>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                      
+                      {/* 1. OFICIO DE REGISTRO (Generado) */}
+                      {item.oficio_no ? (
+                        <button
+                          type="button"
+                          onClick={() => descargarOficioRegistro(item, convocatoria)}
+                          className="group flex flex-col justify-between p-3 rounded-xl border border-blue-200/80 bg-gradient-to-br from-blue-50/70 via-white to-blue-50/30 hover:border-blue-400 hover:shadow-xs text-left transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="w-6 h-6 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs font-black shadow-2xs">
+                              1
+                            </span>
+                            <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.5 rounded">
+                              No. {String(item.oficio_no).split('/')[0].trim()}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-bold text-xs text-slate-800 group-hover:text-blue-700 transition-colors">
+                              Oficio de Registro
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Generado por sistema
+                            </p>
+                          </div>
+                          <div className="mt-2.5 pt-1.5 border-t border-blue-100 flex items-center justify-between text-[11px] font-semibold text-blue-700">
+                            <span>Descargar PDF</span>
+                            <span className="text-xs group-hover:translate-x-0.5 transition-transform">⬇️</span>
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="p-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 flex flex-col justify-between text-left">
+                          <span className="w-6 h-6 rounded-lg bg-slate-300 text-slate-600 flex items-center justify-center text-xs font-bold">1</span>
+                          <p className="text-xs font-bold text-slate-400 mt-2">Oficio de Registro</p>
+                          <p className="text-[10px] text-slate-400">Sin número de oficio</p>
+                        </div>
+                      )}
 
-                    {evaluacion && (
-                       <button 
-                         onClick={async () => {
-                           try {
-                             await descargarCriteriosInstructor({
-                               ...evaluacion,
-                               curso_nombre: evaluacion.curso_nombre || item.curso,
-                               instructor_nombre: evaluacion.instructor_nombre || item.docentes?.nombre_completo,
-                               jefe_departamento: evaluacion.jefe_departamento || item.nombre_jefe,
-                               cargo_evaluador: evaluacion.cargo_evaluador || item.jefatura_cargo
-                             });
-                           } catch (error) {
-                             alert("Error al generar el PDF: " + error.message);
-                           }
-                         }} 
-                         className="text-xs font-medium text-purple-700 border border-purple-300 bg-white rounded-lg px-3 py-2 hover:bg-purple-50 shadow-sm transition-all"
-                       >
-                        📄 Descargar Criterios de Evaluación
+                      {/* 2. CRITERIOS DE EVALUACIÓN (Generado) */}
+                      {evaluacion ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await descargarCriteriosInstructor({
+                                ...evaluacion,
+                                curso_nombre: evaluacion.curso_nombre || item.curso,
+                                instructor_nombre: evaluacion.instructor_nombre || item.docentes?.nombre_completo,
+                                jefe_departamento: evaluacion.jefe_departamento || item.nombre_jefe,
+                                cargo_evaluador: evaluacion.cargo_evaluador || item.jefatura_cargo,
+                              });
+                            } catch (error) {
+                              alert("Error al generar el PDF: " + error.message);
+                            }
+                          }}
+                          className="group flex flex-col justify-between p-3 rounded-xl border border-purple-200/80 bg-gradient-to-br from-purple-50/70 via-white to-purple-50/30 hover:border-purple-400 hover:shadow-xs text-left transition-all cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center text-xs font-black shadow-2xs">
+                              2
+                            </span>
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-100/80 px-1.5 py-0.5 rounded">
+                              {evaluacion.puntuacion_total}/25 pts
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-bold text-xs text-slate-800 group-hover:text-purple-700 transition-colors">
+                              Criterios de Evaluación
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Formato ITD-AD-FO-06
+                            </p>
+                          </div>
+                          <div className="mt-2.5 pt-1.5 border-t border-purple-100 flex items-center justify-between text-[11px] font-semibold text-purple-700">
+                            <span>Descargar PDF</span>
+                            <span className="text-xs group-hover:translate-x-0.5 transition-transform">⬇️</span>
+                          </div>
+                        </button>
+                      ) : (
+                        <div className="p-3 rounded-xl border border-dashed border-amber-300 bg-amber-50/40 flex flex-col justify-between text-left">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="w-6 h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center text-xs font-bold">2</span>
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">Pendiente</span>
+                          </div>
+                          <div>
+                            <p className="font-bold text-xs text-amber-900">Criterios de Evaluación</p>
+                            <p className="text-[10px] text-amber-700 mt-0.5">Falta evaluar instructor</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => abrirEvaluacion(item)}
+                            className="mt-2.5 pt-1.5 border-t border-amber-200 text-[11px] font-bold text-amber-800 hover:text-amber-900 flex items-center justify-between cursor-pointer"
+                          >
+                            <span>📋 Evaluar ahora</span>
+                            <span>→</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* 3. CVU DEL INSTRUCTOR (Subido) */}
+                      <button
+                        type="button"
+                        onClick={() => abrirDocumento(item.id, 'cvu')}
+                        className="group flex flex-col justify-between p-3 rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/70 via-white to-emerald-50/30 hover:border-emerald-400 hover:shadow-xs text-left transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs font-black shadow-2xs">
+                            3
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.5 rounded">
+                            PDF Cargado
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs text-slate-800 group-hover:text-emerald-700 transition-colors">
+                            CVU del Instructor
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Currículum adjunto
+                          </p>
+                        </div>
+                        <div className="mt-2.5 pt-1.5 border-t border-emerald-100 flex items-center justify-between text-[11px] font-semibold text-emerald-700">
+                          <span>Ver mi CVU</span>
+                          <span className="text-xs group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">↗</span>
+                        </div>
                       </button>
-                    )}
+
+                      {/* 4. FICHA TÉCNICA (Subida) */}
+                      <button
+                        type="button"
+                        onClick={() => abrirDocumento(item.id, 'fichaTecnica')}
+                        className="group flex flex-col justify-between p-3 rounded-xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-white to-indigo-50/30 hover:border-indigo-400 hover:shadow-xs text-left transition-all cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-2xs">
+                            4
+                          </span>
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100/80 px-1.5 py-0.5 rounded">
+                            PDF Cargado
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-bold text-xs text-slate-800 group-hover:text-indigo-700 transition-colors">
+                            Ficha Técnica
+                          </p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Contenido del curso
+                          </p>
+                        </div>
+                        <div className="mt-2.5 pt-1.5 border-t border-indigo-100 flex items-center justify-between text-[11px] font-semibold text-indigo-700">
+                          <span>Ver Ficha Técnica</span>
+                          <span className="text-xs group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">↗</span>
+                        </div>
+                      </button>
+
+                    </div>
                   </div>
                 </div>
               );
