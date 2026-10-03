@@ -34,6 +34,16 @@ const ESTADO_LABEL = {
   aprobado: { texto: 'Aprobado', clase: 'bg-green-100 text-green-700' },
 };
 
+const LIMITE_MB = 3;
+const LIMITE_BYTES = LIMITE_MB * 1024 * 1024;
+
+function formatearPeso(bytes) {
+  if (!bytes) return '0 KB';
+  const mb = bytes / (1024 * 1024);
+  if (mb >= 1) return `${mb.toFixed(2)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
 function formVacio() {
   return {
     curso: '',
@@ -86,6 +96,83 @@ export default function PreregistroCurso({ docente, onSalir }) {
 
   // Estado para formatos descargables
   const [formatosDescargables, setFormatosDescargables] = useState([]);
+
+  // Información de validación de archivos (peso, error, confirmación)
+  const [infoArchivos, setInfoArchivos] = useState({
+    cvu: { error: null, peso: null, nombre: null },
+    fichaTecnica: { error: null, peso: null, nombre: null },
+  });
+
+  // Validador estricto de 3 MB para CVU y Ficha Técnica
+  function manejarCambioArchivo(e, tipo, nombreEtiqueta) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 1. Validar que sea PDF
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      e.target.value = '';
+      setArchivos((prev) => ({ ...prev, [tipo]: null }));
+      setInfoArchivos((prev) => ({
+        ...prev,
+        [tipo]: { error: `El archivo para "${nombreEtiqueta}" debe ser en formato PDF.`, peso: null, nombre: null },
+      }));
+      return;
+    }
+
+    // 2. Validar límite estricto de 3 MB
+    if (file.size > LIMITE_BYTES) {
+      const pesoExacto = formatearPeso(file.size);
+      e.target.value = ''; // Limpiar el input para cancelar la selección
+      setArchivos((prev) => ({ ...prev, [tipo]: null }));
+      setInfoArchivos((prev) => ({
+        ...prev,
+        [tipo]: {
+          error: `⚠️ El archivo seleccionado para ${nombreEtiqueta} pesa ${pesoExacto}, superando el límite de ${LIMITE_MB} MB. Por favor comprímelo antes de subirlo (por ejemplo en ilovepdf.com).`,
+          peso: null,
+          nombre: null,
+        },
+      }));
+      return;
+    }
+
+    // 3. Archivo válido (<= 3 MB)
+    setArchivos((prev) => ({ ...prev, [tipo]: file }));
+    setInfoArchivos((prev) => ({
+      ...prev,
+      [tipo]: {
+        error: null,
+        peso: formatearPeso(file.size),
+        nombre: file.name,
+      },
+    }));
+  }
+
+  // Abrir documento cargado del docente
+  async function abrirDocumento(registroId, tipo) {
+    const nombreArchivo = tipo === 'cvu' ? '1_cvu_instructor.pdf' : '2_ficha_tecnica.pdf';
+    try {
+      const { data, error } = await supabase.storage
+        .from('documentos_preregistro')
+        .download(`${registroId}/${nombreArchivo}`);
+
+      if (error) {
+        // Intentar con URL pública directa
+        const { data: pub } = supabase.storage
+          .from('documentos_preregistro')
+          .getPublicUrl(`${registroId}/${nombreArchivo}`);
+        if (pub?.publicUrl) {
+          window.open(pub.publicUrl, '_blank');
+          return;
+        }
+        throw error;
+      }
+
+      const blobUrl = URL.createObjectURL(data);
+      window.open(blobUrl, '_blank');
+    } catch (e) {
+      alert(`No se pudo abrir el archivo (${tipo === 'cvu' ? 'CVU' : 'Ficha Técnica'}): ${e.message}`);
+    }
+  }
 
   useEffect(() => {
     cargar();
@@ -419,18 +506,64 @@ export default function PreregistroCurso({ docente, onSalir }) {
           </div>
 
           <div className="sm:col-span-2 mt-4 space-y-4 bg-itd-sand/10 rounded-xl p-4 border border-itd-navy/10">
-            <h3 className="text-sm font-semibold text-itd-navyDark border-b border-itd-navy/10 pb-2">
-              Documentos requeridos para revisión (Solo PDF)
-            </h3>
+            <div className="flex items-center justify-between border-b border-itd-navy/10 pb-2">
+              <h3 className="text-sm font-semibold text-itd-navyDark">
+                Documentos requeridos para revisión (Solo PDF · Máximo 3 MB c/u)
+              </h3>
+              <span className="text-[11px] font-bold text-itd-navy bg-itd-sand/40 px-2 py-0.5 rounded border border-itd-navy/15">
+                Límite: 3 MB
+              </span>
+            </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* 1. CVU */}
               <div>
-                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">1. CVU - Currículum del Instructor *</label>
-                <input type="file" accept="application/pdf" required onChange={(e) => setArchivos({...archivos, cvu: e.target.files[0]})} className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white" />
+                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">
+                  1. CVU - Currículum del Instructor *
+                </label>
+                <input 
+                  type="file" 
+                  accept="application/pdf" 
+                  required 
+                  onChange={(e) => manejarCambioArchivo(e, 'cvu', 'CVU')} 
+                  className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white cursor-pointer" 
+                />
+                {infoArchivos.cvu.error && (
+                  <p className="mt-1.5 text-xs text-rose-700 font-semibold bg-rose-50 border border-rose-200 p-2 rounded-lg leading-relaxed">
+                    {infoArchivos.cvu.error}
+                  </p>
+                )}
+                {infoArchivos.cvu.peso && !infoArchivos.cvu.error && (
+                  <p className="mt-1.5 text-xs text-emerald-800 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                    <span>✅</span>
+                    <span>Archivo válido ({infoArchivos.cvu.peso}) listo para enviar</span>
+                  </p>
+                )}
               </div>
+
+              {/* 2. Ficha Técnica */}
               <div>
-                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">2. Ficha Técnica del Curso *</label>
-                <input type="file" accept="application/pdf" required onChange={(e) => setArchivos({...archivos, fichaTecnica: e.target.files[0]})} className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white" />
+                <label className="block text-xs font-medium text-itd-navyDark/70 mb-1">
+                  2. Ficha Técnica del Curso *
+                </label>
+                <input 
+                  type="file" 
+                  accept="application/pdf" 
+                  required 
+                  onChange={(e) => manejarCambioArchivo(e, 'fichaTecnica', 'Ficha Técnica')} 
+                  className="text-xs w-full file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-itd-navy file:text-white cursor-pointer" 
+                />
+                {infoArchivos.fichaTecnica.error && (
+                  <p className="mt-1.5 text-xs text-rose-700 font-semibold bg-rose-50 border border-rose-200 p-2 rounded-lg leading-relaxed">
+                    {infoArchivos.fichaTecnica.error}
+                  </p>
+                )}
+                {infoArchivos.fichaTecnica.peso && !infoArchivos.fichaTecnica.error && (
+                  <p className="mt-1.5 text-xs text-emerald-800 font-semibold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                    <span>✅</span>
+                    <span>Archivo válido ({infoArchivos.fichaTecnica.peso}) listo para enviar</span>
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -496,6 +629,29 @@ export default function PreregistroCurso({ docente, onSalir }) {
                         📄 Oficio Registro (No. {String(item.oficio_no).split('/')[0].trim()}/{new Date(item.created_at).getFullYear()})
                       </button>
                     )}
+
+                    {/* Botones de visualización para el docente */}
+                    <button
+                      type="button"
+                      onClick={() => abrirDocumento(item.id, 'cvu')}
+                      className="text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-2 shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Abrir CVU del Instructor cargado en Supabase"
+                    >
+                      <span>📄</span>
+                      <span>Ver mi CVU</span>
+                      <span className="text-[10px]">↗</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => abrirDocumento(item.id, 'fichaTecnica')}
+                      className="text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg px-3 py-2 shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Abrir Ficha Técnica del Curso cargada en Supabase"
+                    >
+                      <span>📄</span>
+                      <span>Ver mi Ficha Técnica</span>
+                      <span className="text-[10px]">↗</span>
+                    </button>
 
                     {evaluacion && (
                        <button 
