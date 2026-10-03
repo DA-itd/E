@@ -14,7 +14,7 @@ const ROJO = rgb(0.75, 0, 0);
 
 // Nombre oficial actualizado para Vo.Bo.
 const VOBO_NOMBRE_DEFAULT = 'Mónica Rosales Pérez';
-const VOBO_CARGO_DEFAULT = 'Subdirección Académica';
+const VOBO_CARGO_DEFAULT = 'Jefe(a) de Desarrollo Académico';
 
 function esBufferPDF(buffer) {
   if (!buffer || buffer.byteLength < 5) return false;
@@ -158,10 +158,24 @@ async function obtenerConfigVoBo() {
     const map = Object.fromEntries((data || []).map((r) => [r.clave, r.valor]));
     
     let nombre = map.vobo_nombre || VOBO_NOMBRE_DEFAULT;
-    // Si la BD aún tenía el nombre anterior guardado, usamos el nuevo
+    let cargo = map.vobo_cargo || VOBO_CARGO_DEFAULT;
+
+    // Si la base de datos tenía el nombre o cargo anterior, actualizarlos aquí:
     if (nombre.includes('Adriana') || nombre.includes('Eréndira')) {
-      nombre = VOBO_NOMBRE_DEFAULT;
+      nombre = 'Mónica Rosales Pérez';
     }
+     if (cargo.includes('Subdirección') || cargo.includes('Académica')) {
+      cargo = 'Jefe(a) de Desarrollo Académico';
+    }
+
+    return {
+       nombre,
+       cargo,
+     };
+    } catch {
+     return { nombre: VOBO_NOMBRE_DEFAULT, cargo: VOBO_CARGO_DEFAULT };
+   }
+ }
 
     return {
       nombre,
