@@ -1,4 +1,6 @@
 // src/lib/criteriosInstructor.js
+// Genera el PDF "Criterios para seleccionar instructor (a)" (ITD-AD-FO-06).
+
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { supabase } from './supabaseClient';
@@ -10,51 +12,73 @@ const AZUL = rgb(0.106, 0.224, 0.416);
 const VERDE = rgb(0, 0.5, 0);
 const ROJO = rgb(0.75, 0, 0);
 
-const VOBO_NOMBRE_DEFAULT = 'Adriana Eréndira Murillo';
+// Nombre oficial actualizado para Vo.Bo.
+const VOBO_NOMBRE_DEFAULT = 'Mónica Rosales Pérez';
 const VOBO_CARGO_DEFAULT = 'Subdirección Académica';
 
 function esBufferPDF(buffer) {
   if (!buffer || buffer.byteLength < 5) return false;
   const h = new Uint8Array(buffer.slice(0, 5));
-  // %PDF- => 37, 80, 68, 70, 45
   return h[0] === 37 && h[1] === 80 && h[2] === 68 && h[3] === 70 && h[4] === 45;
 }
 
-// Carga la plantilla intentando ruta local y con respaldo a GitHub Raw
 async function cargarPlantillaSegura(nombreArchivo) {
-  const rutas = [
-    `${BASE}plantillas/${nombreArchivo}`,
-    `/plantillas/${nombreArchivo}`,
-    `./plantillas/${nombreArchivo}`,
-    `https://raw.githubusercontent.com/DA-itd/E/main/public/plantillas/${nombreArchivo}`
+  const nombresPosibles = [
+    nombreArchivo,
+    nombreArchivo.toLowerCase(),
+    'Instructores_minimal.pdf',
+    'instructores_minimal.pdf',
+    'Instructores_Minimal.pdf'
   ];
 
-  for (const url of rutas) {
-    try {
-      const resp = await fetch(url);
-      if (resp.ok) {
-        const buffer = await resp.arrayBuffer();
+  const prefijos = [
+    '/plantillas/',
+    './plantillas/',
+    `${BASE}plantillas/`,
+    '/public/plantillas/',
+    'https://raw.githubusercontent.com/DA-itd/E/main/public/plantillas/',
+    'https://raw.githubusercontent.com/DA-itd/E/main/plantillas/'
+  ];
+
+  for (const dir of prefijos) {
+    for (const nom of [...new Set(nombresPosibles)]) {
+      const url = `${dir}${nom}`;
+      try {
+        const resp = await fetch(url);
+        if (resp.ok) {
+          const buffer = await resp.arrayBuffer();
+          if (esBufferPDF(buffer)) {
+            return await PDFDocument.load(buffer);
+          }
+        }
+      } catch {}
+    }
+  }
+
+  try {
+    for (const nom of [...new Set(nombresPosibles)]) {
+      const { data: blob } = await supabase.storage
+        .from('documentos_preregistro')
+        .download(`formatos_plantillas/${nom}`);
+      if (blob) {
+        const buffer = await blob.arrayBuffer();
         if (esBufferPDF(buffer)) {
           return await PDFDocument.load(buffer);
         }
       }
-    } catch (e) {
-      console.warn(`No se pudo cargar desde ${url}, probando siguiente ruta...`);
     }
-  }
+  } catch {}
 
-  // Si todas fallan, crea un documento PDF en blanco para no romper el flujo
-  console.warn('Creando PDF base desde cero...');
   const nuevoDoc = await PDFDocument.create();
   nuevoDoc.addPage([612, 792]);
   return nuevoDoc;
 }
 
-// Carga las fuentes con respaldo a Helvetica estándar para garantizar que no truene
 async function cargarFuente(pdfDoc, nombreFuente, fallbackEstandar) {
   const rutas = [
     `${BASE}fuentes/${nombreFuente}`,
     `/fuentes/${nombreFuente}`,
+    `/public/fuentes/${nombreFuente}`,
     `https://raw.githubusercontent.com/DA-itd/E/main/public/fuentes/${nombreFuente}`
   ];
 
@@ -132,8 +156,15 @@ async function obtenerConfigVoBo() {
       .select('clave, valor')
       .in('clave', ['vobo_nombre', 'vobo_cargo']);
     const map = Object.fromEntries((data || []).map((r) => [r.clave, r.valor]));
+    
+    let nombre = map.vobo_nombre || VOBO_NOMBRE_DEFAULT;
+    // Si la BD aún tenía el nombre anterior guardado, usamos el nuevo
+    if (nombre.includes('Adriana') || nombre.includes('Eréndira')) {
+      nombre = VOBO_NOMBRE_DEFAULT;
+    }
+
     return {
-      nombre: map.vobo_nombre || VOBO_NOMBRE_DEFAULT,
+      nombre,
       cargo: map.vobo_cargo || VOBO_CARGO_DEFAULT,
     };
   } catch {
@@ -155,17 +186,15 @@ const TABLA = {
   colCriterio: 307.2,
   cols: [307.2, 340.9, 374.7, 408.3, 442.1, 472.7],
   yTop: 264.2,
-  filas: [289.4, 327.1, 365.0, 393.6, 431.5, 469.2],
+  filas: [289.4, 327.1, 365.0, 393.6, 431.5, 469.2], // filas[5] = fin del criterio 5
   yBottom: 484.1,
 };
 const Y_SCORE = [315.4, 353.2, 380.2, 419.7, 457.5];
 
 export async function descargarCriteriosInstructor(item) {
   try {
-    // 1. Cargar plantilla segura con fallback
     const pdfDoc = await cargarPlantillaSegura('Instructores_minimal.pdf');
 
-    // 2. Cargar fuentes seguras
     const fN = await cargarFuente(pdfDoc, 'Roboto-Regular.ttf', StandardFonts.Helvetica);
     const fB = await cargarFuente(pdfDoc, 'Roboto-Bold.ttf', StandardFonts.HelveticaBold);
     const page = pdfDoc.getPages()[0];
@@ -199,9 +228,12 @@ export async function descargarCriteriosInstructor(item) {
     linea(page, TABLA.xIzq, TABLA.yBottom, TABLA.xDer, 1);
     lineaV(page, TABLA.xIzq, TABLA.yTop, TABLA.yBottom, 1);
     lineaV(page, TABLA.xDer, TABLA.yTop, TABLA.yBottom, 1);
+
+    // Columnas 1 a 5: van hasta el final de la fila 5 (criterio 5 completo)
     [TABLA.cols[0], TABLA.cols[1], TABLA.cols[2], TABLA.cols[3], TABLA.cols[4]].forEach((x) =>
-      lineaV(page, x, TABLA.yTop, TABLA.filas[4])
+      lineaV(page, x, TABLA.yTop, TABLA.filas[5])
     );
+    // Columna TOTAL: cruza hasta el fondo de la tabla (incluyendo la fila del puntaje total)
     lineaV(page, TABLA.cols[5], TABLA.yTop, TABLA.yBottom);
 
     textoCentrado(page, 'CRITERIO', TABLA.xIzq, TABLA.colCriterio, 288.7, fB, 11);
