@@ -6,6 +6,7 @@ import {
   coincideDepartamento,
 } from './proydoce/AdminProyectosDocencia'
 import AvisosBanner from './AvisosBanner'
+import CintilloMes from './CintilloMes'
 
 const BASE = import.meta.env.BASE_URL?.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL || '.'}/`
 const LOGO_TECNM_LOCAL = `${BASE}logos/logo-tecnm.jpg`
@@ -123,7 +124,7 @@ export default function Login({ onIrAValidar }) {
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col justify-between selection:bg-itd-gold selection:text-itd-navy font-sans">
 
       {/* ========================================================================= */}
-      {/* 1. ENCABEZADO SUPERIOR INSTITUCIONAL (IDÉNTICO A PANTALLA 1)              */}
+      {/* 1. ENCABEZADO SUPERIOR INSTITUCIONAL                                      */}
       {/* ========================================================================= */}
       <header className="w-full bg-white border-b border-slate-200 shadow-2xs">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
@@ -166,6 +167,11 @@ export default function Login({ onIrAValidar }) {
           </div>
         </div>
       </header>
+
+      {/* ========================================================================= */}
+      {/* CINTILLO INSTITUCIONAL / CONMEMORATIVO DEL MES                            */}
+      {/* ========================================================================= */}
+      <CintilloMes />
 
       {/* Avisos institucionales activos */}
       <AvisosBanner className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-3 pb-1" />
