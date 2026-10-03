@@ -298,10 +298,11 @@ export async function descargarCriteriosInstructor(item) {
     textoCentrado(page, aTitulo(limpiarNombre(item.jefe_departamento || '')), 47.7, 276.0, 651.8, fB, 11);
     textoCentrado(page, item.cargo_evaluador || '', 47.7, 276.0, 664.5, fN, 10);
 
+    // línea Vo.Bo. Oficial
     linea(page, 324.0, 639.3, 559.4);
-    textoCentrado(page, vobo.nombre, 324.0, 559.4, 651.8, fB, 11);
-    textoCentrado(page, vobo.cargo, 324.0, 559.4, 664.5, fN, 10);
-
+    textoCentrado(page, 'Mónica Rosales Pérez', 324.0, 559.4, 651.8, fB, 11);
+    textoCentrado(page, 'Jefe(a) de Desarrollo Académico', 324.0, 559.4, 664.5, fN, 10);
+    
     const fechaGen = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
     texto(page, 'DA', 56.8, 681.5, fB, 8);
     texto(page, fechaGen, 73, 681.5, fN, 8);
