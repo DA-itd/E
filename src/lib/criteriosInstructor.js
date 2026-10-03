@@ -200,7 +200,7 @@ export async function descargarCriteriosInstructor(item) {
     lineaV(page, TABLA.xIzq, TABLA.yTop, TABLA.yBottom, 1);
     lineaV(page, TABLA.xDer, TABLA.yTop, TABLA.yBottom, 1);
     [TABLA.cols[0], TABLA.cols[1], TABLA.cols[2], TABLA.cols[3], TABLA.cols[4]].forEach((x) =>
-      lineaV(page, x, TABLA.yTop, TABLA.filas[4])
+      lineaV(page, x, TABLA.yTop, TABLA.filas[5])
     );
     lineaV(page, TABLA.cols[5], TABLA.yTop, TABLA.yBottom);
 

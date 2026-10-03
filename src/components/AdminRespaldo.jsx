@@ -1,11 +1,13 @@
 // src/components/AdminRespaldo.jsx
-// Módulo de Gestión de Almacenamiento y Respaldo de Expedientes en Supabase Storage
-
-import React, { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import { descargarOficioRegistro } from '../lib/oficio';
+import { descargarCriteriosInstructor } from '../lib/criteriosInstructor';
 
 const BUCKET_NAME = 'documentos_preregistro';
-const CUOTA_MAXIMA_MB = 50; // Límite de cuota gratuita en Supabase Storage
+const CUOTA_MAXIMA_MB = 50; // Límite gratuito de cuota en Supabase Storage
 
 function formatearBytes(bytes) {
   if (!bytes || bytes === 0) return '0 KB';
@@ -15,86 +17,61 @@ function formatearBytes(bytes) {
 }
 
 export default function AdminRespaldo() {
-  const [cargando, setCargando] = useState(true);
-  const [archivosStorage, setArchivosStorage] = useState([]);
-  const [cursos, setCursos] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  const [estadoRespaldo, setEstadoRespaldo] = useState('');
+  const [archivosEncontrados, setArchivosEncontrados] = useState(null);
   const [bytesTotales, setBytesTotales] = useState(0);
-  const [mensaje, setMensaje] = useState(null);
-  const [procesando, setProcesando] = useState(false);
-  const [busqueda, setBusqueda] = useState('');
+  const [archivosDetalle, setArchivosDetalle] = useState([]);
+  const [verDetalle, setVerDetalle] = useState(false);
 
   useEffect(() => {
-    cargarDatos();
+    calcularArchivos();
   }, []);
 
-  async function cargarDatos() {
+  async function calcularArchivos() {
     setCargando(true);
-    setMensaje(null);
     try {
-      // 1. Consultar archivos reales en el bucket 'documentos_preregistro'
-      let todosLosArchivos = [];
+      const { data: carpetas, error: errCarpetas } = await supabase.storage.from(BUCKET_NAME).list('');
+      if (errCarpetas || !carpetas) {
+        setArchivosEncontrados(0);
+        setBytesTotales(0);
+        setCargando(false);
+        return;
+      }
+      const idsReales = carpetas.filter(c => c.id == null || !c.name.includes('.')).map(c => c.name);
+      
+      let contadorArchivos = 0;
       let sumaBytes = 0;
+      let listaDetallada = [];
 
-      const { data: carpetasRaiz, error: errRaiz } = await supabase.storage
-        .from(BUCKET_NAME)
-        .list('', { limit: 100 });
-
-      if (!errRaiz && carpetasRaiz) {
-        for (const item of carpetasRaiz) {
-          if (!item.id) {
-            // Es una subcarpeta nombrada con el ID del preregistro (ej: "15/")
-            const { data: archivosSub } = await supabase.storage
-              .from(BUCKET_NAME)
-              .list(item.name, { limit: 20 });
-
-            if (archivosSub) {
-              archivosSub.forEach((sub) => {
-                if (sub.id) {
-                  const size = sub.metadata?.size || 0;
-                  sumaBytes += size;
-                  todosLosArchivos.push({
-                    ...sub,
-                    registroId: item.name,
-                    rutaCompleta: `${item.name}/${sub.name}`,
-                    size,
-                  });
-                }
-              });
-            }
-          } else {
-            // Archivo en la raíz
-            const size = item.metadata?.size || 0;
+      for (const id of idsReales) {
+        const { data: archivos } = await supabase.storage.from(BUCKET_NAME).list(id);
+        if (archivos) {
+          const validos = archivos.filter(a => a.name !== '.emptyFolderPlaceholder');
+          contadorArchivos += validos.length;
+          validos.forEach(a => {
+            const size = a.metadata?.size || 0;
             sumaBytes += size;
-            todosLosArchivos.push({
-              ...item,
-              rutaCompleta: item.name,
-              size,
+            listaDetallada.push({
+              registroId: id,
+              nombre: a.name,
+              ruta: `${id}/${a.name}`,
+              size: size,
             });
-          }
+          });
         }
       }
-
-      setArchivosStorage(todosLosArchivos);
+      setArchivosEncontrados(contadorArchivos);
       setBytesTotales(sumaBytes);
-
-      // 2. Consultar preregistro_cursos (la tabla oficial de propuestas)
-      const { data: propuestas, error: errCursos } = await supabase
-        .from('preregistro_cursos')
-        .select('*, docentes(nombre_completo, email, departamento)')
-        .order('created_at', { ascending: false });
-
-      if (!errCursos && propuestas) {
-        setCursos(propuestas);
-      }
-    } catch (error) {
-      console.error('Error al cargar almacenamiento:', error);
-      setMensaje({ tipo: 'error', texto: 'No se pudo cargar la información del almacenamiento: ' + error.message });
-    } finally {
-      setCargando(false);
+      setArchivosDetalle(listaDetallada);
+    } catch (e) {
+      console.error(e);
+      setArchivosEncontrados(0);
+      setBytesTotales(0);
     }
+    setCargando(false);
   }
 
-  // Ver archivo en nueva pestaña
   async function abrirArchivo(ruta) {
     try {
       const { data, error } = await supabase.storage.from(BUCKET_NAME).download(ruta);
@@ -109,54 +86,167 @@ export default function AdminRespaldo() {
       const url = URL.createObjectURL(data);
       window.open(url, '_blank');
     } catch (e) {
-      alert('Error al abrir archivo: ' + e.message);
+      alert('Error al abrir el documento: ' + e.message);
     }
   }
 
-  // Descargar archivo a la computadora
-  async function descargarArchivo(ruta, nombreSugerido) {
+  async function generarZip() {
+    if (!confirm('¿Deseas generar y descargar el respaldo ZIP ahora? Esto puede tardar unos minutos dependiendo de tu conexión.')) return;
+    
+    setCargando(true);
+    setEstadoRespaldo('Obteniendo información de los cursos y la convocatoria activa...');
+    
     try {
-      const { data, error } = await supabase.storage.from(BUCKET_NAME).download(ruta);
-      if (error) throw error;
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = nombreSugerido || ruta.split('/').pop();
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert('Error al descargar archivo: ' + e.message);
-    }
-  }
-
-  // Liberar espacio: Elimina físicamente el PDF del Storage de Supabase
-  async function liberarEspacio(ruta, nombreDocente, tipoTexto) {
-    const confirmar = window.confirm(
-      `¿Deseas liberar el espacio de este documento (${tipoTexto})?\n\n` +
-      `• Archivo a eliminar del Storage: ${ruta}\n` +
-      `• Docente: ${nombreDocente}\n\n` +
-      `El PDF se borrará del almacenamiento para recuperar cuota en Supabase, pero la información y datos del curso permanecerán intactos en la base de datos.`
-    );
-    if (!confirmar) return;
-
-    setProcesando(true);
-    try {
-      const { error } = await supabase.storage.from(BUCKET_NAME).remove([ruta]);
-      if (error) throw error;
-
-      setMensaje({
-        tipo: 'exito',
-        texto: `Espacio liberado con éxito. Se eliminó "${ruta}" y se recuperó cuota en Supabase.`,
+      const zip = new JSZip();
+      
+      // 1. Obtener la convocatoria activa para los oficios
+      const { data: convActiva } = await supabase
+        .from('convocatorias')
+        .select('*')
+        .eq('activo', true)
+        .order('fecha_inicio', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      
+      // 2. Obtener la información de TODOS los preregistros
+      const { data: preregistros } = await supabase
+        .from('preregistro_cursos')
+        .select('*, docentes(nombre_completo, email, departamento)');
+      
+      const mapaCursos = {};
+      (preregistros || []).forEach(p => {
+        const nombreLimpio = p.curso.replace(/[^a-zA-Z0-9 áéíóúÁÉÍÓÚñÑ-]/g, "").trim();
+        mapaCursos[p.id] = {
+          nombreLimpio: nombreLimpio || `Curso_${p.id.substring(0, 5)}`,
+          datosPreregistro: p
+        };
       });
 
-      await cargarDatos();
-    } catch (err) {
-      setMensaje({ tipo: 'error', texto: 'No se pudo eliminar el archivo: ' + err.message });
-    } finally {
-      setProcesando(false);
+      // 3. Obtener todas las evaluaciones (criterios)
+      const { data: evaluacionesData } = await supabase.from('evaluaciones_instructores').select('*');
+      const mapaEvaluaciones = {};
+      (evaluacionesData || []).forEach(ev => { mapaEvaluaciones[ev.preregistro_id] = ev; });
+
+      setEstadoRespaldo('Buscando archivos físicos en el servidor...');
+      const { data: carpetas } = await supabase.storage.from(BUCKET_NAME).list('');
+      const idsReales = (carpetas || []).filter(c => c.id == null || !c.name.includes('.')).map(c => c.name);
+
+      let descargados = 0;
+      const carpetaPrincipal = zip.folder('Documentos_Cursos_ITD');
+
+      // 4. Procesar cada carpeta (curso) que tiene archivos físicos
+      for (const id of idsReales) {
+        const infoCurso = mapaCursos[id];
+        if (!infoCurso) continue; // Si por alguna razón la carpeta no tiene registro de DB
+
+        const nombreCurso = infoCurso.nombreLimpio;
+        const preregistroInfo = infoCurso.datosPreregistro;
+        const evaluacionInfo = mapaEvaluaciones[id];
+
+        // A) DESCARGAR ARCHIVOS FÍSICOS (CVU Y Ficha Técnica)
+        const { data: archivos } = await supabase.storage.from(BUCKET_NAME).list(id);
+        if (archivos && archivos.length > 0) {
+          for (const archivo of archivos) {
+            if (archivo.name === '.emptyFolderPlaceholder') continue;
+            setEstadoRespaldo(`Descargando físicos de: ${nombreCurso}...`);
+            const { data: blob } = await supabase.storage.from(BUCKET_NAME).download(`${id}/${archivo.name}`);
+            
+            if (blob) {
+              let nombreArchivoFinal = `${nombreCurso} - Documento_Extra.pdf`;
+              if (archivo.name.includes('cvu')) {
+                nombreArchivoFinal = `${nombreCurso} - CVU.pdf`;
+              } else if (archivo.name.includes('ficha')) {
+                nombreArchivoFinal = `${nombreCurso} - Ficha_Tecnica.pdf`;
+              }
+              carpetaPrincipal.file(nombreArchivoFinal, blob);
+              descargados++;
+            }
+          }
+        }
+
+        // B) GENERAR EL OFICIO "AL VUELO"
+        setEstadoRespaldo(`Generando Oficio de: ${nombreCurso}...`);
+        try {
+          if (convActiva) {
+            const bytesOficio = await descargarOficioRegistro({ ...preregistroInfo, retornarBytes: true }, convActiva);
+            if (bytesOficio) {
+              carpetaPrincipal.file(`${nombreCurso} - Oficio_Registro.pdf`, bytesOficio);
+              descargados++;
+            }
+          }
+        } catch (err) {
+          console.error(`Fallo al generar oficio de ${nombreCurso}`, err);
+        }
+
+        // C) GENERAR LOS CRITERIOS "AL VUELO"
+        if (evaluacionInfo) {
+          setEstadoRespaldo(`Generando Criterios de: ${nombreCurso}...`);
+          try {
+            const bytesCriterios = await descargarCriteriosInstructor({ ...evaluacionInfo, retornarBytes: true });
+            if (bytesCriterios) {
+              carpetaPrincipal.file(`${nombreCurso} - Criterios.pdf`, bytesCriterios);
+              descargados++;
+            }
+          } catch (err) {
+            console.error(`Fallo al generar criterios de ${nombreCurso}`, err);
+          }
+        }
+      }
+
+      if (descargados === 0) {
+        alert('No se encontraron archivos PDF para respaldar.');
+        setCargando(false);
+        setEstadoRespaldo('');
+        return;
+      }
+
+      setEstadoRespaldo(`Comprimiendo ${descargados} archivos PDF. Por favor espera...`);
+      const contenidoZip = await zip.generateAsync({ type: 'blob' });
+      
+      setEstadoRespaldo('¡Descarga lista!');
+      saveAs(contenidoZip, `Respaldo_Documentos_ITD_${new Date().toISOString().split('T')[0]}.zip`);
+      
+    } catch (error) {
+      console.error('Error generando ZIP:', error);
+      alert('Hubo un error al generar el respaldo.');
     }
+
+    setEstadoRespaldo('');
+    setCargando(false);
+  }
+
+  async function vaciarStorage() {
+    if (!confirm('🚨 ¡ATENCIÓN! Esto ELIMINARÁ PERMANENTEMENTE todos los archivos PDF almacenados en el servidor. ¿Estás completamente seguro de que ya hiciste tu respaldo ZIP y deseas vaciar el almacenamiento?')) return;
+    
+    const palabra = prompt('Escribe la palabra BORRAR en mayúsculas para confirmar:');
+    if (palabra !== 'BORRAR') {
+      alert('Operación cancelada.');
+      return;
+    }
+
+    setCargando(true);
+    setEstadoRespaldo('Eliminando archivos del servidor...');
+
+    try {
+      const { data: carpetas } = await supabase.storage.from(BUCKET_NAME).list('');
+      const idsReales = (carpetas || []).filter(c => c.id == null || !c.name.includes('.')).map(c => c.name);
+      let eliminados = 0;
+      for (const id of idsReales) {
+        const { data: archivos } = await supabase.storage.from(BUCKET_NAME).list(id);
+        if (!archivos || archivos.length === 0) continue;
+        const rutasAEliminar = archivos.map(a => `${id}/${a.name}`);
+        const { data } = await supabase.storage.from(BUCKET_NAME).remove(rutasAEliminar);
+        if (data) eliminados += data.length;
+      }
+      alert(`Se han eliminado ${eliminados} archivos correctamente. Tu Storage ahora está completamente limpio (0 MB).`);
+      await calcularArchivos(); 
+    } catch (error) {
+      console.error('Error eliminando archivos:', error);
+      alert('Hubo un problema al intentar borrar algunos archivos.');
+    }
+
+    setEstadoRespaldo('');
+    setCargando(false);
   }
 
   // Cálculos de cuota
@@ -168,68 +258,71 @@ export default function AdminRespaldo() {
   let estadoCuota = 'Óptimo';
   if (porcentajeCuota >= 85) {
     colorBarra = 'bg-rose-500';
-    estadoCuota = 'Crítico (Alerta: se recomienda respaldar y liberar)';
+    estadoCuota = 'Crítico (Se recomienda respaldar y vaciar)';
   } else if (porcentajeCuota >= 65) {
     colorBarra = 'bg-amber-500';
     estadoCuota = 'Atención (Se recomienda respaldo)';
   }
 
-  // Filtrado de cursos por búsqueda
-  const cursosFiltrados = cursos.filter((c) => {
-    const q = busqueda.toLowerCase().trim();
-    if (!q) return true;
-    const nombre = (c.curso || '').toLowerCase();
-    const docente = (c.docentes?.nombre_completo || c.nombre_jefe || '').toLowerCase();
-    const depto = (c.dirigido_a || c.docentes?.departamento || '').toLowerCase();
-    return nombre.includes(q) || docente.includes(q) || depto.includes(q);
-  });
-
   return (
-    <div className="space-y-6">
+    <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8 space-y-6">
+      
+      {/* Encabezado Principal */}
+      <div>
+        <h2 className="font-display text-xl font-semibold text-itd-navy mb-1">
+          Respaldo y Limpieza (Storage)
+        </h2>
+        <p className="text-sm text-itd-navyDark/60">
+          Al finalizar un periodo, descarga un respaldo completo. Este ZIP contendrá: <strong>CVU, Ficha Técnica, Oficios Generados y Criterios de Evaluación</strong> de todos los cursos. Luego, vacía el servidor para comenzar el siguiente ciclo con cuota libre.
+        </p>
+      </div>
+
       {/* ========================================================================= */}
-      {/* 1. MONITOR DE CUOTA EN TIEMPO REAL                                       */}
+      {/* 1. SECCIÓN NUEVA: MONITOR DE CUOTA EN TIEMPO REAL (SUPABASE STORAGE)      */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xl">☁️</span>
-              <h3 className="font-serif font-bold text-lg text-[#1B396A]">
-                Almacenamiento en Supabase Storage
+      <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-2xl">☁️</span>
+            <div>
+              <h3 className="text-sm font-bold text-[#1B396A]">
+                Cuota de Almacenamiento en Supabase
               </h3>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                porcentajeCuota >= 85 ? 'bg-rose-100 text-rose-800' : porcentajeCuota >= 65 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-              }`}>
-                {estadoCuota}
-              </span>
+              <p className="text-xs text-slate-500">
+                Monitoreo en tiempo real del bucket <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-[11px] text-slate-700">{BUCKET_NAME}</code>
+              </p>
             </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Monitoreo del espacio ocupado por expedientes, CVUs y Fichas Técnicas en el bucket <code className="font-mono text-slate-700 bg-slate-100 px-1 py-0.5 rounded">{BUCKET_NAME}</code>.
-            </p>
           </div>
 
-          <button
-            onClick={cargarDatos}
-            disabled={cargando}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition cursor-pointer self-start sm:self-auto"
-          >
-            <span>🔄</span>
-            <span>{cargando ? 'Actualizando…' : 'Actualizar métricas'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+              porcentajeCuota >= 85 ? 'bg-rose-100 text-rose-800' : porcentajeCuota >= 65 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              ● {estadoCuota}
+            </span>
+            <button
+              onClick={calcularArchivos}
+              disabled={cargando}
+              className="text-xs font-semibold px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-600 transition cursor-pointer"
+              title="Recalcular métricas"
+            >
+              🔄
+            </button>
+          </div>
         </div>
 
-        {/* Barra de progreso */}
-        <div className="space-y-2">
+        {/* Barra de Consumo de MB */}
+        <div className="space-y-1.5 pt-1">
           <div className="flex items-center justify-between text-xs font-bold">
             <span className="text-slate-700">
-              {mbOcupados} MB ocupados de {CUOTA_MAXIMA_MB} MB
+              {mbOcupados} MB utilizados de {CUOTA_MAXIMA_MB} MB
             </span>
-            <span className="text-slate-500">
-              {mbDisponibles} MB libres ({porcentajeCuota}%)
+            <span className="text-slate-500 font-semibold">
+              {mbDisponibles} MB disponibles ({porcentajeCuota}%)
             </span>
           </div>
 
-          <div className="w-full h-3.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200 p-0.5">
+          <div className="w-full h-3.5 bg-slate-200/80 rounded-full overflow-hidden p-0.5 border border-slate-300/60">
             <div
               className={`h-full rounded-full transition-all duration-700 ${colorBarra}`}
               style={{ width: `${porcentajeCuota}%` }}
@@ -237,193 +330,113 @@ export default function AdminRespaldo() {
           </div>
         </div>
 
-        {/* 3 Métricas Rápidas */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase">Archivos en Storage</p>
-            <p className="text-lg font-bold text-slate-800">{archivosStorage.length}</p>
-          </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase">Espacio consumido</p>
-            <p className="text-lg font-bold text-[#1B396A]">{mbOcupados} MB</p>
-          </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-            <p className="text-[11px] font-semibold text-slate-500 uppercase">Límite establecido</p>
-            <p className="text-lg font-bold text-slate-700">{CUOTA_MAXIMA_MB} MB</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Mensajes del sistema */}
-      {mensaje && (
-        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between border ${
-          mensaje.tipo === 'error' ? 'bg-rose-50 text-rose-800 border-rose-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-        }`}>
-          <div className="flex items-center gap-2">
-            <span>{mensaje.tipo === 'error' ? '⚠️' : '✅'}</span>
-            <span>{mensaje.texto}</span>
-          </div>
-          <button onClick={() => setMensaje(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">✕</button>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 2. TABLA DE EXPEDIENTES Y LIBERACIÓN DE ESPACIO                           */}
-      {/* ========================================================================= */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <h4 className="font-serif font-bold text-base text-[#1B396A]">
-              Expedientes de Prerregistro (CVU y Ficha Técnica)
-            </h4>
-            <p className="text-xs text-slate-500">
-              Descarga los archivos a tu computadora antes de liberar espacio en el Storage para los siguientes periodos.
+        {/* 3 Tarjetas de Resumen Numérico */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div className="p-3 bg-white rounded-lg border border-slate-200 text-center shadow-2xs">
+            <p className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold mb-0.5">
+              Archivos PDF Detectados
+            </p>
+            <p className="text-2xl font-display font-bold text-[#1B396A]">
+              {archivosEncontrados === null ? 'Calculando…' : archivosEncontrados}
             </p>
           </div>
 
-          <div className="w-full sm:w-64">
-            <input
-              type="text"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar curso o docente…"
-              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
-            />
+          <div className="p-3 bg-white rounded-lg border border-slate-200 text-center shadow-2xs">
+            <p className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold mb-0.5">
+              Espacio Ocupado
+            </p>
+            <p className="text-2xl font-display font-bold text-[#781834]">
+              {mbOcupados} MB
+            </p>
+          </div>
+
+          <div className="p-3 bg-white rounded-lg border border-slate-200 text-center shadow-2xs">
+            <p className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold mb-0.5">
+              Límite Gratuito
+            </p>
+            <p className="text-2xl font-display font-bold text-slate-700">
+              {CUOTA_MAXIMA_MB} MB
+            </p>
           </div>
         </div>
 
-        {cursosFiltrados.length === 0 ? (
-          <div className="text-center py-10 text-slate-400 text-xs">
-            No se encontraron propuestas registradas.
+        {/* Botón para ver u ocultar el desglose de archivos */}
+        {archivosDetalle.length > 0 && (
+          <div className="pt-2 text-right">
+            <button
+              type="button"
+              onClick={() => setVerDetalle(!verDetalle)}
+              className="text-xs font-semibold text-[#1B396A] hover:underline cursor-pointer"
+            >
+              {verDetalle ? '▲ Ocultar desglose de archivos' : `▼ Ver detalle de los ${archivosDetalle.length} archivos`}
+            </button>
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="py-2.5 px-3">Curso / Propuesta</th>
-                  <th className="py-2.5 px-3">Docente</th>
-                  <th className="py-2.5 px-3">CVU del Instructor</th>
-                  <th className="py-2.5 px-3">Ficha Técnica</th>
-                  <th className="py-2.5 px-3 text-right">Descargas</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {cursosFiltrados.map((item) => {
-                  const rutaCvu = `${item.id}/1_cvu_instructor.pdf`;
-                  const rutaFicha = `${item.id}/2_ficha_tecnica.pdf`;
+        )}
 
-                  // Verificar si el archivo existe físicamente en el storage
-                  const archivoCvuEnStorage = archivosStorage.find((a) => a.rutaCompleta === rutaCvu);
-                  const archivoFichaEnStorage = archivosStorage.find((a) => a.rutaCompleta === rutaFicha);
-
-                  const nombreDocente = item.docentes?.nombre_completo || 'Docente';
-                  const nombreCurso = item.curso || 'Curso';
-
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-3 font-semibold text-slate-800 max-w-xs truncate">
-                        {nombreCurso}
-                        <span className="block text-[10px] text-slate-400 font-normal">
-                          {item.dirigido_a || item.docentes?.departamento || 'Sin departamento'}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-3 text-slate-600 font-medium">
-                        {nombreDocente}
-                      </td>
-
-                      {/* Columna CVU */}
-                      <td className="py-3 px-3">
-                        {archivoCvuEnStorage ? (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => abrirArchivo(rutaCvu)}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 font-bold text-[11px] cursor-pointer"
-                              title="Ver CVU"
-                            >
-                              <span>📄 Ver</span>
-                              <span className="text-[9px] text-blue-500 font-normal">({formatearBytes(archivoCvuEnStorage.size)})</span>
-                            </button>
-                            <button
-                              onClick={() => liberarEspacio(rutaCvu, nombreDocente, 'CVU')}
-                              disabled={procesando}
-                              className="px-2 py-1 rounded bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-[11px] transition-colors cursor-pointer"
-                              title="Liberar espacio (elimina el PDF de Supabase Storage)"
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[10px] italic">
-                            Libre / Sin archivo
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Columna Ficha Técnica */}
-                      <td className="py-3 px-3">
-                        {archivoFichaEnStorage ? (
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => abrirArchivo(rutaFicha)}
-                              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold text-[11px] cursor-pointer"
-                              title="Ver Ficha Técnica"
-                            >
-                              <span>📄 Ver</span>
-                              <span className="text-[9px] text-purple-500 font-normal">({formatearBytes(archivoFichaEnStorage.size)})</span>
-                            </button>
-                            <button
-                              onClick={() => liberarEspacio(rutaFicha, nombreDocente, 'Ficha Técnica')}
-                              disabled={procesando}
-                              className="px-2 py-1 rounded bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-[11px] transition-colors cursor-pointer"
-                              title="Liberar espacio (elimina el PDF de Supabase Storage)"
-                            >
-                              🗑️
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[10px] italic">
-                            Libre / Sin archivo
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Descarga a PC */}
-                      <td className="py-3 px-3 text-right">
-                        {(archivoCvuEnStorage || archivoFichaEnStorage) ? (
-                          <div className="inline-flex items-center gap-1">
-                            {archivoCvuEnStorage && (
-                              <button
-                                onClick={() => descargarArchivo(rutaCvu, `CVU_${nombreDocente}.pdf`)}
-                                className="px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[10px] shadow-2xs cursor-pointer"
-                                title="Descargar CVU a tu computadora"
-                              >
-                                ⬇️ CVU
-                              </button>
-                            )}
-                            {archivoFichaEnStorage && (
-                              <button
-                                onClick={() => descargarArchivo(rutaFicha, `Ficha_${nombreCurso}.pdf`)}
-                                className="px-2 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[10px] shadow-2xs cursor-pointer"
-                                title="Descargar Ficha Técnica a tu computadora"
-                              >
-                                ⬇️ Ficha
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[10px]">Sin archivos</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        {/* Desglose de archivos individual */}
+        {verDetalle && archivosDetalle.length > 0 && (
+          <div className="mt-3 max-h-60 overflow-y-auto border border-slate-200 rounded-lg bg-white p-2 divide-y divide-slate-100 text-xs">
+            {archivosDetalle.map((a, idx) => (
+              <div key={idx} className="py-2 px-2 flex items-center justify-between gap-3 hover:bg-slate-50">
+                <div className="truncate flex-1 min-w-0">
+                  <span className="font-semibold text-slate-700">{a.ruta}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[11px] font-mono text-slate-500">{formatearBytes(a.size)}</span>
+                  <button
+                    onClick={() => abrirArchivo(a.ruta)}
+                    className="px-2 py-0.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded text-[11px] font-semibold border border-blue-200 cursor-pointer"
+                  >
+                    📄 Ver
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* 2. ACCIONES MASIVAS ORIGINALES (RESPALDO ZIP + VACIAR STORAGE)            */}
+      {/* ========================================================================= */}
+      <div className="p-6 bg-itd-sand/20 border border-itd-navy/10 rounded-xl space-y-4">
+        <h3 className="text-sm font-semibold text-itd-navyDark">
+          Acciones de Fin de Periodo (Respaldo y Vaciado)
+        </h3>
+
+        {estadoRespaldo && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <p className="text-sm font-medium text-itd-navy animate-pulse text-center">
+              ⏳ {estadoRespaldo}
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row gap-4 pt-2">
+          <button
+            onClick={generarZip}
+            disabled={cargando || archivosEncontrados === 0}
+            className="flex-1 rounded-lg bg-green-600 hover:bg-green-700 text-white px-4 py-3 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>⬇️</span>
+            <span>1. Generar Respaldo Completo (.ZIP)</span>
+          </button>
+
+          <button
+            onClick={vaciarStorage}
+            disabled={cargando || archivosEncontrados === 0}
+            className="flex-1 rounded-lg bg-red-600 hover:bg-red-700 text-white px-4 py-3 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <span>🗑️</span>
+            <span>2. Vaciar Servidor (Limpieza)</span>
+          </button>
+        </div>
+        
+        <p className="text-[11px] text-itd-navyDark/60 text-center leading-relaxed">
+          Nota: Esto solo respalda y elimina los <strong>archivos PDF físicos</strong> subidos al Storage. La información de los cursos, docentes y calificaciones seguirán intactas en la base de datos de Supabase.
+        </p>
+      </div>
+
     </div>
   );
 }
