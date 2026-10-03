@@ -8,6 +8,21 @@ const LOGO_TECNM_REMOTE = 'https://raw.githubusercontent.com/DA-itd/E/main/publi
 const FACHADA_ITD_LOCAL = `${BASE}FachadaITD.png`
 const FACHADA_ITD_REMOTE = 'https://github.com/DA-itd/E/blob/main/FachadaITD.png?raw=true'
 
+const CONMEMORACIONES_MES = {
+  0: { lema: 'Inicio de Periodo y Actualización Docente', icono: '🎯', bg: '#1B396A' }, // Enero (Azul TecNM)
+  1: { lema: 'Mes de la Constitución y la Bandera Nacional', icono: '🇲🇽', bg: '#781834' }, // Febrero (Guinda Patrio)
+  2: { lema: 'Mes de la Primavera y Equidad de Género', icono: '💜', bg: '#581C87' },       // Marzo (Morado 8M)
+  3: { lema: 'Mes de la Creatividad e Innovación Académica', icono: '💡', bg: '#0369A1' },  // Abril (Azul cielo)
+  4: { lema: 'Mes del Maestro y Reconocimiento Docente', icono: '🎓', bg: '#1B396A' },     // Mayo (Azul ITD)
+  5: { lema: 'Mes del Medio Ambiente y Sustentabilidad', icono: '🌿', bg: '#0E5A3C' },     // Junio (Verde ecológico)
+  6: { lema: 'Periodo Intersemestral y Capacitación Continua', icono: '📚', bg: '#1E293B' }, // Julio (Gris pizarra)
+  7: { lema: 'Mes del Orgullo Guinda y Aniversario del ITD', icono: '🏛️', bg: '#781834' }, // Agosto (Guinda ITD)
+  8: { lema: 'Mes de la Patria y Orgullo Mexicano', icono: '🇲🇽', bg: '#781834' },         // Septiembre (Mes Patrio)
+  9: { lema: 'Mes de la Sensibilización sobre el Cáncer de Mama (Octubre Rosa)', icono: '🎀', bg: '#9D174D' }, // Octubre (Rosa Conmemorativo)
+  10: { lema: 'Mes de la Revolución Mexicana y Nuestras Tradiciones', icono: '🇲🇽', bg: '#781834' }, // Noviembre
+  11: { lema: 'Mes de la Fraternidad y Cierre de Ciclo Institucional', icono: '✨', bg: '#0F2942' }, // Diciembre (Azul Noche)
+}
+
 export default function MenuPrincipal({ docente, esAdmin, onIr }) {
   const [estadisticas, setEstadisticas] = useState({
     cursosRealizados: 12,
@@ -79,7 +94,13 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
   ]
-  const mesActual = meses[new Date().getMonth()]
+  const numMes = new Date().getMonth()
+  const mesActual = meses[numMes]
+  const conmemoracion = CONMEMORACIONES_MES[numMes] || {
+    lema: 'Actualización Docente',
+    icono: '🏛️',
+    bg: '#781834',
+  }
 
   return (
     <div className={`min-h-screen flex flex-col justify-between selection:bg-itd-gold selection:text-itd-navy font-sans transition-colors duration-200 ${
@@ -220,22 +241,36 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
       {/* ========================================================================= */}
       {/* 2. CINTILLO INSTITUCIONAL / CONMEMORATIVO DEL MES                          */}
       {/* ========================================================================= */}
-      <div className="w-full bg-[#781834] text-white py-2 px-4 shadow-xs">
+      <div 
+        className="w-full text-white py-2 px-4 shadow-xs transition-colors duration-500"
+        style={{ backgroundColor: conmemoracion.bg }}
+      >
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4 text-xs font-medium">
           <div className="flex items-center gap-3">
-            {/* Bandera de México */}
-            <span className="text-lg leading-none select-none">🇲🇽</span>
+            <span className="text-lg leading-none select-none">{conmemoracion.icono}</span>
             <span className="tracking-wide">
-              {mesActual} &nbsp;·&nbsp; <strong className="font-semibold">Mes de la Patria y Orgullo Mexicano</strong>
+              {mesActual} &nbsp;·&nbsp; <strong className="font-semibold">{conmemoracion.lema}</strong>
             </span>
           </div>
 
-          {/* Cintas decorativas tricolores sutiles a la derecha */}
-          <div className="hidden sm:flex items-center gap-1 opacity-70">
-            <span className="w-4 h-1 bg-green-500 rounded-full" />
-            <span className="w-4 h-1 bg-white rounded-full" />
-            <span className="w-4 h-1 bg-red-500 rounded-full" />
-          </div>
+          {/* Adornos a la derecha según el mes */}
+          {numMes === 9 ? (
+            /* Lazo rosa decorativo en Octubre */
+            <div className="hidden sm:flex items-center gap-1.5 opacity-90 text-[11px] font-semibold bg-white/20 px-2.5 py-0.5 rounded-full backdrop-blur-xs">
+              <span>🎗️ Octubre Rosa</span>
+            </div>
+          ) : (numMes === 8 || numMes === 10) ? (
+            /* Cintas decorativas tricolores en meses patrios (Septiembre y Noviembre) */
+            <div className="hidden sm:flex items-center gap-1 opacity-70">
+              <span className="w-4 h-1 bg-green-500 rounded-full" />
+              <span className="w-4 h-1 bg-white rounded-full" />
+              <span className="w-4 h-1 bg-red-500 rounded-full" />
+            </div>
+          ) : (
+            <div className="hidden sm:flex items-center gap-1.5 opacity-70 text-[11px] font-semibold">
+              <span>TecNM · ITD</span>
+            </div>
+          )}
         </div>
       </div>
 
