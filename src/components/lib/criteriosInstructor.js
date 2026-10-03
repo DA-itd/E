@@ -1,28 +1,77 @@
 // src/lib/criteriosInstructor.js
-// Genera el PDF "Criterios para seleccionar instructor (a)" (ITD-AD-FO-06).
-//
-// La plantilla base (Instructores_minimal.pdf) SOLO trae el encabezado
-// institucional (logo + código SGI) y el pie de página -- igual que
-// oficio_registro_blanco.pdf. Todo el cuerpo (título, tabla, líneas,
-// texto) se dibuja aquí, para que nada quede "quemado" en el PDF y
-// cualquier dato (incluido el Vo.Bo.) se pueda cambiar sin tocar la
-// plantilla.
-
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { supabase } from './supabaseClient';
 
 const ALTO_PAGINA = 792;
-const BASE = import.meta.env.BASE_URL;
+const BASE = import.meta.env.BASE_URL?.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL || '/'}`;
 const NEGRO = rgb(0.1, 0.1, 0.1);
 const AZUL = rgb(0.106, 0.224, 0.416);
 const VERDE = rgb(0, 0.5, 0);
 const ROJO = rgb(0.75, 0, 0);
 
-// Valores por defecto del Vo.Bo. institucional, usados solo si la tabla
-// `configuracion` no tiene los registros vobo_nombre / vobo_cargo.
 const VOBO_NOMBRE_DEFAULT = 'Adriana Eréndira Murillo';
 const VOBO_CARGO_DEFAULT = 'Subdirección Académica';
+
+function esBufferPDF(buffer) {
+  if (!buffer || buffer.byteLength < 5) return false;
+  const h = new Uint8Array(buffer.slice(0, 5));
+  // %PDF- => 37, 80, 68, 70, 45
+  return h[0] === 37 && h[1] === 80 && h[2] === 68 && h[3] === 70 && h[4] === 45;
+}
+
+// Carga la plantilla intentando ruta local y con respaldo a GitHub Raw
+async function cargarPlantillaSegura(nombreArchivo) {
+  const rutas = [
+    `${BASE}plantillas/${nombreArchivo}`,
+    `/plantillas/${nombreArchivo}`,
+    `./plantillas/${nombreArchivo}`,
+    `https://raw.githubusercontent.com/DA-itd/E/main/public/plantillas/${nombreArchivo}`
+  ];
+
+  for (const url of rutas) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const buffer = await resp.arrayBuffer();
+        if (esBufferPDF(buffer)) {
+          return await PDFDocument.load(buffer);
+        }
+      }
+    } catch (e) {
+      console.warn(`No se pudo cargar desde ${url}, probando siguiente ruta...`);
+    }
+  }
+
+  // Si todas fallan, crea un documento PDF en blanco para no romper el flujo
+  console.warn('Creando PDF base desde cero...');
+  const nuevoDoc = await PDFDocument.create();
+  nuevoDoc.addPage([612, 792]);
+  return nuevoDoc;
+}
+
+// Carga las fuentes con respaldo a Helvetica estándar para garantizar que no truene
+async function cargarFuente(pdfDoc, nombreFuente, fallbackEstandar) {
+  const rutas = [
+    `${BASE}fuentes/${nombreFuente}`,
+    `/fuentes/${nombreFuente}`,
+    `https://raw.githubusercontent.com/DA-itd/E/main/public/fuentes/${nombreFuente}`
+  ];
+
+  for (const url of rutas) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const buffer = await resp.arrayBuffer();
+        if (buffer.byteLength > 1000) {
+          pdfDoc.registerFontkit(fontkit);
+          return await pdfDoc.embedFont(buffer);
+        }
+      }
+    } catch {}
+  }
+  return await pdfDoc.embedFont(fallbackEstandar);
+}
 
 function descargarPDFLocal(bytes, nombreArchivo) {
   const blob = new Blob([bytes], { type: 'application/pdf' });
@@ -67,9 +116,6 @@ function limpiarNombre(t) {
   return m ? m[0].trim() : t.trim();
 }
 
-// Los nombres de docentes vienen guardados en MAYÚSCULAS en la base de datos;
-// para que se vean igual que el nombre del Vo.Bo. (capturado en minúsculas/
-// mayúsculas normales) los mostramos en formato título en el PDF.
 function aTitulo(t) {
   if (!t) return '';
   return t
@@ -103,45 +149,33 @@ const CRITERIOS_TEXTO = [
   ['5. Certificaciones y acreditaciones relacionadas ', 'al área de capacitación.'],
 ];
 
-// Coordenadas de la tabla (idénticas a la plantilla original ITD-AD-FO-06)
 const TABLA = {
   xIzq: 56.2,
   xDer: 555.9,
   colCriterio: 307.2,
   cols: [307.2, 340.9, 374.7, 408.3, 442.1, 472.7],
   yTop: 264.2,
-  filas: [289.4, 327.1, 365.0, 393.6, 431.5, 469.2], // fin de cada fila (header + 5 criterios)
+  filas: [289.4, 327.1, 365.0, 393.6, 431.5, 469.2],
   yBottom: 484.1,
 };
-const Y_SCORE = [315.4, 353.2, 380.2, 419.7, 457.5]; // baseline del puntaje de cada fila
+const Y_SCORE = [315.4, 353.2, 380.2, 419.7, 457.5];
 
-/**
- * Genera y descarga el PDF de criterios para seleccionar instructor.
- * `item`: instructor_nombre, fecha_evaluacion, curso_nombre, empresa_plantel,
- * criterio_1..criterio_5, aceptado (bool), jefe_departamento, cargo_evaluador.
- */
 export async function descargarCriteriosInstructor(item) {
   try {
-    // ===== 1. Plantilla base (solo encabezado + pie) =====
-    const resp = await fetch(`${BASE}plantillas/Instructores_minimal.pdf`);
-    if (!resp.ok) throw new Error('No se encontró la plantilla de criterios de instructor');
-    const pdfDoc = await PDFDocument.load(await resp.arrayBuffer());
+    // 1. Cargar plantilla segura con fallback
+    const pdfDoc = await cargarPlantillaSegura('Instructores_minimal.pdf');
 
-    pdfDoc.registerFontkit(fontkit);
-    const [regularBytes, boldBytes] = await Promise.all([
-      fetch(`${BASE}fuentes/Roboto-Regular.ttf`).then((r) => r.arrayBuffer()),
-      fetch(`${BASE}fuentes/Roboto-Bold.ttf`).then((r) => r.arrayBuffer()),
-    ]);
-    const fN = await pdfDoc.embedFont(regularBytes);
-    const fB = await pdfDoc.embedFont(boldBytes);
+    // 2. Cargar fuentes seguras
+    const fN = await cargarFuente(pdfDoc, 'Roboto-Regular.ttf', StandardFonts.Helvetica);
+    const fB = await cargarFuente(pdfDoc, 'Roboto-Bold.ttf', StandardFonts.HelveticaBold);
     const page = pdfDoc.getPages()[0];
 
     const vobo = await obtenerConfigVoBo();
 
-    // ===== 2. TÍTULO =====
+    // TÍTULO
     textoCentrado(page, 'Criterios para seleccionar instructor (a)', 56, 556, 141.7, fB, 12);
 
-    // ===== 3. DATOS GENERALES =====
+    // DATOS GENERALES
     texto(page, 'Nombre del instructor (a):', 56.8, 187.2, fB, 11);
     texto(page, (item.instructor_nombre || '').toUpperCase(), 197, 186, fN, 10.5, AZUL);
     linea(page, 186.6, 189.5, 548.0);
@@ -159,22 +193,17 @@ export async function descargarCriteriosInstructor(item) {
     texto(page, (item.empresa_plantel || 'ITD').toUpperCase(), 221, 243, fN, 9.5);
     linea(page, 217.9, 246.2, 550.2);
 
-    // ===== 4. TABLA DE CRITERIOS =====
-    // bordes horizontales
+    // TABLA DE CRITERIOS
     linea(page, TABLA.xIzq, TABLA.yTop, TABLA.xDer, 1);
     TABLA.filas.forEach((t) => linea(page, TABLA.xIzq, t, TABLA.xDer));
     linea(page, TABLA.xIzq, TABLA.yBottom, TABLA.xDer, 1);
-    // bordes verticales: exteriores en toda la altura
     lineaV(page, TABLA.xIzq, TABLA.yTop, TABLA.yBottom, 1);
     lineaV(page, TABLA.xDer, TABLA.yTop, TABLA.yBottom, 1);
-    // columnas 1-5: solo hasta el final de la fila 5 (no cruzan el renglón de TOTAL general)
     [TABLA.cols[0], TABLA.cols[1], TABLA.cols[2], TABLA.cols[3], TABLA.cols[4]].forEach((x) =>
       lineaV(page, x, TABLA.yTop, TABLA.filas[4])
     );
-    // columna TOTAL: cruza hasta el fondo de la tabla (incluye el renglón de total general)
     lineaV(page, TABLA.cols[5], TABLA.yTop, TABLA.yBottom);
 
-    // encabezados de columna
     textoCentrado(page, 'CRITERIO', TABLA.xIzq, TABLA.colCriterio, 288.7, fB, 11);
     const centros1a5 = [
       [TABLA.cols[0], TABLA.cols[1]],
@@ -188,7 +217,6 @@ export async function descargarCriteriosInstructor(item) {
     );
     textoCentrado(page, 'TOTAL', TABLA.cols[5], TABLA.xDer, 282.7, fB, 11);
 
-    // texto de cada criterio (dos líneas cuando aplica)
     const yLinea1 = [313.9, 351.7, 391.2, 418.2, 456.0];
     const yLinea2 = [326.5, 364.3, null, 430.8, 468.6];
     CRITERIOS_TEXTO.forEach((lineas, i) => {
@@ -196,7 +224,6 @@ export async function descargarCriteriosInstructor(item) {
       if (lineas[1]) texto(page, lineas[1], 73.0, yLinea2[i], fN, 11);
     });
 
-    // puntuación de cada criterio + total general
     for (let i = 0; i < 5; i++) {
       const valor = item[`criterio_${i + 1}`];
       textoCentrado(page, valor ?? '-', TABLA.cols[5], TABLA.xDer, Y_SCORE[i], fB, 12, AZUL);
@@ -204,7 +231,6 @@ export async function descargarCriteriosInstructor(item) {
     const total = [1, 2, 3, 4, 5].reduce((s, i) => s + (Number(item[`criterio_${i}`]) || 0), 0);
     textoCentrado(page, total, TABLA.cols[5], TABLA.xDer, 483.4, fB, 13, AZUL);
 
-    // ===== 5. NOTA + ESCALA DE REFERENCIA =====
     texto(page, 'Nota: Evaluar considerando la siguiente escala', 47.8, 508.2, fN, 11);
 
     const escalaX = [57.0, 161.3, 251.4, 350.3, 449.4, 557.4];
@@ -214,44 +240,33 @@ export async function descargarCriteriosInstructor(item) {
     const escalaTextos = ['1        Malo', '2      Regular', '3         Bien', '4    Muy bien', '5    Excelente'];
     escalaTextos.forEach((t, i) => texto(page, t, escalaX[i] + 6, 534.0, fN, 11));
 
-    // ===== 6. ACEPTADO =====
     texto(page, 'Aceptado :', 405.0, 561.0, fB, 11);
     const aceptadoTxt = item.aceptado ? 'SÍ' : 'NO';
     texto(page, aceptadoTxt, 490, 560, fB, 12, item.aceptado ? VERDE : ROJO);
     linea(page, 483.0, 559.8, 556.3);
 
-    // ===== 7. EVALUÓ / VO.BO. =====
     textoCentrado(page, 'Evaluó', 47.7, 276.0, 599.5, fN, 11);
     textoCentrado(page, 'Vo.Bo.', 324.0, 559.4, 599.5, fN, 11);
 
-    // línea Evaluó: la línea va primero, luego nombre del jefe y cargo debajo
-    // (misma disposición que el lado de Vo.Bo., para que no queden asimétricos)
     linea(page, 47.7, 639.3, 276.0);
     textoCentrado(page, aTitulo(limpiarNombre(item.jefe_departamento || '')), 47.7, 276.0, 651.8, fB, 11);
     textoCentrado(page, item.cargo_evaluador || '', 47.7, 276.0, 664.5, fN, 10);
 
-    // línea Vo.Bo.: nombre y cargo configurables (institucional)
     linea(page, 324.0, 639.3, 559.4);
     textoCentrado(page, vobo.nombre, 324.0, 559.4, 651.8, fB, 11);
     textoCentrado(page, vobo.cargo, 324.0, 559.4, 664.5, fN, 10);
 
-    // ===== 8. FECHA DE GENERACIÓN =====
     const fechaGen = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
     texto(page, 'DA', 56.8, 681.5, fB, 8);
     texto(page, fechaGen, 73, 681.5, fN, 8);
 
-    // ===== 9. Guardar y descargar =====
     const bytes = await pdfDoc.save();
-    
-    // Si pasaron la bandera "retornarBytes" (desde el Respaldo ZIP), lo devolvemos crudo
-    if (item.retornarBytes) return bytes; 
+    if (item.retornarBytes) return bytes;
 
-    // Aquí forzamos la descarga directa en lugar de intentar abrir una pestaña nueva
     const nombreLimpio = (item.curso_nombre || 'Criterios').replace(/[^a-zA-Z0-9 áéíóúñÑ]/g, "_").trim();
     descargarPDFLocal(bytes, `Criterios_${nombreLimpio}.pdf`);
-    
     return true;
-    } catch (error) {
+  } catch (error) {
     console.error('❌ Error al generar PDF de criterios de instructor:', error);
     throw new Error('No se pudo generar el PDF: ' + error.message);
   }
