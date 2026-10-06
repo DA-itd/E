@@ -38,6 +38,9 @@ export default function AdminReporteRH() {
   const [descargandoId, setDescargandoId] = useState(null)
   const [busqueda, setBusqueda] = useState('')
 
+  const [errorCarga, setErrorCarga] = useState('')
+  const [conteoDebug, setConteoDebug] = useState({ activas: 0, historial: 0, docentes: 0, cursos: 0 })
+
   const anioActual = new Date().getFullYear()
   const [periodo, setPeriodo] = useState('todos') // 'todos' | '1' | '2' | '3' | 'rango'
   const [anio, setAnio] = useState(anioActual)
@@ -56,76 +59,92 @@ export default function AdminReporteRH() {
 
   async function cargar() {
     setCargando(true)
+    setErrorCarga('')
     try {
-      // 1. Cargar catálogos de apoyo para mapeo seguro sin fallas de joins
+      // 1. Usar select('*') para que nunca truene si una columna no existe en la tabla
       const [
-        { data: docentesData },
-        { data: cursosData },
+        { data: docentesData, error: errDoc },
+        { data: cursosData, error: errCur },
         { data: inscripcionesActivas, error: errActivas },
         { data: inscripcionesHistorial, error: errHistorial },
       ] = await Promise.all([
-        supabase.from('docentes').select('id, nombre_completo, email, departamento'),
-        supabase.from('cursos').select('id, folio, nombre, horas, fecha_inicio, fecha_fin, departamento, tipo'),
-        supabase
-          .from('inscripciones')
-          .select('id, folio_personal, docente_id, curso_id, asistencia_aprobada, estado'),
-        supabase
-          .from('inscripciones_historial')
-          .select('id, folio_personal, folio_curso, curso_id, docente_id, email, nombre, asistencia_aprobada, horas, fecha_inicio, fecha_fin, curso'),
+        supabase.from('docentes').select('*'),
+        supabase.from('cursos').select('*'),
+        supabase.from('inscripciones').select('*'),
+        supabase.from('inscripciones_historial').select('*'),
       ])
+
+      if (errDoc) console.warn('Error docentes:', errDoc)
+      if (errCur) console.warn('Error cursos:', errCur)
+      if (errActivas) console.warn('Error activas:', errActivas)
+      if (errHistorial) console.warn('Error historial:', errHistorial)
+
+      if (errActivas && errHistorial) {
+        setErrorCarga(`Error al consultar inscripciones: ${errActivas?.message || ''} / ${errHistorial?.message || ''}`)
+      }
+
+      setConteoDebug({
+        activas: (inscripcionesActivas || []).length,
+        historial: (inscripcionesHistorial || []).length,
+        docentes: (docentesData || []).length,
+        cursos: (cursosData || []).length,
+      })
 
       const mapaDocentesId = new Map((docentesData || []).map((d) => [d.id, d]))
       const mapaDocentesEmail = new Map((docentesData || []).map((d) => [(d.email || '').toLowerCase().trim(), d]))
       const mapaCursosId = new Map((cursosData || []).map((c) => [c.id, c]))
       const mapaCursosFolio = new Map((cursosData || []).map((c) => [(c.folio || '').trim(), c]))
 
-      function esAsistenciaAprobada(val) {
+      function esAsistenciaAprobada(obj) {
+        // Checar todas las posibles variantes de nombres de columnas
+        const val = obj.asistencia_aprobada ?? obj.asistencia ?? obj.acreditado ?? obj.aprobado
         if (val === true || val === 1 || val === '1') return true
         const s = String(val || '').toLowerCase().trim()
-        return s === 'true' || s === 'si' || s === 'sí' || s === 'aprobada' || s === 'acreditada'
+        return s === 'true' || s === 'si' || s === 'sí' || s === 'aprobada' || s === 'acreditada' || s === 'presente'
       }
 
       const listaUnificada = []
       const llavesVistas = new Set()
 
-      // A. Procesar inscripciones activas del periodo actual
+      // A. Procesar inscripciones activas
       for (const i of inscripcionesActivas || []) {
-        if (!esAsistenciaAprobada(i.asistencia_aprobada)) continue
+        if (!esAsistenciaAprobada(i)) continue
         if (i.estado === 'cancelado') continue
 
-        const docente = mapaDocentesId.get(i.docente_id)
-        const curso = mapaCursosId.get(i.curso_id)
+        const docente = mapaDocentesId.get(i.docente_id) || (i.email && mapaDocentesEmail.get(i.email.toLowerCase().trim()))
+        const curso = mapaCursosId.get(i.curso_id) || (i.folio_curso && mapaCursosFolio.get(i.folio_curso.trim()))
 
-        const clave = `${i.folio_personal || ''}_${i.docente_id}_${i.curso_id}`
+        const clave = `act_${i.id || ''}_${i.folio_personal || ''}_${i.docente_id}_${i.curso_id}`
         if (llavesVistas.has(clave)) continue
         llavesVistas.add(clave)
 
         listaUnificada.push({
-          docenteId: i.docente_id,
-          cursoId: i.curso_id,
-          nombre: docente?.nombre_completo || 'Docente no especificado',
-          email: docente?.email || 'Sin correo',
+          docenteId: i.docente_id || docente?.id || `doc_${i.id}`,
+          cursoId: i.curso_id || curso?.id || `cur_${i.id}`,
+          nombre: docente?.nombre_completo || i.nombre || 'Docente',
+          email: docente?.email || i.email || 'Sin correo',
           codigo: i.folio_personal || 'SIN_FOLIO',
-          curso: curso?.nombre || 'Curso no especificado',
-          horas: curso?.horas || 30,
-          fechaInicio: curso?.fecha_inicio || null,
-          fechaFin: curso?.fecha_fin || null,
+          curso: curso?.nombre || i.curso || 'Curso',
+          horas: curso?.horas || i.horas || 30,
+          fechaInicio: curso?.fecha_inicio || i.fecha_inicio || null,
+          fechaFin: curso?.fecha_fin || i.fecha_fin || null,
           departamento: curso?.departamento || docente?.departamento || 'Instituto Tecnológico de Durango',
           tipo: curso?.tipo || 'Docente',
           origen: 'activa',
         })
       }
 
-      // B. Procesar inscripciones del historial (periodos archivados como hasta Agosto 2026)
+      // B. Procesar inscripciones de historial
       for (const h of inscripcionesHistorial || []) {
-        if (!esAsistenciaAprobada(h.asistencia_aprobada)) continue
+        if (!esAsistenciaAprobada(h)) continue
 
         const emailNorm = (h.email || '').toLowerCase().trim()
         const docente = (emailNorm && mapaDocentesEmail.get(emailNorm)) || (h.docente_id && mapaDocentesId.get(h.docente_id))
-        const curso = (h.curso_id && mapaCursosId.get(h.curso_id)) || (h.folio_curso && mapaCursosFolio.get(h.folio_curso.trim()))
+        const folioCurso = (h.folio_curso || '').trim()
+        const curso = (h.curso_id && mapaCursosId.get(h.curso_id)) || (folioCurso && mapaCursosFolio.get(folioCurso))
 
         const folioPersonal = h.folio_personal || ''
-        const clave = folioPersonal ? `folio_${folioPersonal}` : `hist_${h.id}`
+        const clave = `hist_${h.id || ''}_${folioPersonal}`
         if (llavesVistas.has(clave)) continue
         llavesVistas.add(clave)
 
@@ -135,7 +154,7 @@ export default function AdminReporteRH() {
           nombre: h.nombre || docente?.nombre_completo || 'Docente',
           email: h.email || docente?.email || 'Sin correo',
           codigo: folioPersonal || 'SIN_FOLIO',
-          curso: curso?.nombre || h.curso || h.folio_curso || 'Curso',
+          curso: curso?.nombre || h.curso || folioCurso || 'Curso',
           horas: curso?.horas || h.horas || 30,
           fechaInicio: curso?.fecha_inicio || h.fecha_inicio || null,
           fechaFin: curso?.fecha_fin || h.fecha_fin || null,
@@ -151,7 +170,7 @@ export default function AdminReporteRH() {
       setFilas(listaUnificada)
     } catch (err) {
       console.error('Error al cargar datos para RH:', err)
-      alert('Error al cargar la lista: ' + err.message)
+      setErrorCarga('Error inesperado: ' + err.message)
     } finally {
       setCargando(false)
     }
@@ -513,12 +532,22 @@ export default function AdminReporteRH() {
         </button>
       </div>
 
+      {/* Mensaje de error de carga si existió */}
+      {errorCarga && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 font-semibold">
+          ⚠️ {errorCarga}
+        </div>
+      )}
+
       {/* Tabla con listado */}
       {cargando ? (
         <p className="text-center text-slate-400 py-12 text-sm">Cargando registros con asistencia aprobada…</p>
       ) : !filasFiltradas || filasFiltradas.length === 0 ? (
-        <div className="p-8 text-center text-slate-400 text-sm bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-          Sin registros con asistencia aprobada en este periodo.
+        <div className="p-8 text-center text-slate-500 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200 space-y-1.5">
+          <p className="font-semibold text-slate-600">Sin registros con asistencia aprobada para los filtros actuales.</p>
+          <p className="text-[11px] text-slate-400">
+            Base de datos consultada: {conteoDebug.activas} inscripciones activas · {conteoDebug.historial} en historial · {conteoDebug.cursos} cursos · {conteoDebug.docentes} docentes registrados.
+          </p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
