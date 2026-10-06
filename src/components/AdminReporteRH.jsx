@@ -30,22 +30,28 @@ function limpiarNombre(texto) {
     .replace(/\s+/g, '_')
 }
 
-// Extrae el año (ej. 2026) buscando primero en fechas, luego en el folio (ej. TNM-054-40-2026-10)
+// Extrae el año (ej. 2026, 2025, 2024...)
 function deducirAnio(fila) {
+  // 1. Del folio personal (ej. TNM-054-40-2026-10 o TNM-054-40-2022-01)
+  const matchFolio = (fila.codigo || '').match(/-(20\d\d)-/)
+  if (matchFolio) return parseInt(matchFolio[1], 10)
+
+  const matchFolioFin = (fila.codigo || '').match(/-(20\d\d)$/)
+  if (matchFolioFin) return parseInt(matchFolioFin[1], 10)
+
+  // 2. De las fechas de inicio o fin
   if (fila.fechaInicio && fila.fechaInicio.length >= 4) {
     const anio = parseInt(fila.fechaInicio.slice(0, 4), 10)
     if (!isNaN(anio) && anio >= 2000 && anio <= 2050) return anio
   }
-  const matchFolio = (fila.codigo || '').match(/-(20\d\d)-/)
-  if (matchFolio) return parseInt(matchFolio[1], 10)
-
-  const matchCurso = (fila.curso || '').match(/\b(20\d\d)\b/)
-  if (matchCurso) return parseInt(matchCurso[1], 10)
-
   if (fila.fechaFin && fila.fechaFin.length >= 4) {
     const anio = parseInt(fila.fechaFin.slice(0, 4), 10)
-    if (!isNaN(anio)) return anio
+    if (!isNaN(anio) && anio >= 2000 && anio <= 2050) return anio
   }
+
+  // 3. Del texto del curso
+  const matchCurso = (fila.curso || '').match(/\b(20\d\d)\b/)
+  if (matchCurso) return parseInt(matchCurso[1], 10)
 
   return 2026
 }
@@ -63,7 +69,37 @@ function deducirPeriodo(fila) {
   if (texto.includes('JUNIO') || texto.includes('JUN') || texto.includes('MAYO')) return 2
   if (texto.includes('AGOSTO') || texto.includes('AGO') || texto.includes('SEPTIEMBRE')) return 3
 
-  return 2 // Por defecto cuatrimestre junio/agosto
+  return 2
+}
+
+// Paginación segura para descargar TODOS los registros de Supabase (evitando el límite de 1000)
+async function traerTodoPaginado(nombreTabla) {
+  let acumulado = []
+  let desde = 0
+  const bloque = 1000
+  let hayMas = true
+  let intentos = 0
+
+  while (hayMas && intentos < 25) {
+    intentos++
+    const { data, error } = await supabase
+      .from(nombreTabla)
+      .select('*')
+      .order('id', { ascending: false }) // Del más nuevo (2026) al más antiguo
+      .range(desde, desde + bloque - 1)
+
+    if (error || !data || data.length === 0) {
+      hayMas = false
+    } else {
+      acumulado = acumulado.concat(data)
+      if (data.length < bloque) {
+        hayMas = false
+      } else {
+        desde += bloque
+      }
+    }
+  }
+  return acumulado
 }
 
 export default function AdminReporteRH() {
@@ -74,12 +110,12 @@ export default function AdminReporteRH() {
   const [descargandoId, setDescargandoId] = useState(null)
   const [busqueda, setBusqueda] = useState('')
   const [errorCarga, setErrorCarga] = useState('')
-  const [debugInfo, setDebugInfo] = useState({ activas: 0, historial: 0, colsHistorial: [] })
+  const [totalLeidos, setTotalLeidos] = useState({ activas: 0, historial: 0 })
 
-  // Filtros preparados para este y próximos años
+  // Por defecto inicializa en 2026
   const anioActual = new Date().getFullYear()
-  const [anioSel, setAnioSel] = useState(String(anioActual))
-  const [periodoSel, setPeriodoSel] = useState('todos') // 'todos' | '1' | '2' | '3' | 'rango'
+  const [anioSel, setAnioSel] = useState('2026')
+  const [periodoSel, setPeriodoSel] = useState('todos')
   const [rangoDesde, setRangoDesde] = useState('')
   const [rangoHasta, setRangoHasta] = useState('')
 
@@ -91,32 +127,22 @@ export default function AdminReporteRH() {
     setCargando(true)
     setErrorCarga('')
     try {
-      // 1. Consultar con select('*') para garantizar que ninguna columna falte
+      // 1. Consultar catálogos y todas las inscripciones (paginadas sin límite de 1000)
       const [
-        { data: docentesData, error: errDoc },
-        { data: cursosData, error: errCur },
-        { data: inscripcionesActivas, error: errAct },
-        { data: inscripcionesHistorial, error: errHist },
+        { data: docentesData },
+        { data: cursosData },
+        inscripcionesActivas,
+        inscripcionesHistorial,
       ] = await Promise.all([
         supabase.from('docentes').select('*'),
         supabase.from('cursos').select('*'),
-        supabase.from('inscripciones').select('*'),
-        supabase.from('inscripciones_historial').select('*'),
+        traerTodoPaginado('inscripciones'),
+        traerTodoPaginado('inscripciones_historial'),
       ])
 
-      if (errDoc) console.warn('Error docentes:', errDoc)
-      if (errCur) console.warn('Error cursos:', errCur)
-      if (errAct) console.warn('Error activas:', errAct)
-      if (errHist) console.warn('Error historial:', errHist)
-
-      if (errAct && errHist) {
-        setErrorCarga(`No se pudieron consultar inscripciones: ${errAct.message} / ${errHist.message}`)
-      }
-
-      setDebugInfo({
-        activas: (inscripcionesActivas || []).length,
-        historial: (inscripcionesHistorial || []).length,
-        colsHistorial: inscripcionesHistorial?.[0] ? Object.keys(inscripcionesHistorial[0]) : [],
+      setTotalLeidos({
+        activas: inscripcionesActivas.length,
+        historial: inscripcionesHistorial.length,
       })
 
       const mapaDocentesId = new Map((docentesData || []).map((d) => [d.id, d]))
@@ -128,9 +154,6 @@ export default function AdminReporteRH() {
         (cursosData || []).map((c) => [(c.folio || '').trim(), c])
       )
 
-      // Regla de aprobación flexible:
-      // En historial: si ya está archivado y no dice 'No' ni 'Cancelado', es curso completado.
-      // En activas: si dice true, 'Sí', 'si', 'aprobada', 'presente', etc.
       function estaAprobado(obj, esHistorial) {
         const val = obj.asistencia_aprobada ?? obj.asistencia ?? obj.acreditado ?? obj.aprobado
         const str = String(val ?? '').toLowerCase().trim()
@@ -143,11 +166,7 @@ export default function AdminReporteRH() {
           return true
         }
 
-        // Si es del historial histórico y el campo no es explícitamente negativo, se considera aprobado
-        if (esHistorial) {
-          return true
-        }
-
+        if (esHistorial) return true
         return false
       }
 
@@ -155,7 +174,7 @@ export default function AdminReporteRH() {
       const clavesVistas = new Set()
 
       // A. Procesar inscripciones activas
-      for (const i of inscripcionesActivas || []) {
+      for (const i of inscripcionesActivas) {
         if (!estaAprobado(i, false)) continue
 
         const docente = mapaDocentesId.get(i.docente_id) || (i.email && mapaDocentesEmail.get(i.email.toLowerCase().trim()))
@@ -184,8 +203,8 @@ export default function AdminReporteRH() {
         lista.push(item)
       }
 
-      // B. Procesar historial archivado (los 1000 registros históricos)
-      for (const h of inscripcionesHistorial || []) {
+      // B. Procesar todas las páginas del historial
+      for (const h of inscripcionesHistorial) {
         if (!estaAprobado(h, true)) continue
 
         const emailNorm = (h.email || '').toLowerCase().trim()
@@ -220,20 +239,25 @@ export default function AdminReporteRH() {
       lista.sort((a, b) => a.nombre.localeCompare(b.nombre))
       setTodasLasFilas(lista)
     } catch (err) {
-      console.error('Error al cargar datos RH:', err)
-      setErrorCarga('Error inesperado al cargar datos: ' + err.message)
+      console.error('Error cargando datos RH:', err)
+      setErrorCarga('Error al consultar la base de datos: ' + err.message)
     } finally {
       setCargando(false)
     }
   }
 
-  // Años disponibles calculados dinámicamente según la base de datos
+  // Lista completa de años ordenada (2026, 2025, 2024, 2023, 2022...)
   const aniosDisponibles = useMemo(() => {
-    if (!todasLasFilas || todasLasFilas.length === 0) return [anioActual]
-    const anios = [...new Set(todasLasFilas.map((f) => f.anio).filter(Boolean))]
-    anios.sort((a, b) => b - a)
-    return anios
-  }, [todasLasFilas, anioActual])
+    const aniosSet = new Set([2026, 2025, 2024, 2023, 2022])
+    if (todasLasFilas && todasLasFilas.length > 0) {
+      todasLasFilas.forEach((f) => {
+        if (f.anio && f.anio >= 2000 && f.anio <= 2050) aniosSet.add(f.anio)
+      })
+    }
+    const lista = Array.from(aniosSet)
+    lista.sort((a, b) => b - a)
+    return lista
+  }, [todasLasFilas])
 
   // Filtrado compuesto: Año -> Periodo -> Búsqueda
   const filasFiltradas = useMemo(() => {
@@ -306,7 +330,7 @@ export default function AdminReporteRH() {
     XLSX.writeFile(libro, `Constancias_RH_${sufijo}_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
-  // 2. Generar Paquete .ZIP masivo con todos los PDFs y el Excel
+  // 2. Generar Paquete .ZIP masivo
   async function generarPaqueteZip() {
     if (!filasFiltradas || filasFiltradas.length === 0) {
       alert('No hay registros disponibles para generar el paquete con estos filtros.')
@@ -315,8 +339,8 @@ export default function AdminReporteRH() {
 
     const confirmar = window.confirm(
       `¿Deseas compilar el paquete ZIP para Recursos Humanos con ${filasFiltradas.length} constancias?\n\n` +
-      `• Se generarán los PDFs con folio oficial y logos institucionales.\n` +
-      `• Se incluirá el archivo Excel oficial con los nombres, correos y folios.\n` +
+      `• Se generarán los PDFs oficiales con folios y logos.\n` +
+      `• Se incluirá la hoja Excel oficial.\n` +
       `• Cero consumo de cuota de Supabase.`
     )
     if (!confirmar) return
@@ -573,7 +597,7 @@ export default function AdminReporteRH() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold text-[#1B396A] bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg">
-            ✓ {filasFiltradas?.length || 0} constancias con asistencia acreditada
+            ✓ {filasFiltradas?.length || 0} constancias acreditadas ({anioSel === 'todos' ? 'Todos los años' : `Año ${anioSel}`})
           </span>
           <button
             onClick={cargar}
@@ -615,12 +639,12 @@ export default function AdminReporteRH() {
 
       {/* Tabla de resultados */}
       {cargando ? (
-        <p className="text-center text-slate-400 py-12 text-sm">Cargando constancias oficiales…</p>
+        <p className="text-center text-slate-400 py-12 text-sm">Cargando constancias oficiales de todos los periodos…</p>
       ) : !filasFiltradas || filasFiltradas.length === 0 ? (
         <div className="p-8 text-center text-slate-500 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200 space-y-1.5">
-          <p className="font-semibold text-slate-600">No se encontraron constancias para el año y periodo seleccionados.</p>
+          <p className="font-semibold text-slate-600">No se encontraron constancias para los filtros seleccionados.</p>
           <p className="text-[11px] text-slate-400">
-            Prueba cambiando a "Todos los años" o revisa si hay algún filtro en el buscador. (Leídos: {debugInfo.historial} en historial, {debugInfo.activas} en activas).
+            Prueba cambiando a "Todos los años" o "Todo el año (Completo)". Total acumulado en base de datos: {totalLeidos.historial} en historial y {totalLeidos.activas} activas.
           </p>
         </div>
       ) : (
