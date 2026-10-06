@@ -1,16 +1,42 @@
+// src/components/AdminReporteRH.jsx
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import { obtenerLigaConstancia } from '../lib/constancias'
+import { descargarConstancia } from '../lib/constancias'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
-// Reporte para Recursos Humanos: nombre del docente, código (folio), curso,
-// horas y liga directa al PDF de la constancia -- incluye a todo docente
-// con asistencia aprobada, aunque todavía no haya descargado su constancia
-// (en ese caso se genera al vuelo, sin que el docente tenga que hacer nada).
+function guardarBlob(blob, nombreArchivo) {
+  try {
+    saveAs(blob, nombreArchivo)
+  } catch {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = nombreArchivo
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+}
+
+function limpiarNombre(texto) {
+  return (texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9 -]/g, '')
+    .trim()
+    .replace(/\s+/g, '_')
+}
+
 export default function AdminReporteRH() {
-  const [filas, setFilas] = useState(null) // null = cargando
-  const [generandoTodas, setGenerandoTodas] = useState(false)
-  const [generandoId, setGenerandoId] = useState(null)
+  const [filas, setFilas] = useState(null)
+  const [cargando, setCargando] = useState(false)
+  const [generandoZip, setGenerandoZip] = useState(false)
+  const [progresoZip, setProgresoZip] = useState({ actual: 0, total: 0, texto: '' })
+  const [descargandoId, setDescargandoId] = useState(null)
+  const [busqueda, setBusqueda] = useState('')
 
   const anioActual = new Date().getFullYear()
   const [periodo, setPeriodo] = useState('todos') // 'todos' | '1' | '2' | '3' | 'rango'
@@ -29,90 +55,40 @@ export default function AdminReporteRH() {
   }, [])
 
   async function cargar() {
-    setFilas(null)
-    const { data } = await supabase
-      .from('inscripciones')
-      .select(
-        'folio_personal, docente_id, docentes(nombre_completo), curso_id, cursos(nombre, horas, fecha_inicio, fecha_fin, departamento, tipo)'
-      )
-      .eq('asistencia_aprobada', true)
-      .neq('estado', 'cancelado')
-      .order('folio_personal')
-
-    const base = (data || []).map((i) => ({
-      docenteId: i.docente_id,
-      cursoId: i.curso_id,
-      nombre: i.docentes?.nombre_completo || '',
-      codigo: i.folio_personal || '',
-      curso: i.cursos?.nombre || '',
-      horas: i.cursos?.horas || '',
-      fechaInicio: i.cursos?.fecha_inicio || null,
-      fechaFin: i.cursos?.fecha_fin || null,
-      departamento: i.cursos?.departamento || '',
-      tipo: i.cursos?.tipo || '',
-      liga: undefined, // undefined = aún no se reviso; null = no generada
-    }))
-    setFilas(base)
-
-    // Revisa en paralelo cuáles ya tienen liga generada (sin generar las
-    // que falten -- eso es explícito, con el botón de abajo).
-    const conLiga = await Promise.all(
-      base.map(async (fila) => {
-        const { data: r } = await supabase.functions.invoke('constancia-drive', {
-          body: { accion: 'liga', tipo: 'constancia', docenteId: fila.docenteId, cursoId: fila.cursoId },
-        })
-        return { ...fila, liga: r?.existe ? r.url : null }
-      })
-    )
-    setFilas(conLiga)
-  }
-
-  async function generarLiga(fila) {
-    const key = fila.docenteId + fila.cursoId
-    setGenerandoId(key)
+    setCargando(true)
     try {
-      const url = await obtenerLigaConstancia('constancia', {
-        docenteId: fila.docenteId,
-        cursoId: fila.cursoId,
-        nombreCompleto: fila.nombre,
-        curso: fila.curso,
-        horas: fila.horas,
-        folioPersonal: fila.codigo,
-        fechaInicio: fila.fechaInicio,
-        fechaFin: fila.fechaFin,
-        departamento: fila.departamento,
-        tipo: fila.tipo,
-      })
-      setFilas((prev) => prev.map((f) => (f.docenteId === fila.docenteId && f.cursoId === fila.cursoId ? { ...f, liga: url } : f)))
+      const { data, error } = await supabase
+        .from('inscripciones')
+        .select(
+          'folio_personal, docente_id, docentes(nombre_completo, email, departamento), curso_id, cursos(nombre, horas, fecha_inicio, fecha_fin, departamento, tipo)'
+        )
+        .eq('asistencia_aprobada', true)
+        .neq('estado', 'cancelado')
+        .order('folio_personal')
+
+      if (error) throw error
+
+      const base = (data || []).map((i) => ({
+        docenteId: i.docente_id,
+        cursoId: i.curso_id,
+        nombre: i.docentes?.nombre_completo || 'Docente no especificado',
+        email: i.docentes?.email || 'Sin correo',
+        codigo: i.folio_personal || 'SIN_FOLIO',
+        curso: i.cursos?.nombre || 'Curso no especificado',
+        horas: i.cursos?.horas || 30,
+        fechaInicio: i.cursos?.fecha_inicio || null,
+        fechaFin: i.cursos?.fecha_fin || null,
+        departamento: i.cursos?.departamento || i.docentes?.departamento || 'Instituto Tecnológico de Durango',
+        tipo: i.cursos?.tipo || 'Docente',
+      }))
+
+      setFilas(base)
     } catch (err) {
-      console.error(err)
-      alert('No se pudo generar la constancia: ' + err.message)
+      console.error('Error al cargar datos para RH:', err)
+      alert('Error al cargar la lista: ' + err.message)
+    } finally {
+      setCargando(false)
     }
-    setGenerandoId(null)
-  }
-
-  async function generarTodasLasFaltantes() {
-    setGenerandoTodas(true)
-    const faltantesLista = filasFiltradas.filter((f) => !f.liga)
-    for (const fila of faltantesLista) {
-      await generarLiga(fila)
-    }
-    setGenerandoTodas(false)
-  }
-
-  function exportarExcel() {
-    const datos = filasFiltradas.map((f) => ({
-      'Nombre del docente': f.nombre,
-      Código: f.codigo,
-      Curso: f.curso,
-      Horas: f.horas,
-      'Liga de la constancia': f.liga || 'No generada',
-    }))
-    const hoja = XLSX.utils.json_to_sheet(datos)
-    hoja['!cols'] = [{ wch: 32 }, { wch: 20 }, { wch: 45 }, { wch: 8 }, { wch: 60 }]
-    const libro = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(libro, hoja, 'Reporte RH')
-    XLSX.writeFile(libro, `reporte_constancias_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
   function dentroDelFiltro(fila) {
@@ -127,41 +103,283 @@ export default function AdminReporteRH() {
     return fila.fechaInicio >= `${anio}${desde}` && fila.fechaInicio <= `${anio}${hasta}`
   }
 
-  const filasFiltradas = filas ? filas.filter(dentroDelFiltro) : null
-  const faltantes = filasFiltradas ? filasFiltradas.filter((f) => f.liga === null).length : 0
+  const filasFiltradas = filas
+    ? filas.filter((f) => {
+        const cumplePeriodo = dentroDelFiltro(f)
+        if (!cumplePeriodo) return false
+        if (!busqueda.trim()) return true
+        const q = busqueda.toLowerCase().trim()
+        return (
+          f.nombre.toLowerCase().includes(q) ||
+          f.email.toLowerCase().includes(q) ||
+          f.codigo.toLowerCase().includes(q) ||
+          f.curso.toLowerCase().includes(q)
+        )
+      })
+    : null
+
+  // 1. Exportar únicamente la hoja de Excel oficial para RH
+  function exportarExcel() {
+    if (!filasFiltradas || filasFiltradas.length === 0) return
+
+    const datosExcel = filasFiltradas.map((f) => {
+      const nombrePdf = `${f.codigo}_${limpiarNombre(f.nombre)}.pdf`
+      return {
+        'Nombre': f.nombre.toUpperCase(),
+        'Email': f.email,
+        'Folio': f.codigo,
+        'Tipo': 'Constancia',
+        'Curso': f.curso.toUpperCase(),
+        'Horas': f.horas,
+        'Departamento': f.departamento,
+        'Archivo PDF': nombrePdf,
+      }
+    })
+
+    const hoja = XLSX.utils.json_to_sheet(datosExcel)
+    hoja['!cols'] = [
+      { wch: 36 }, // Nombre
+      { wch: 32 }, // Email
+      { wch: 22 }, // Folio
+      { wch: 14 }, // Tipo
+      { wch: 55 }, // Curso
+      { wch: 8 },  // Horas
+      { wch: 35 }, // Depto
+      { wch: 45 }, // Archivo PDF
+    ]
+
+    const libro = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(libro, hoja, 'Constancias RH')
+    const sufijoPeriodo = periodo === 'todos' ? 'TODOS' : `Periodo_${periodo}_${anio}`
+    XLSX.writeFile(libro, `Constancias_RH_${sufijoPeriodo}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
+  // 2. Generar el Paquete Masivo .ZIP (Excel + Todos los PDFs al vuelo)
+  async function generarPaqueteZip() {
+    if (!filasFiltradas || filasFiltradas.length === 0) {
+      alert('No hay registros en el periodo seleccionado para generar el paquete.')
+      return
+    }
+
+    const confirmar = window.confirm(
+      `¿Deseas generar el paquete ZIP con ${filasFiltradas.length} constancias oficiales?\n\n` +
+      `• Se generarán los PDFs con folio oficial y logos institucionales.\n` +
+      `• Se incluirá el archivo de Excel oficial con los datos de Recursos Humanos.\n` +
+      `• Cero consumo de cuota de Supabase (se genera en tu equipo listo para subir a Drive).`
+    )
+    if (!confirmar) return
+
+    setGenerandoZip(true)
+    setProgresoZip({ actual: 0, total: filasFiltradas.length, texto: 'Iniciando generación de paquete...' })
+
+    try {
+      const zip = new JSZip()
+      const carpetaPdf = zip.folder('Constancias_PDF')
+
+      const datosExcel = []
+      let exitosos = 0
+
+      for (let i = 0; i < filasFiltradas.length; i++) {
+        const fila = filasFiltradas[i]
+        const numActual = i + 1
+        setProgresoZip({
+          actual: numActual,
+          total: filasFiltradas.length,
+          texto: `Generando constancia ${numActual} de ${filasFiltradas.length}: ${fila.nombre}...`,
+        })
+
+        const nombrePdf = `${fila.codigo}_${limpiarNombre(fila.nombre)}.pdf`
+
+        try {
+          // Genera los bytes del PDF en memoria sin forzar descargas en el navegador
+          const pdfBytes = await descargarConstancia('constancia', {
+            docenteId: fila.docenteId,
+            cursoId: fila.cursoId,
+            nombreCompleto: fila.nombre,
+            curso: fila.curso,
+            fechaInicio: fila.fechaInicio,
+            fechaFin: fila.fechaFin,
+            horas: fila.horas,
+            departamento: fila.departamento,
+            folioPersonal: fila.codigo,
+            tipo: fila.tipo,
+            retornarBytes: true,
+          })
+
+          if (pdfBytes) {
+            carpetaPdf.file(nombrePdf, pdfBytes)
+            exitosos++
+          }
+        } catch (errorPdf) {
+          console.error(`Error al generar constancia de ${fila.nombre}:`, errorPdf)
+        }
+
+        // Fila para el Excel que acompaña al ZIP
+        datosExcel.push({
+          'Nombre': fila.nombre.toUpperCase(),
+          'Email': fila.email,
+          'Folio': fila.codigo,
+          'Tipo': 'Constancia',
+          'Curso': fila.curso.toUpperCase(),
+          'Horas': fila.horas,
+          'Departamento': fila.departamento,
+          'Archivo PDF': nombrePdf,
+        })
+      }
+
+      // Crear el archivo Excel e incluirlo en la raíz del ZIP
+      setProgresoZip({
+        actual: filasFiltradas.length,
+        total: filasFiltradas.length,
+        texto: 'Creando hoja de Excel para Recursos Humanos...',
+      })
+
+      const hoja = XLSX.utils.json_to_sheet(datosExcel)
+      hoja['!cols'] = [
+        { wch: 36 },
+        { wch: 32 },
+        { wch: 22 },
+        { wch: 14 },
+        { wch: 55 },
+        { wch: 8 },
+        { wch: 35 },
+        { wch: 45 },
+      ]
+      const libro = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(libro, hoja, 'Constancias RH')
+      const excelBuffer = XLSX.write(libro, { bookType: 'xlsx', type: 'array' })
+      zip.file(`Listado_Constancias_RH_${new Date().toISOString().slice(0, 10)}.xlsx`, excelBuffer)
+
+      // Comprimir todo el ZIP
+      setProgresoZip({
+        actual: filasFiltradas.length,
+        total: filasFiltradas.length,
+        texto: 'Comprimiendo archivo .ZIP. Por favor espera unos segundos...',
+      })
+
+      const contenidoZip = await zip.generateAsync({
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      })
+
+      const sufijoPeriodo = periodo === 'todos' ? 'TODOS' : `Periodo_${periodo}_${anio}`
+      const nombreZip = `Paquete_Constancias_RH_${sufijoPeriodo}_${new Date().toISOString().slice(0, 10)}.zip`
+
+      guardarBlob(contenidoZip, nombreZip)
+
+      alert(
+        `¡Paquete ZIP generado exitosamente!\n\n` +
+        `• Constancias generadas: ${exitosos} de ${filasFiltradas.length}\n` +
+        `• Archivo: ${nombreZip}\n\n` +
+        `Ya puedes abrir tu carpeta de Google Drive y arrastrar este archivo o descomprimirlo.`
+      )
+    } catch (errGeneral) {
+      console.error('Error al generar paquete ZIP:', errGeneral)
+      alert('Hubo un error al generar el paquete: ' + errGeneral.message)
+    } finally {
+      setGenerandoZip(false)
+      setProgresoZip({ actual: 0, total: 0, texto: '' })
+    }
+  }
+
+  // 3. Descargar una constancia individual en PDF
+  async function descargarIndividual(fila) {
+    const key = fila.docenteId + fila.cursoId
+    setDescargandoId(key)
+    try {
+      await descargarConstancia('constancia', {
+        docenteId: fila.docenteId,
+        cursoId: fila.cursoId,
+        nombreCompleto: fila.nombre,
+        curso: fila.curso,
+        fechaInicio: fila.fechaInicio,
+        fechaFin: fila.fechaFin,
+        horas: fila.horas,
+        departamento: fila.departamento,
+        folioPersonal: fila.codigo,
+        tipo: fila.tipo,
+      })
+    } catch (err) {
+      console.error(err)
+      alert('Error al descargar constancia: ' + err.message)
+    } finally {
+      setDescargandoId(null)
+    }
+  }
+
+  const porcentaje = progresoZip.total > 0 ? Math.round((progresoZip.actual / progresoZip.total) * 100) : 0
 
   return (
-    <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8">
-      <h2 className="font-display text-xl font-semibold text-itd-navy mb-1">Reporte para Recursos Humanos</h2>
-      <p className="text-sm text-itd-navyDark/60 mb-6">
-        Nombre, código, curso, horas y liga directa al PDF de cada constancia -- incluye a todos los
-        docentes con asistencia aprobada, aunque aún no hayan descargado su constancia.
-      </p>
+    <div className="bg-white rounded-2xl border border-itd-navy/10 shadow-sm p-6 sm:p-8 space-y-6">
+      
+      {/* Encabezado */}
+      <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-1">
+          <h2 className="font-display text-xl font-bold text-itd-navy flex items-center gap-2">
+            <span>📋</span>
+            <span>Reporte para Recursos Humanos</span>
+          </h2>
+          <a
+            href="https://drive.google.com/drive/folders/1VicoRho-geh6_hY6_InRMnB0QiOe3EAi?usp=sharing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 rounded-lg transition-colors shadow-2xs w-fit"
+            title="Abrir carpeta compartida de Google Drive para Recursos Humanos"
+          >
+            <span>☁️ Carpeta RH en Google Drive</span>
+            <span className="text-sm">↗</span>
+          </a>
+        </div>
+        <p className="text-sm text-itd-navyDark/60">
+          Genera el archivo de Excel oficial con los datos que solicita Recursos Humanos y descarga el paquete completo en <strong>.ZIP con todos los PDFs</strong> de los docentes con asistencia aprobada, listo para respaldar en Google Drive sin agotar la cuota del servidor.
+        </p>
+      </div>
 
-      <div className="flex flex-wrap items-end gap-3 mb-4 rounded-lg bg-itd-sand/60 p-4">
+      {/* Barra de progreso de generación ZIP */}
+      {generandoZip && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+            <span>⏳ {progresoZip.texto}</span>
+            <span>{porcentaje}%</span>
+          </div>
+          <div className="w-full h-3 bg-amber-200/80 rounded-full overflow-hidden p-0.5">
+            <div
+              className="h-full bg-amber-600 rounded-full transition-all duration-300"
+              style={{ width: `${porcentaje}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-amber-800/80">
+            Por favor mantén abierta esta pestaña mientras se compila el archivo comprimido.
+          </p>
+        </div>
+      )}
+
+      {/* Filtros de periodo y búsqueda */}
+      <div className="flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 border border-slate-200 p-4">
         <div>
-          <label className="block text-xs text-itd-navyDark/50 mb-1">Periodo</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1">Periodo:</label>
           <select
             value={periodo}
             onChange={(e) => setPeriodo(e.target.value)}
-            className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm bg-white"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white font-medium"
           >
-            <option value="todos">Todos</option>
-            <option value="1">1er cuatrimestre (ene-abr)</option>
-            <option value="2">2do cuatrimestre (may-ago)</option>
-            <option value="3">3er cuatrimestre (sep-dic)</option>
+            <option value="todos">Todos los periodos</option>
+            <option value="1">1er cuatrimestre (Ene - Abr)</option>
+            <option value="2">2do cuatrimestre (May - Ago)</option>
+            <option value="3">3er cuatrimestre (Sep - Dic)</option>
             <option value="rango">Rango de fechas…</option>
           </select>
         </div>
 
         {(periodo === '1' || periodo === '2' || periodo === '3') && (
           <div>
-            <label className="block text-xs text-itd-navyDark/50 mb-1">Año</label>
+            <label className="block text-xs font-bold text-slate-600 mb-1">Año:</label>
             <input
               type="number"
               value={anio}
               onChange={(e) => setAnio(Number(e.target.value))}
-              className="w-24 rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+              className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
             />
           </div>
         )}
@@ -169,91 +387,110 @@ export default function AdminReporteRH() {
         {periodo === 'rango' && (
           <>
             <div>
-              <label className="block text-xs text-itd-navyDark/50 mb-1">Desde</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Desde:</label>
               <input
                 type="date"
                 value={rangoDesde}
                 onChange={(e) => setRangoDesde(e.target.value)}
-                className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
               />
             </div>
             <div>
-              <label className="block text-xs text-itd-navyDark/50 mb-1">Hasta</label>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Hasta:</label>
               <input
                 type="date"
                 value={rangoHasta}
                 onChange={(e) => setRangoHasta(e.target.value)}
-                className="rounded-lg border border-itd-navy/20 px-3 py-2 text-sm"
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
               />
             </div>
           </>
         )}
 
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-xs font-bold text-slate-600 mb-1">Buscar docente o curso:</label>
+          <input
+            type="text"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Filtrar por nombre, folio, email…"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+          />
+        </div>
+
         {filasFiltradas && (
-          <p className="text-xs text-itd-navyDark/50 pb-2">{filasFiltradas.length} registro(s)</p>
+          <div className="pb-2 text-xs font-bold text-slate-600 whitespace-nowrap">
+            {filasFiltradas.length} con asistencia aprobada
+          </div>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
+      {/* Botones de acción principales */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <button
+          onClick={generarPaqueteZip}
+          disabled={cargando || generandoZip || !filasFiltradas || filasFiltradas.length === 0}
+          className="flex-1 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white px-5 py-3 text-sm font-bold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span>📦</span>
+          <span>1. Generar Paquete Completo RH (.ZIP)</span>
+        </button>
+
         <button
           onClick={exportarExcel}
-          disabled={!filasFiltradas || filasFiltradas.length === 0}
-          className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-50"
+          disabled={cargando || generandoZip || !filasFiltradas || filasFiltradas.length === 0}
+          className="rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-5 py-3 text-sm font-bold shadow-2xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          ⬇ Descargar Excel
+          <span>📊</span>
+          <span>2. Descargar Solo Excel</span>
         </button>
-        {faltantes > 0 && (
-          <button
-            onClick={generarTodasLasFaltantes}
-            disabled={generandoTodas}
-            className="rounded-lg border border-itd-navy/20 text-itd-navy px-4 py-2 text-sm font-medium hover:bg-itd-sand disabled:opacity-50"
-          >
-            {generandoTodas ? 'Generando…' : `Generar las ${faltantes} constancias faltantes`}
-          </button>
-        )}
       </div>
 
-      {!filasFiltradas ? (
-        <p className="text-center text-itd-navyDark/50 py-8">Cargando…</p>
-      ) : filasFiltradas.length === 0 ? (
-        <p className="text-center text-itd-navyDark/50 py-8">Sin registros en este periodo.</p>
+      {/* Tabla con listado */}
+      {cargando ? (
+        <p className="text-center text-slate-400 py-12 text-sm">Cargando registros con asistencia aprobada…</p>
+      ) : !filasFiltradas || filasFiltradas.length === 0 ? (
+        <div className="p-8 text-center text-slate-400 text-sm bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+          Sin registros con asistencia aprobada en este periodo.
+        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-itd-navyDark/50 border-b border-itd-navy/10">
-                <th className="py-2 pr-3">Docente</th>
-                <th className="py-2 pr-3">Código</th>
-                <th className="py-2 pr-3">Curso</th>
-                <th className="py-2 pr-3">Horas</th>
-                <th className="py-2 pr-3">Liga</th>
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+              <tr>
+                <th className="py-3 px-3">Docente</th>
+                <th className="py-3 px-3">Email</th>
+                <th className="py-3 px-3">Folio</th>
+                <th className="py-3 px-3">Curso</th>
+                <th className="py-3 px-3 text-center">Horas</th>
+                <th className="py-3 px-3 text-right">Constancia</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {filasFiltradas.map((f) => {
                 const key = f.docenteId + f.cursoId
                 return (
-                  <tr key={key} className="border-b border-itd-navy/5">
-                    <td className="py-2 pr-3 text-itd-navyDark">{f.nombre}</td>
-                    <td className="py-2 pr-3 text-itd-navyDark/70">{f.codigo}</td>
-                    <td className="py-2 pr-3 text-itd-navyDark/70">{f.curso}</td>
-                    <td className="py-2 pr-3 text-itd-navyDark/70">{f.horas}</td>
-                    <td className="py-2 pr-3">
-                      {f.liga === undefined ? (
-                        <span className="text-itd-navyDark/30">…</span>
-                      ) : f.liga ? (
-                        <a href={f.liga} target="_blank" rel="noreferrer" className="text-itd-navy underline hover:text-itd-navyDark">
-                          Ver PDF
-                        </a>
-                      ) : (
-                        <button
-                          onClick={() => generarLiga(f)}
-                          disabled={generandoId === key}
-                          className="text-xs rounded-lg border border-itd-navy/20 text-itd-navy px-2 py-1 hover:bg-itd-sand disabled:opacity-50"
-                        >
-                          {generandoId === key ? 'Generando…' : 'Generar'}
-                        </button>
-                      )}
+                  <tr key={key} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-2.5 px-3 font-bold text-slate-800">
+                      {f.nombre}
+                      <span className="block text-[10px] text-slate-400 font-normal truncate max-w-xs">
+                        {f.departamento}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-600 font-mono text-[11px]">{f.email}</td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-blue-900">{f.codigo}</td>
+                    <td className="py-2.5 px-3 text-slate-700 font-medium max-w-xs truncate" title={f.curso}>
+                      {f.curso}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-bold text-slate-600">{f.horas} hrs</td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        onClick={() => descargarIndividual(f)}
+                        disabled={descargandoId === key || generandoZip}
+                        className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold border border-blue-200 transition-colors cursor-pointer text-[11px]"
+                      >
+                        {descargandoId === key ? '⏳' : '⬇ PDF'}
+                      </button>
                     </td>
                   </tr>
                 )

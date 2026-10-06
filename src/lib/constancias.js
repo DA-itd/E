@@ -189,6 +189,10 @@ function segmentosParrafo(tipoDocumento, valores) {
  * }
  */
 export async function descargarConstancia(tipoDocumento, datos) {
+  if (datos.retornarBytes) {
+    return await generarPdfBytes(tipoDocumento, datos)
+  }
+
   const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
 
   try {
@@ -227,7 +231,7 @@ export async function descargarConstancia(tipoDocumento, datos) {
     .catch((e) => console.error('constancia-drive (guardar) falló:', e))
 }
 
-async function generarPdfBytes(tipoDocumento, datos) {
+export async function generarPdfBytes(tipoDocumento, datos) {
   const config = CAMPOS[tipoDocumento]
   if (!config) throw new Error('Tipo de documento no válido')
 
