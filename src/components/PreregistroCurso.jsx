@@ -96,6 +96,7 @@ export default function PreregistroCurso({ docente, onSalir }) {
 
   // Estado para formatos descargables
   const [formatosDescargables, setFormatosDescargables] = useState([]);
+  const [mostrarFormatos, setMostrarFormatos] = useState(false);
 
   // Información de validación de archivos (peso, error, confirmación)
   const [infoArchivos, setInfoArchivos] = useState({
@@ -385,44 +386,98 @@ export default function PreregistroCurso({ docente, onSalir }) {
         </p>
       </div>
 
-      {/* SECCIÓN NUEVA: FORMATOS DESCARGABLES */}
-      {formatosDescargables.length > 0 && (
-        <div className="mb-8 p-5 bg-blue-50/50 rounded-xl border border-blue-100 shadow-sm">
-          <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-            📥 Formatos para descargar
-          </h3>
-          <p className="text-sm text-blue-800/80 mb-4">
-            Descarga los siguientes formatos, llénalos manualmente como parte de tu proceso, y sube los que apliquen (CVU, Ficha) al momento de registrar tu curso.
-          </p>
-          <div className="flex flex-wrap gap-2.5">
-            {formatosDescargables.map(f => (
-              <button
-                key={f.name}
-                onClick={() => descargarFormatoOPlantilla(f.name)}
-                className="text-xs font-semibold bg-white border border-blue-200 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-50 shadow-sm flex items-center gap-2 transition-all"
-              >
-                📄 {f.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-start justify-between gap-4 mb-1">
+      {/* ENCABEZADO PRINCIPAL Y BOTÓN PROMINENTE DE PROPUESTA */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5 p-4 rounded-xl bg-gradient-to-r from-slate-50 via-white to-blue-50/40 border border-slate-200 shadow-2xs">
         <div>
-          <h2 className="font-display text-xl font-semibold text-itd-navy">Preregistro de Curso</h2>
-          <p className="text-sm text-itd-navyDark/60 mt-1">
-            Propón un curso, carga los documentos y evalúa al instructor.
+          <h2 className="font-display text-xl font-bold text-itd-navy flex items-center gap-2">
+            <span>Preregistro de Curso</span>
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+              Convocatoria Activa
+            </span>
+          </h2>
+          <p className="text-xs sm:text-sm text-itd-navyDark/70 mt-1">
+            Propón un curso, adjunta tu CVU y Ficha Técnica en PDF, y evalúa al instructor.
           </p>
         </div>
+
         <button
+          type="button"
           onClick={() => setFormAbierto((v) => !v)}
           disabled={!convocatoria}
-          className="shrink-0 rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-40"
+          className={`shrink-0 rounded-xl px-5 py-3 text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+            formAbierto
+              ? 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300'
+              : 'bg-gradient-to-r from-[#1B396A] via-[#21437d] to-[#781834] text-white hover:from-[#152e55] hover:to-[#5e1329] hover:shadow-lg border border-white/20'
+          }`}
         >
-          {formAbierto ? 'Cancelar' : '+ Proponer curso'}
+          <span className="text-base">{formAbierto ? '✕' : '✨'}</span>
+          <span>{formAbierto ? 'Cancelar propuesta' : '➕ Proponer nuevo curso'}</span>
         </button>
       </div>
+
+      {/* SECCIÓN DISCRETA Y PLEGABLE: FORMATOS EN BLANCO (SOLO SI LE FALTAN AL DOCENTE) */}
+      {formatosDescargables.length > 0 && (
+        <div className="mb-6 rounded-xl border border-slate-200/80 bg-slate-50/60 transition-all">
+          <button
+            type="button"
+            onClick={() => setMostrarFormatos(!mostrarFormatos)}
+            className="w-full p-3 sm:px-4 sm:py-3 flex items-center justify-between text-left cursor-pointer group hover:bg-slate-100/60 rounded-xl transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-base">📁</span>
+              <div>
+                <p className="text-xs font-bold text-slate-700 group-hover:text-itd-navy transition-colors">
+                  ¿Te falta el formato de CVU o Ficha Técnica? (Plantillas descargables en blanco)
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {mostrarFormatos
+                    ? 'Haz clic para ocultar formatos'
+                    : 'Si te falta el formato de CVU o Ficha, aquí puedes descargarlos y guardarlos como PDF para que hagas tu carga al sistema.'}
+                </p>
+              </div>
+            </div>
+            <span className="text-[11px] font-semibold text-slate-500 group-hover:text-itd-navy px-2.5 py-1 bg-white rounded-lg border border-slate-200 shadow-2xs shrink-0 ml-2">
+              {mostrarFormatos ? '▲ Ocultar' : '▼ Ver plantillas'}
+            </span>
+          </button>
+
+          {mostrarFormatos && (
+            <div className="px-4 pb-4 pt-1 border-t border-slate-200/70 space-y-3">
+              <div className="p-2.5 rounded-lg bg-blue-50/80 border border-blue-200/60 text-xs text-blue-900 leading-relaxed">
+                ℹ️ <strong>Instrucciones:</strong> Si te falta el formato de CVU o Ficha Técnica, aquí puedes descargarlos y guardarlos como PDF para que hagas tu carga al sistema. Una vez que tengas listos tus 2 PDFs, presiona el botón principal <strong>"➕ Proponer nuevo curso"</strong>.
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {formatosDescargables.map((f) => {
+                  const nombreMinusculas = f.name.toLowerCase();
+                  const esRequerido = nombreMinusculas.includes('cvu') || nombreMinusculas.includes('ficha');
+                  return (
+                    <button
+                      key={f.name}
+                      type="button"
+                      onClick={() => descargarFormatoOPlantilla(f.name)}
+                      className={`text-xs px-3 py-1.5 rounded-lg border shadow-2xs flex items-center gap-2 transition-all cursor-pointer ${
+                        esRequerido
+                          ? 'bg-white border-blue-300 text-blue-800 hover:bg-blue-50 font-bold'
+                          : 'bg-white/90 border-slate-200 text-slate-600 hover:bg-slate-100 font-medium'
+                      }`}
+                      title={`Descargar ${f.name}`}
+                    >
+                      <span>📄</span>
+                      <span>{f.name}</span>
+                      {esRequerido && (
+                        <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                          Requerido
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {!convocatoria && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
