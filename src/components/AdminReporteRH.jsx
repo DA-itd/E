@@ -57,32 +57,98 @@ export default function AdminReporteRH() {
   async function cargar() {
     setCargando(true)
     try {
-      const { data, error } = await supabase
-        .from('inscripciones')
-        .select(
-          'folio_personal, docente_id, docentes(nombre_completo, email, departamento), curso_id, cursos(nombre, horas, fecha_inicio, fecha_fin, departamento, tipo)'
-        )
-        .eq('asistencia_aprobada', true)
-        .neq('estado', 'cancelado')
-        .order('folio_personal')
+      // 1. Cargar catálogos de apoyo para mapeo seguro sin fallas de joins
+      const [
+        { data: docentesData },
+        { data: cursosData },
+        { data: inscripcionesActivas, error: errActivas },
+        { data: inscripcionesHistorial, error: errHistorial },
+      ] = await Promise.all([
+        supabase.from('docentes').select('id, nombre_completo, email, departamento'),
+        supabase.from('cursos').select('id, folio, nombre, horas, fecha_inicio, fecha_fin, departamento, tipo'),
+        supabase
+          .from('inscripciones')
+          .select('id, folio_personal, docente_id, curso_id, asistencia_aprobada, estado'),
+        supabase
+          .from('inscripciones_historial')
+          .select('id, folio_personal, folio_curso, curso_id, docente_id, email, nombre, asistencia_aprobada, horas, fecha_inicio, fecha_fin, curso'),
+      ])
 
-      if (error) throw error
+      const mapaDocentesId = new Map((docentesData || []).map((d) => [d.id, d]))
+      const mapaDocentesEmail = new Map((docentesData || []).map((d) => [(d.email || '').toLowerCase().trim(), d]))
+      const mapaCursosId = new Map((cursosData || []).map((c) => [c.id, c]))
+      const mapaCursosFolio = new Map((cursosData || []).map((c) => [(c.folio || '').trim(), c]))
 
-      const base = (data || []).map((i) => ({
-        docenteId: i.docente_id,
-        cursoId: i.curso_id,
-        nombre: i.docentes?.nombre_completo || 'Docente no especificado',
-        email: i.docentes?.email || 'Sin correo',
-        codigo: i.folio_personal || 'SIN_FOLIO',
-        curso: i.cursos?.nombre || 'Curso no especificado',
-        horas: i.cursos?.horas || 30,
-        fechaInicio: i.cursos?.fecha_inicio || null,
-        fechaFin: i.cursos?.fecha_fin || null,
-        departamento: i.cursos?.departamento || i.docentes?.departamento || 'Instituto Tecnológico de Durango',
-        tipo: i.cursos?.tipo || 'Docente',
-      }))
+      function esAsistenciaAprobada(val) {
+        if (val === true || val === 1 || val === '1') return true
+        const s = String(val || '').toLowerCase().trim()
+        return s === 'true' || s === 'si' || s === 'sí' || s === 'aprobada' || s === 'acreditada'
+      }
 
-      setFilas(base)
+      const listaUnificada = []
+      const llavesVistas = new Set()
+
+      // A. Procesar inscripciones activas del periodo actual
+      for (const i of inscripcionesActivas || []) {
+        if (!esAsistenciaAprobada(i.asistencia_aprobada)) continue
+        if (i.estado === 'cancelado') continue
+
+        const docente = mapaDocentesId.get(i.docente_id)
+        const curso = mapaCursosId.get(i.curso_id)
+
+        const clave = `${i.folio_personal || ''}_${i.docente_id}_${i.curso_id}`
+        if (llavesVistas.has(clave)) continue
+        llavesVistas.add(clave)
+
+        listaUnificada.push({
+          docenteId: i.docente_id,
+          cursoId: i.curso_id,
+          nombre: docente?.nombre_completo || 'Docente no especificado',
+          email: docente?.email || 'Sin correo',
+          codigo: i.folio_personal || 'SIN_FOLIO',
+          curso: curso?.nombre || 'Curso no especificado',
+          horas: curso?.horas || 30,
+          fechaInicio: curso?.fecha_inicio || null,
+          fechaFin: curso?.fecha_fin || null,
+          departamento: curso?.departamento || docente?.departamento || 'Instituto Tecnológico de Durango',
+          tipo: curso?.tipo || 'Docente',
+          origen: 'activa',
+        })
+      }
+
+      // B. Procesar inscripciones del historial (periodos archivados como hasta Agosto 2026)
+      for (const h of inscripcionesHistorial || []) {
+        if (!esAsistenciaAprobada(h.asistencia_aprobada)) continue
+
+        const emailNorm = (h.email || '').toLowerCase().trim()
+        const docente = (emailNorm && mapaDocentesEmail.get(emailNorm)) || (h.docente_id && mapaDocentesId.get(h.docente_id))
+        const curso = (h.curso_id && mapaCursosId.get(h.curso_id)) || (h.folio_curso && mapaCursosFolio.get(h.folio_curso.trim()))
+
+        const folioPersonal = h.folio_personal || ''
+        const clave = folioPersonal ? `folio_${folioPersonal}` : `hist_${h.id}`
+        if (llavesVistas.has(clave)) continue
+        llavesVistas.add(clave)
+
+        listaUnificada.push({
+          docenteId: docente?.id || h.docente_id || `hist_${h.id}`,
+          cursoId: curso?.id || h.curso_id || `hist_c_${h.id}`,
+          nombre: h.nombre || docente?.nombre_completo || 'Docente',
+          email: h.email || docente?.email || 'Sin correo',
+          codigo: folioPersonal || 'SIN_FOLIO',
+          curso: curso?.nombre || h.curso || h.folio_curso || 'Curso',
+          horas: curso?.horas || h.horas || 30,
+          fechaInicio: curso?.fecha_inicio || h.fecha_inicio || null,
+          fechaFin: curso?.fecha_fin || h.fecha_fin || null,
+          departamento: curso?.departamento || docente?.departamento || 'Instituto Tecnológico de Durango',
+          tipo: curso?.tipo || 'Docente',
+          origen: 'historial',
+        })
+      }
+
+      // Ordenar alfabéticamente por nombre de docente
+      listaUnificada.sort((a, b) => a.nombre.localeCompare(b.nombre))
+
+      setFilas(listaUnificada)
     } catch (err) {
       console.error('Error al cargar datos para RH:', err)
       alert('Error al cargar la lista: ' + err.message)
@@ -93,12 +159,13 @@ export default function AdminReporteRH() {
 
   function dentroDelFiltro(fila) {
     if (periodo === 'todos') return true
-    if (!fila.fechaInicio) return false
     if (periodo === 'rango') {
+      if (!fila.fechaInicio) return false
       if (rangoDesde && fila.fechaInicio < rangoDesde) return false
       if (rangoHasta && fila.fechaInicio > rangoHasta) return false
       return true
     }
+    if (!fila.fechaInicio) return false
     const [desde, hasta] = RANGOS_CUATRIMESTRE[periodo]
     return fila.fechaInicio >= `${anio}${desde}` && fila.fechaInicio <= `${anio}${hasta}`
   }
