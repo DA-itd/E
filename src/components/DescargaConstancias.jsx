@@ -68,7 +68,7 @@ export default function DescargaConstancias({ docente }) {
 
     let histQuery = supabase
       .from('inscripciones_historial')
-      .select('id, folio_personal, folio_curso, asistencia_aprobada')
+      .select('id, folio_personal, folio_curso, asistencia_aprobada, fecha_descarga, created_at')
       .ilike('email', docente.email)
       .eq('asistencia_aprobada', 'Sí')
     if (ultimaTanda?.migrado_en) {
@@ -78,7 +78,7 @@ export default function DescargaConstancias({ docente }) {
     const [{ data: insData }, { data: cursosData }, { data: histData }] = await Promise.all([
       supabase
         .from('inscripciones')
-        .select('id, folio_personal, asistencia_aprobada, cursos(id, nombre, fecha_inicio, fecha_fin, horas, folio, tipo, convocatorias(nombre, mes, anio, fecha_inicio))')
+        .select('id, folio_personal, fecha_descarga, created_at, asistencia_aprobada, cursos(id, nombre, fecha_inicio, fecha_fin, horas, folio, tipo, convocatorias(nombre, mes, anio, fecha_inicio))')
         .eq('docente_id', docente.id)
         .eq('estado', 'activo')
         .order('fecha_inscripcion', { ascending: false }),
@@ -97,7 +97,7 @@ export default function DescargaConstancias({ docente }) {
       const folios = [...new Set(histData.map((h) => h.folio_curso).filter(Boolean))]
       const { data: cursosPorFolio } = await supabase
         .from('cursos')
-        .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento, convocatorias(nombre, mes, anio, fecha_inicio)')
+        .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento, convocatorias(nombre, mes, anio, fecha_inicio))')
         .in('folio', folios)
       const mapaCursos = Object.fromEntries((cursosPorFolio || []).map((c) => [c.folio, c]))
       historialConCurso = histData
@@ -107,6 +107,7 @@ export default function DescargaConstancias({ docente }) {
           return {
             id: h.id,
             folio_personal: h.folio_personal,
+            fecha_descarga: h.fecha_descarga || h.created_at,
             asistencia_aprobada: true,
             origen: 'historial',
             cursos: curso,
@@ -133,6 +134,7 @@ export default function DescargaConstancias({ docente }) {
   async function descargar(ins) {
     setGenerando(ins.id)
     try {
+      const fechaEmision = ins.fecha_descarga || new Date().toISOString()
       await descargarConstancia('constancia', {
         docenteId: docente.id,
         cursoId: ins.cursos?.id,
@@ -144,7 +146,15 @@ export default function DescargaConstancias({ docente }) {
         departamento: docente.departamento,
         folioPersonal: ins.folio_personal,
         tipo: ins.cursos?.tipo,
+        fechaDescarga: ins.fecha_descarga,
       })
+
+      // Guardar localmente la fecha si era su primera descarga para re-descargas en la misma sesión
+      if (!ins.fecha_descarga) {
+        setInscripciones((prev) =>
+          prev.map((item) => (item.id === ins.id ? { ...item, fecha_descarga: fechaEmision } : item))
+        )
+      }
     } catch (err) {
       console.error(err)
       alert('No se pudo generar la constancia: ' + err.message)

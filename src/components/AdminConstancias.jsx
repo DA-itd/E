@@ -151,7 +151,7 @@ export default function AdminConstancias() {
       try {
         const { data: insData } = await supabase
           .from('inscripciones')
-          .select('id, folio_personal, asistencia_aprobada, cursos(id, nombre, fecha_inicio, fecha_fin, horas, folio, tipo, departamento)')
+          .select('id, folio_personal, fecha_descarga, created_at, asistencia_aprobada, cursos(id, nombre, fecha_inicio, fecha_fin, horas, folio, tipo, departamento)')
           .eq('docente_id', item.id)
           .eq('estado', 'activo')
           .eq('asistencia_aprobada', true)
@@ -163,7 +163,7 @@ export default function AdminConstancias() {
         if (item.email && item.email.includes('@')) {
           const { data: histData } = await supabase
             .from('inscripciones_historial')
-            .select('id, folio_personal, folio_curso, asistencia_aprobada')
+            .select('id, folio_personal, folio_curso, asistencia_aprobada, fecha_descarga, created_at')
             .ilike('email', item.email)
             .eq('asistencia_aprobada', 'Sí')
 
@@ -182,6 +182,7 @@ export default function AdminConstancias() {
                 return {
                   id: h.id,
                   folio_personal: h.folio_personal,
+                  fecha_descarga: h.fecha_descarga || h.created_at,
                   origen: 'historial',
                   cursos: curso,
                 }
@@ -218,6 +219,7 @@ export default function AdminConstancias() {
         departamento: ins.cursos?.departamento || docenteSel.departamento,
         folioPersonal: ins.folio_personal,
         tipo: ins.cursos?.tipo,
+        fechaDescarga: ins.fecha_descarga,
       })
     } catch (err) {
       console.error(err)
