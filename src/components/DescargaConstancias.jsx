@@ -55,25 +55,13 @@ export default function DescargaConstancias({ docente }) {
     setCargando(true)
     const hoy = new Date().toISOString().slice(0, 10)
 
-    // "El último archivado": todas las filas de una misma tanda de archivado
-    // comparten el mismo instante exacto en `migrado_en` (se insertan en una
-    // sola operación). Buscamos ese instante más reciente en TODA la tabla
-    // (no solo de este docente) para saber a qué tanda limitarnos.
-    const { data: ultimaTanda } = await supabase
-      .from('inscripciones_historial')
-      .select('migrado_en')
-      .order('migrado_en', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    let histQuery = supabase
+    // Consulta todas las inscripciones aprobadas del historial del docente (2024, 2025, 2026...)
+    // para que pueda generar y descargar cualquier constancia previa directamente en esta plataforma
+    const histQuery = supabase
       .from('inscripciones_historial')
       .select('id, folio_personal, folio_curso, asistencia_aprobada, fecha_descarga, created_at')
       .ilike('email', docente.email)
       .eq('asistencia_aprobada', 'Sí')
-    if (ultimaTanda?.migrado_en) {
-      histQuery = histQuery.eq('migrado_en', ultimaTanda.migrado_en)
-    }
 
     const [{ data: insData }, { data: cursosData }, { data: histData }] = await Promise.all([
       supabase

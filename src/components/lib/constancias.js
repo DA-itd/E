@@ -13,21 +13,7 @@ const COLOR_TEXTO = '#1f2937'
 const COLOR_DORADO = '#B48A00'
 const COLOR_GRIS = '#6b7280'
 
-// Convierte bytes a base64 por bloques -- btoa(String.fromCharCode(...bytes))
-// truena con "Maximum call stack size exceeded" en archivos grandes, sobre
-// todo en Safari. Procesar en bloques evita el límite de argumentos.
-function bytesABase64(bytes) {
-  let binario = ''
-  const TAMANO_BLOQUE = 8192
-  for (let i = 0; i < bytes.length; i += TAMANO_BLOQUE) {
-    binario += String.fromCharCode(...bytes.subarray(i, i + TAMANO_BLOQUE))
-  }
-  return btoa(binario)
-}
-
-// Campos pequeños de una sola línea (posiciones extraídas de tu PDF original,
-// en puntos, origen arriba-izquierda -- se convierten a coordenadas de
-// pdf-lib al dibujar).
+// Campos pequeños de una sola línea (Configuración base / 2026)
 const CAMPOS = {
   constancia: {
     imagen: `${BASE}plantillas/constancia.jpg`,
@@ -38,11 +24,7 @@ const CAMPOS = {
       tipo: { x0: 75.1, top: 712.8, x1: 142.1, bottom: 719.8, tam: 7, color: COLOR_GRIS },
       FECHA_CREACION: { x0: 70.2, top: 731.2, x1: 144.0, bottom: 738.2, tam: 7, color: COLOR_GRIS },
     },
-    // Área completa del párrafo (se borró de la imagen de fondo -- se
-    // redibuja entero aquí con salto de línea real y letra uniforme).
     parrafo: { top: 425, bottom: 468, tam: 10.5, interlineado: 15 },
-    // Línea "VICTORIA DE DURANGO, DGO., A <fecha>" completa (también se
-    // borró de la imagen de fondo -- se redibuja entera en dorado).
     lineaFecha: { top: 645, bottom: 660.5, tam: 10.5 },
     qr: { x: 164.8, top: 682, tamano: 50 },
   },
@@ -61,13 +43,78 @@ const CAMPOS = {
   },
 }
 
+// Registro para años futuros (ej. 2027, 2028). Si algún año nuevo tiene cambios en coordenadas
+// de texto o posición de firma, se agrega aquí. Si no está registrado, usará la configuración base.
+const CONFIG_POR_ANIO = {
+  // Ejemplo futuro:
+  // 2027: {
+  //   constancia: { ...CAMPOS.constancia, parrafo: { ... } },
+  //   reconocimiento: { ...CAMPOS.reconocimiento }
+  // }
+}
+
+function deducirAnio(datos) {
+  // 1. Del folio personal (ej. TNM-054-40-2027-01 o TNM-054-40-2026-10)
+  const matchFolio = (datos.folioPersonal || '').match(/-(20\d\d)-/)
+  if (matchFolio) return parseInt(matchFolio[1], 10)
+
+  const matchFolioFin = (datos.folioPersonal || '').match(/-(20\d\d)$/)
+  if (matchFolioFin) return parseInt(matchFolioFin[1], 10)
+
+  // 2. De las fechas del curso
+  if (datos.fechaInicio && datos.fechaInicio.length >= 4) {
+    const a = parseInt(datos.fechaInicio.slice(0, 4), 10)
+    if (!isNaN(a) && a >= 2000 && a <= 2050) return a
+  }
+  if (datos.fechaFin && datos.fechaFin.length >= 4) {
+    const a = parseInt(datos.fechaFin.slice(0, 4), 10)
+    if (!isNaN(a) && a >= 2000 && a <= 2050) return a
+  }
+
+  // 3. De la fecha de creación / descarga
+  if (datos.fechaDescarga || datos.fechaCreacion) {
+    const d = new Date(datos.fechaDescarga || datos.fechaCreacion)
+    if (!isNaN(d.getFullYear())) return d.getFullYear()
+  }
+
+  return new Date().getFullYear()
+}
+
+// Carga resiliente de plantilla: busca primero versión específica del año (ej. constancia_2027.jpg)
+// y si no existe hace fallback automático a la plantilla base (constancia.jpg)
+async function cargarImagenPlantilla(tipoDocumento, anio) {
+  const candidatos = [
+    `${BASE}plantillas/${tipoDocumento}_${anio}.jpg`,
+    `${BASE}plantillas/${tipoDocumento}_${anio}.png`,
+    `${BASE}plantillas/${anio}/${tipoDocumento}.jpg`,
+    `${BASE}plantillas/${anio}/${tipoDocumento}.png`,
+    `${BASE}plantillas/${tipoDocumento}.jpg`,
+    `${BASE}plantillas/${tipoDocumento}.png`,
+  ]
+
+  for (const url of candidatos) {
+    try {
+      const resp = await fetch(url)
+      if (resp.ok) {
+        const buffer = await resp.arrayBuffer()
+        // Evita falsos positivos de SPA router que devuelve index.html (404)
+        const primero = new Uint8Array(buffer.slice(0, 4))
+        if (primero[0] === 0x3C) continue // '<' indica HTML
+        return { buffer, url }
+      }
+    } catch {
+      // Intenta siguiente candidato
+    }
+  }
+
+  throw new Error(`No se encontró la plantilla para ${tipoDocumento} (año ${anio}).`)
+}
+
 function hexARgb(hex) {
   const n = parseInt(hex.replace('#', ''), 16)
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255)
 }
 
-// Reduce el tamaño de fuente hasta que el texto quepa en el ancho disponible.
-// Si ni con la letra más chica permitida cabe, se recorta con "…".
 function ajustarTexto(texto, font, tamInicial, anchoMax, tamMinimo = 6.5) {
   let tam = tamInicial
   while (tam > tamMinimo && font.widthOfTextAtSize(texto, tam) > anchoMax) {
@@ -81,14 +128,6 @@ function ajustarTexto(texto, font, tamInicial, anchoMax, tamMinimo = 6.5) {
   return { texto: textoFinal, tam }
 }
 
-// ---------------------------------------------------------------
-// Texto con salto de línea real y estilos mixtos (negrita/normal).
-// Arma líneas palabra por palabra según el ancho disponible, y al
-// DIBUJAR agrupa palabras consecutivas del mismo estilo en un solo
-// trazo de texto (en vez de palabra por palabra) -- así el espaciado
-// entre palabras lo calcula el propio motor de fuentes, sin riesgo de
-// que se vean pegadas.
-// ---------------------------------------------------------------
 function armarLineas(segmentos, fontNormal, fontNegrita, tam, anchoMax) {
   const palabras = []
   for (const seg of segmentos) {
@@ -117,8 +156,6 @@ function armarLineas(segmentos, fontNormal, fontNegrita, tam, anchoMax) {
   return lineas
 }
 
-// Agrupa palabras consecutivas del mismo estilo en "runs" (para dibujarlas
-// de un solo trazo, con espacios internos reales).
 function agruparEnRuns(linea) {
   const runs = []
   for (const palabra of linea) {
@@ -178,72 +215,55 @@ function segmentosParrafo(tipoDocumento, valores) {
 }
 
 /**
- * Descarga una constancia o reconocimiento. Si ya se había generado antes
- * para ese docente+curso, la trae de la copia guardada en Drive (no
- * regenera). Si es la primera vez, la genera con pdf-lib y sube una copia
- * oculta a Drive en segundo plano.
- *
- * datos: {
- *   docenteId, cursoId, nombreCompleto, curso, fechaInicio, fechaFin,
- *   horas, departamento, folioPersonal, tipo  // "Docente" | "Profesional"
- * }
+ * Descarga una constancia o reconocimiento.
+ * Se genera 100% "al vuelo" en el navegador del docente (0 MB en Storage de Supabase).
+ * No almacena archivos pesados en el servidor, permitiendo descargas ilimitadas.
  */
 export async function descargarConstancia(tipoDocumento, datos) {
-  const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
-
-  try {
-    const { data, error } = await supabase.functions.invoke('constancia-drive', {
-      body: { accion: 'obtener', tipo: tipoDocumento, docenteId: datos.docenteId, cursoId: datos.cursoId },
-    })
-    if (error) {
-      console.error('constancia-drive (obtener) devolvió error:', error, data)
-    } else if (data?.existe && data?.pdfBase64) {
-      descargarBase64(data.pdfBase64, nombreArchivo)
-      return
-    }
-  } catch (e) {
-    console.error('constancia-drive (obtener) falló:', e)
-    // Sin Storage configurado o con error de red -- no bloquea, se genera normal.
+  // Si la petición solo requiere los bytes (ej. para empaquetar en el ZIP de Recursos Humanos)
+  if (datos.retornarBytes) {
+    return await generarPdfBytes(tipoDocumento, datos)
   }
 
+  const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
+
+  // Genera el PDF directamente en memoria
   const bytes = await generarPdfBytes(tipoDocumento, datos)
   descargarBytes(bytes, nombreArchivo)
 
-  const pdfBase64 = bytesABase64(bytes)
-  supabase.functions
-    .invoke('constancia-drive', {
-      body: {
-        accion: 'guardar',
-        tipo: tipoDocumento,
-        docenteId: datos.docenteId,
-        cursoId: datos.cursoId,
-        pdfBase64,
-        nombreArchivo,
-      },
-    })
-    .then(({ data, error }) => {
-      if (error) console.error('constancia-drive (guardar) devolvió error:', error, data)
-    })
-    .catch((e) => console.error('constancia-drive (guardar) falló:', e))
+  // Registra la fecha de primera descarga en la base de datos (solo una fecha en texto, 0 bytes en storage)
+  try {
+    if (datos.docenteId && datos.cursoId) {
+      supabase
+        .from('inscripciones')
+        .update({ fecha_descarga: new Date().toISOString() })
+        .eq('docente_id', datos.docenteId)
+        .eq('curso_id', datos.cursoId)
+        .is('fecha_descarga', null)
+        .then(() => {})
+        .catch(() => {})
+    }
+  } catch {
+    // Continúa si no existe la columna
+  }
 }
 
-async function generarPdfBytes(tipoDocumento, datos) {
-  const config = CAMPOS[tipoDocumento]
-  if (!config) throw new Error('Tipo de documento no válido')
+export async function generarPdfBytes(tipoDocumento, datos) {
+  const anioDoc = deducirAnio(datos)
+  const config = CONFIG_POR_ANIO[anioDoc]?.[tipoDocumento] || CAMPOS[tipoDocumento]
+  if (!config) throw new Error(`Tipo de documento "${tipoDocumento}" no válido para el año ${anioDoc}`)
 
   const pdfDoc = await PDFDocument.create()
   pdfDoc.registerFontkit(fontkit)
   const page = pdfDoc.addPage([ANCHO_PAGINA, ALTO_PAGINA])
 
-  const imgResp = await fetch(config.imagen)
-  const imgBytes = await imgResp.arrayBuffer()
-  const imagen = await pdfDoc.embedJpg(imgBytes)
+  // Carga inteligente de plantilla por año (ej. constancia_2027.jpg o constancia.jpg)
+  const { buffer: imgBytes, url: urlCargada } = await cargarImagenPlantilla(tipoDocumento, anioDoc)
+  const u8 = new Uint8Array(imgBytes.slice(0, 8))
+  const esPng = (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) || urlCargada.toLowerCase().endsWith('.png')
+  const imagen = esPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes)
   page.drawImage(imagen, { x: 0, y: 0, width: ANCHO_PAGINA, height: ALTO_PAGINA })
 
-  // Se usa una fuente real incrustada (Roboto) en vez de la fuente estándar
-  // "Helvetica" de pdf-lib -- esa fuente estándar calcula MAL el ancho de
-  // letras acentuadas (Ó, Í, Á...) y eso hacía que las palabras se
-  // encimaran cuando había acentos en el texto.
   const [regularBytes, boldBytes] = await Promise.all([
     fetch(`${BASE}fuentes/Roboto-Regular.ttf`).then((r) => r.arrayBuffer()),
     fetch(`${BASE}fuentes/Roboto-Bold.ttf`).then((r) => r.arrayBuffer()),
@@ -251,11 +271,12 @@ async function generarPdfBytes(tipoDocumento, datos) {
   const fontNormal = await pdfDoc.embedFont(regularBytes)
   const fontNegrita = await pdfDoc.embedFont(boldBytes)
 
-  const hoy = new Date()
-  const fechaCreacionTexto = hoy.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
+  // La fecha de emisión se mantiene consistente: si ya tenía fecha registrada la usa; si no, la fecha actual
+  const fechaReferencia = datos.fechaDescarga || datos.fechaCreacion || datos.created_at
+  const fechaObj = fechaReferencia ? new Date(fechaReferencia) : new Date()
+  const fechaCreacionTexto = fechaObj.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
 
-  // La fecha del pie ("VICTORIA DE DURANGO...A <fecha>") es el último día
-  // de la semana del curso (fecha_fin), como se definió con Alejandro.
+  // La fecha oficial de fin del curso en el pie ("VICTORIA DE DURANGO...A <fecha>") siempre es fija
   const fechaSemana = formatearRangoFechas(datos.fechaFin, datos.fechaFin)
 
   const valores = {
@@ -295,7 +316,7 @@ async function generarPdfBytes(tipoDocumento, datos) {
     page.drawText(texto, { x, y: yBase, size: tam, font, color })
   }
 
-  // Párrafo completo, con salto de línea real y letra uniforme
+  // Párrafo principal
   const p = config.parrafo
   const segmentosP = segmentosParrafo(tipoDocumento, valores)
   const lineasP = armarLineas(segmentosP, fontNormal, fontNegrita, p.tam, 480)
@@ -304,14 +325,14 @@ async function generarPdfBytes(tipoDocumento, datos) {
   const yInicialP = centroVerticalP + altoBloqueP / 2 - p.tam
   dibujarLineasCentradas(page, lineasP, fontNormal, fontNegrita, p.tam, p.interlineado, yInicialP, ANCHO_PAGINA / 2, COLOR_TEXTO)
 
-  // Línea completa de fecha, en dorado
+  // Línea oficial de fecha en dorado
   const lf = config.lineaFecha
   const segmentosF = [{ texto: `VICTORIA DE DURANGO, DGO., A ${fechaSemana}`, negrita: true }]
   const lineasF = armarLineas(segmentosF, fontNegrita, fontNegrita, lf.tam, 480)
   const yF = ALTO_PAGINA - (lf.top + lf.bottom) / 2 - lf.tam / 2.8
   dibujarLineasCentradas(page, lineasF, fontNegrita, fontNegrita, lf.tam, 0, yF, ANCHO_PAGINA / 2, COLOR_DORADO)
 
-  // QR real -- lleva directo al validador público con el folio precargado
+  // Código QR oficial de validación
   if (config.qr && datos.folioPersonal) {
     try {
       const urlValidacion = `${window.location.origin}${BASE}?validar=${encodeURIComponent(datos.folioPersonal)}&tipo=${tipoDocumento}`
@@ -327,7 +348,6 @@ async function generarPdfBytes(tipoDocumento, datos) {
       })
     } catch (err) {
       console.error('No se pudo generar el QR de validación:', err)
-      // si falla, el PDF se genera igual, solo sin QR
     }
   }
 
@@ -344,44 +364,4 @@ function descargarBytes(bytes, nombreArchivo) {
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
-}
-
-function descargarBase64(base64, nombreArchivo) {
-  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-  descargarBytes(bytes, nombreArchivo)
-}
-
-/**
- * Regresa la liga (URL firmada, vigente 30 días) al PDF de una constancia
- * ya generada. Si nunca se había generado, la genera y sube primero (sin
- * descargarla en el navegador) y luego regresa la liga. Se usa en el
- * reporte para Recursos Humanos.
- */
-export async function obtenerLigaConstancia(tipoDocumento, datos) {
-  const pedirLiga = () =>
-    supabase.functions.invoke('constancia-drive', {
-      body: { accion: 'liga', tipo: tipoDocumento, docenteId: datos.docenteId, cursoId: datos.cursoId },
-    })
-
-  let { data } = await pedirLiga()
-  if (data?.existe && data?.url) return data.url
-
-  // No existe todavía -- se genera y se sube, sin descargarla al navegador.
-  const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
-  const bytes = await generarPdfBytes(tipoDocumento, datos)
-  const pdfBase64 = bytesABase64(bytes)
-
-  await supabase.functions.invoke('constancia-drive', {
-    body: {
-      accion: 'guardar',
-      tipo: tipoDocumento,
-      docenteId: datos.docenteId,
-      cursoId: datos.cursoId,
-      pdfBase64,
-      nombreArchivo,
-    },
-  })
-
-  ;({ data } = await pedirLiga())
-  return data?.existe ? data.url : null
 }
