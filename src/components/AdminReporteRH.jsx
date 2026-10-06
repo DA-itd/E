@@ -110,12 +110,13 @@ export default function AdminReporteRH() {
   const [descargandoId, setDescargandoId] = useState(null)
   const [busqueda, setBusqueda] = useState('')
   const [errorCarga, setErrorCarga] = useState('')
-  const [totalLeidos, setTotalLeidos] = useState({ activas: 0, historial: 0 })
+  const [totalLeidos, setTotalLeidos] = useState({ activas: 0, historial: 0, reconocimientos: 0 })
 
   // Por defecto inicializa en 2026
   const anioActual = new Date().getFullYear()
   const [anioSel, setAnioSel] = useState('2026')
   const [periodoSel, setPeriodoSel] = useState('todos')
+  const [tipoDocSel, setTipoDocSel] = useState('todos') // 'todos' | 'constancia' | 'reconocimiento'
   const [rangoDesde, setRangoDesde] = useState('')
   const [rangoHasta, setRangoHasta] = useState('')
 
@@ -139,11 +140,6 @@ export default function AdminReporteRH() {
         traerTodoPaginado('inscripciones'),
         traerTodoPaginado('inscripciones_historial'),
       ])
-
-      setTotalLeidos({
-        activas: inscripcionesActivas.length,
-        historial: inscripcionesHistorial.length,
-      })
 
       const mapaDocentesId = new Map((docentesData || []).map((d) => [d.id, d]))
       const mapaDocentesEmail = new Map(
@@ -173,7 +169,7 @@ export default function AdminReporteRH() {
       const lista = []
       const clavesVistas = new Set()
 
-      // A. Procesar inscripciones activas
+      // A. Procesar inscripciones activas (Constancias de Participante)
       for (const i of inscripcionesActivas) {
         if (!estaAprobado(i, false)) continue
 
@@ -196,6 +192,8 @@ export default function AdminReporteRH() {
           fechaFin: curso?.fecha_fin || i.fecha_fin || null,
           departamento: curso?.departamento || docente?.departamento || 'Instituto Tecnológico de Durango',
           tipo: curso?.tipo || 'Docente',
+          tipoDoc: 'constancia',
+          rol: 'Participante',
           origen: 'activa',
         }
         item.anio = deducirAnio(item)
@@ -203,7 +201,7 @@ export default function AdminReporteRH() {
         lista.push(item)
       }
 
-      // B. Procesar todas las páginas del historial
+      // B. Procesar todas las páginas del historial (Constancias de Participante)
       for (const h of inscripcionesHistorial) {
         if (!estaAprobado(h, true)) continue
 
@@ -229,12 +227,64 @@ export default function AdminReporteRH() {
           fechaFin: curso?.fecha_fin || h.fecha_fin || null,
           departamento: curso?.departamento || docente?.departamento || 'Instituto Tecnológico de Durango',
           tipo: curso?.tipo || 'Docente',
+          tipoDoc: 'constancia',
+          rol: 'Participante',
           origen: 'historial',
         }
         item.anio = deducirAnio(item)
         item.cuatrimestre = deducirPeriodo(item)
         lista.push(item)
       }
+
+      // C. Procesar Reconocimientos Oficiales para Instructores (de la tabla cursos)
+      let totalRecs = 0
+      for (const c of (cursosData || [])) {
+        if (!c.instructor || !c.instructor.trim()) continue
+
+        // Soporta varios instructores en el mismo curso separados por coma o barra
+        const listaInstructores = (c.instructor.includes(',') || c.instructor.includes(';') || c.instructor.includes('/'))
+          ? c.instructor.split(/[,;\/]+/).map((s) => s.trim()).filter(Boolean)
+          : [c.instructor.trim()]
+
+        for (const nombreInst of listaInstructores) {
+          const normInst = (nombreInst || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+          const docenteMatch = (docentesData || []).find((d) => {
+            const normDoc = (d.nombre_completo || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+            return normDoc === normInst || (normDoc.length > 5 && (normDoc.includes(normInst) || normInst.includes(normDoc)))
+          })
+
+          const clave = `rec_${c.id}_${limpiarNombre(nombreInst)}`
+          if (clavesVistas.has(clave)) continue
+          clavesVistas.add(clave)
+          totalRecs++
+
+          const item = {
+            docenteId: docenteMatch?.id || `inst_${c.id}`,
+            cursoId: c.id,
+            nombre: docenteMatch?.nombre_completo || nombreInst,
+            email: docenteMatch?.email || 'Sin correo',
+            codigo: c.folio || `FOLIO-${c.id}`,
+            curso: c.nombre || 'Curso impartido',
+            horas: c.horas || 30,
+            fechaInicio: c.fecha_inicio || null,
+            fechaFin: c.fecha_fin || null,
+            departamento: c.departamento || docenteMatch?.departamento || 'Instituto Tecnológico de Durango',
+            tipo: c.tipo || 'Docente',
+            tipoDoc: 'reconocimiento',
+            rol: 'Instructor',
+            origen: 'instructor',
+          }
+          item.anio = deducirAnio(item)
+          item.cuatrimestre = deducirPeriodo(item)
+          lista.push(item)
+        }
+      }
+
+      setTotalLeidos({
+        activas: inscripcionesActivas.length,
+        historial: inscripcionesHistorial.length,
+        reconocimientos: totalRecs,
+      })
 
       lista.sort((a, b) => a.nombre.localeCompare(b.nombre))
       setTodasLasFilas(lista)
@@ -259,7 +309,7 @@ export default function AdminReporteRH() {
     return lista
   }, [todasLasFilas])
 
-  // Filtrado compuesto: Año -> Periodo -> Búsqueda
+  // Filtrado compuesto: Año -> Periodo -> Tipo de Documento -> Búsqueda
   const filasFiltradas = useMemo(() => {
     if (!todasLasFilas) return null
 
@@ -279,32 +329,52 @@ export default function AdminReporteRH() {
         if (f.cuatrimestre !== numPeriodo) return false
       }
 
-      // 3. Filtro por Búsqueda rápida
+      // 3. Filtro por Tipo de Documento (Constancia vs Reconocimiento)
+      if (tipoDocSel !== 'todos') {
+        if (f.tipoDoc !== tipoDocSel) return false
+      }
+
+      // 4. Filtro por Búsqueda rápida
       if (busqueda.trim()) {
         const q = busqueda.toLowerCase().trim()
         const coincide =
           f.nombre.toLowerCase().includes(q) ||
           f.email.toLowerCase().includes(q) ||
           f.codigo.toLowerCase().includes(q) ||
-          f.curso.toLowerCase().includes(q)
+          f.curso.toLowerCase().includes(q) ||
+          (f.rol && f.rol.toLowerCase().includes(q)) ||
+          (f.tipoDoc && f.tipoDoc.toLowerCase().includes(q))
         if (!coincide) return false
       }
 
       return true
     })
-  }, [todasLasFilas, anioSel, periodoSel, rangoDesde, rangoHasta, busqueda])
+  }, [todasLasFilas, anioSel, periodoSel, tipoDocSel, rangoDesde, rangoHasta, busqueda])
+
+  // Contadores para estadísticas rápidas
+  const conteoConstancias = useMemo(
+    () => (filasFiltradas || []).filter((f) => f.tipoDoc === 'constancia').length,
+    [filasFiltradas]
+  )
+  const conteoReconocimientos = useMemo(
+    () => (filasFiltradas || []).filter((f) => f.tipoDoc === 'reconocimiento').length,
+    [filasFiltradas]
+  )
 
   // 1. Exportar Excel oficial para Recursos Humanos
   function exportarExcel() {
     if (!filasFiltradas || filasFiltradas.length === 0) return
 
     const datosExcel = filasFiltradas.map((f) => {
-      const nombrePdf = `${f.codigo}_${limpiarNombre(f.nombre)}.pdf`
+      const esRec = f.tipoDoc === 'reconocimiento'
+      const tipoTexto = esRec ? 'Reconocimiento' : 'Constancia'
+      const nombrePdf = `${tipoTexto}_${f.codigo}_${limpiarNombre(f.nombre)}.pdf`
       return {
+        'Documento': tipoTexto,
+        'Rol': f.rol || (esRec ? 'Instructor' : 'Participante'),
         'Nombre': f.nombre.toUpperCase(),
         'Email': f.email,
         'Folio': f.codigo,
-        'Tipo': 'Constancia',
         'Curso': f.curso.toUpperCase(),
         'Horas': f.horas,
         'Departamento': f.departamento,
@@ -314,10 +384,11 @@ export default function AdminReporteRH() {
 
     const hoja = XLSX.utils.json_to_sheet(datosExcel)
     hoja['!cols'] = [
+      { wch: 18 },
+      { wch: 16 },
       { wch: 36 },
       { wch: 32 },
       { wch: 22 },
-      { wch: 14 },
       { wch: 55 },
       { wch: 8 },
       { wch: 35 },
@@ -325,9 +396,9 @@ export default function AdminReporteRH() {
     ]
 
     const libro = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(libro, hoja, 'Constancias RH')
-    const sufijo = `Año_${anioSel}_Periodo_${periodoSel}`
-    XLSX.writeFile(libro, `Constancias_RH_${sufijo}_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    XLSX.utils.book_append_sheet(libro, hoja, 'Reporte RH')
+    const sufijo = `Año_${anioSel}_Periodo_${periodoSel}_${tipoDocSel}`
+    XLSX.writeFile(libro, `Reporte_RH_${sufijo}_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
   // 2. Generar Paquete .ZIP masivo
@@ -338,10 +409,11 @@ export default function AdminReporteRH() {
     }
 
     const confirmar = window.confirm(
-      `¿Deseas compilar el paquete ZIP para Recursos Humanos con ${filasFiltradas.length} constancias?\n\n` +
-      `• Se generarán los PDFs oficiales con folios y logos.\n` +
-      `• Se incluirá la hoja Excel oficial.\n` +
-      `• Cero consumo de cuota de Supabase.`
+      `¿Deseas compilar el paquete ZIP para Recursos Humanos con ${filasFiltradas.length} documentos oficiales?\n\n` +
+      `• 📜 ${conteoConstancias} Constancias de Participante\n` +
+      `• 🎖️ ${conteoReconocimientos} Reconocimientos de Instructor\n` +
+      `• Se incluirá el listado Excel concentrado.\n` +
+      `• Cero consumo de cuota de almacenamiento de Supabase.`
     )
     if (!confirmar) return
 
@@ -350,23 +422,26 @@ export default function AdminReporteRH() {
 
     try {
       const zip = new JSZip()
-      const carpetaPdf = zip.folder('Constancias_PDF')
+      const carpetaPdf = zip.folder('Documentos_PDF')
       const datosExcel = []
       let exitosos = 0
 
       for (let i = 0; i < filasFiltradas.length; i++) {
         const fila = filasFiltradas[i]
         const numActual = i + 1
+        const esRec = fila.tipoDoc === 'reconocimiento'
+        const etiquetaTipo = esRec ? 'Reconocimiento' : 'Constancia'
+
         setProgresoZip({
           actual: numActual,
           total: filasFiltradas.length,
-          texto: `Generando ${numActual} de ${filasFiltradas.length}: ${fila.nombre}...`,
+          texto: `Generando ${numActual} de ${filasFiltradas.length} (${etiquetaTipo}): ${fila.nombre}...`,
         })
 
-        const nombrePdf = `${fila.codigo}_${limpiarNombre(fila.nombre)}.pdf`
+        const nombrePdf = `${etiquetaTipo}_${fila.codigo}_${limpiarNombre(fila.nombre)}.pdf`
 
         try {
-          const pdfBytes = await descargarConstancia('constancia', {
+          const pdfBytes = await descargarConstancia(fila.tipoDoc, {
             docenteId: fila.docenteId,
             cursoId: fila.cursoId,
             nombreCompleto: fila.nombre,
@@ -385,14 +460,15 @@ export default function AdminReporteRH() {
             exitosos++
           }
         } catch (errPdf) {
-          console.error(`Fallo en constancia de ${fila.nombre}:`, errPdf)
+          console.error(`Fallo en ${fila.tipoDoc} de ${fila.nombre}:`, errPdf)
         }
 
         datosExcel.push({
+          'Documento': etiquetaTipo,
+          'Rol': fila.rol || (esRec ? 'Instructor' : 'Participante'),
           'Nombre': fila.nombre.toUpperCase(),
           'Email': fila.email,
           'Folio': fila.codigo,
-          'Tipo': 'Constancia',
           'Curso': fila.curso.toUpperCase(),
           'Horas': fila.horas,
           'Departamento': fila.departamento,
@@ -403,24 +479,25 @@ export default function AdminReporteRH() {
       setProgresoZip({
         actual: filasFiltradas.length,
         total: filasFiltradas.length,
-        texto: 'Creando archivo Excel...',
+        texto: 'Creando archivo Excel concentrado...',
       })
 
       const hoja = XLSX.utils.json_to_sheet(datosExcel)
       hoja['!cols'] = [
+        { wch: 18 },
+        { wch: 16 },
         { wch: 36 },
         { wch: 32 },
         { wch: 22 },
-        { wch: 14 },
         { wch: 55 },
         { wch: 8 },
         { wch: 35 },
         { wch: 45 },
       ]
       const libro = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(libro, hoja, 'Constancias RH')
+      XLSX.utils.book_append_sheet(libro, hoja, 'Concentrado RH')
       const buffer = XLSX.write(libro, { bookType: 'xlsx', type: 'array' })
-      zip.file(`Listado_Constancias_RH_${new Date().toISOString().slice(0, 10)}.xlsx`, buffer)
+      zip.file(`Listado_RH_${new Date().toISOString().slice(0, 10)}.xlsx`, buffer)
 
       setProgresoZip({
         actual: filasFiltradas.length,
@@ -434,12 +511,14 @@ export default function AdminReporteRH() {
         compressionOptions: { level: 6 },
       })
 
-      const nombreZip = `Paquete_Constancias_RH_Año_${anioSel}_Periodo_${periodoSel}.zip`
+      const nombreZip = `Paquete_RH_Año_${anioSel}_Periodo_${periodoSel}_${tipoDocSel}.zip`
       guardarBlob(contenidoZip, nombreZip)
 
       alert(
         `¡Paquete generado con éxito!\n\n` +
-        `• Total generado: ${exitosos} de ${filasFiltradas.length} constancias.\n` +
+        `• Total generado: ${exitosos} de ${filasFiltradas.length} documentos oficiales.\n` +
+        `  - ${conteoConstancias} Constancias de Participante\n` +
+        `  - ${conteoReconocimientos} Reconocimientos de Instructor\n` +
         `• Archivo: ${nombreZip}\n\n` +
         `Ya puedes subir este archivo o su carpeta a Google Drive.`
       )
@@ -452,12 +531,12 @@ export default function AdminReporteRH() {
     }
   }
 
-  // 3. Descargar PDF individual
+  // 3. Descargar PDF individual (Constancia o Reconocimiento)
   async function descargarIndividual(fila) {
-    const key = fila.docenteId + fila.cursoId
+    const key = `${fila.tipoDoc}_${fila.codigo}_${fila.docenteId}`
     setDescargandoId(key)
     try {
-      await descargarConstancia('constancia', {
+      await descargarConstancia(fila.tipoDoc, {
         docenteId: fila.docenteId,
         cursoId: fila.cursoId,
         nombreCompleto: fila.nombre,
@@ -471,7 +550,7 @@ export default function AdminReporteRH() {
       })
     } catch (err) {
       console.error(err)
-      alert('Error al descargar constancia: ' + err.message)
+      alert(`Error al descargar ${fila.tipoDoc}: ` + err.message)
     } finally {
       setDescargandoId(null)
     }
@@ -521,7 +600,7 @@ export default function AdminReporteRH() {
         </div>
       )}
 
-      {/* FILTROS: 1. AÑO -> 2. PERIODO / CUATRIMESTRE -> 3. BUSCADOR */}
+      {/* FILTROS: 1. AÑO -> 2. PERIODO / CUATRIMESTRE -> 3. TIPO DOCUMENTO -> 4. BUSCADOR */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 rounded-xl bg-slate-50 border border-slate-200 p-4 items-end">
         
         {/* 1. Año */}
@@ -557,36 +636,50 @@ export default function AdminReporteRH() {
           </select>
         </div>
 
-        {/* 3. Fechas si es rango o Buscador rápido */}
+        {/* 3. Tipo de Documento */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">3. Tipo de Documento:</label>
+          <select
+            value={tipoDocSel}
+            onChange={(e) => setTipoDocSel(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white font-semibold text-slate-800"
+          >
+            <option value="todos">🌟 Todos los Documentos</option>
+            <option value="constancia">📜 Solo Constancias (Participantes)</option>
+            <option value="reconocimiento">🎖️ Solo Reconocimientos (Instructores)</option>
+          </select>
+        </div>
+
+        {/* 4. Fechas si es rango o Buscador rápido */}
         {periodoSel === 'rango' ? (
-          <>
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">Desde:</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Desde:</label>
               <input
                 type="date"
                 value={rangoDesde}
                 onChange={(e) => setRangoDesde(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs bg-white"
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs bg-white"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1">Hasta:</label>
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">Hasta:</label>
               <input
                 type="date"
                 value={rangoHasta}
                 onChange={(e) => setRangoHasta(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs bg-white"
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs bg-white"
               />
             </div>
-          </>
+          </div>
         ) : (
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-bold text-slate-700 mb-1">3. Buscar por nombre o curso:</label>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">4. Buscar:</label>
             <input
               type="text"
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Escribe nombre, correo o folio…"
+              placeholder="Nombre, correo, folio, curso…"
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
             />
           </div>
@@ -595,9 +688,12 @@ export default function AdminReporteRH() {
 
       {/* Barra de contador y botones de acción */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-[#1B396A] bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg">
-            ✓ {filasFiltradas?.length || 0} constancias acreditadas ({anioSel === 'todos' ? 'Todos los años' : `Año ${anioSel}`})
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs sm:text-sm font-bold text-[#1B396A] bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg flex items-center gap-2">
+            <span>✓ {filasFiltradas?.length || 0} documentos</span>
+            <span className="text-[11px] font-normal text-slate-600">
+              ({conteoConstancias} constancias · {conteoReconocimientos} reconocimientos)
+            </span>
           </span>
           <button
             onClick={cargar}
@@ -639,12 +735,12 @@ export default function AdminReporteRH() {
 
       {/* Tabla de resultados */}
       {cargando ? (
-        <p className="text-center text-slate-400 py-12 text-sm">Cargando constancias oficiales de todos los periodos…</p>
+        <p className="text-center text-slate-400 py-12 text-sm">Cargando constancias y reconocimientos oficiales…</p>
       ) : !filasFiltradas || filasFiltradas.length === 0 ? (
         <div className="p-8 text-center text-slate-500 text-xs bg-slate-50/50 rounded-xl border border-dashed border-slate-200 space-y-1.5">
-          <p className="font-semibold text-slate-600">No se encontraron constancias para los filtros seleccionados.</p>
+          <p className="font-semibold text-slate-600">No se encontraron registros para los filtros seleccionados.</p>
           <p className="text-[11px] text-slate-400">
-            Prueba cambiando a "Todos los años" o "Todo el año (Completo)". Total acumulado en base de datos: {totalLeidos.historial} en historial y {totalLeidos.activas} activas.
+            Prueba cambiando a "Todos los documentos", "Todos los años" o "Todo el año (Completo)". Total en base de datos: {totalLeidos.historial} en historial, {totalLeidos.activas} activas y {totalLeidos.reconocimientos} reconocimientos de instructor.
           </p>
         </div>
       ) : (
@@ -652,20 +748,35 @@ export default function AdminReporteRH() {
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
               <tr>
-                <th className="py-3 px-3">Docente</th>
+                <th className="py-3 px-3">Tipo / Rol</th>
+                <th className="py-3 px-3">Docente / Instructor</th>
                 <th className="py-3 px-3">Email</th>
                 <th className="py-3 px-3">Folio</th>
                 <th className="py-3 px-3">Curso</th>
                 <th className="py-3 px-3 text-center">Año / Periodo</th>
                 <th className="py-3 px-3 text-center">Horas</th>
-                <th className="py-3 px-3 text-right">Constancia</th>
+                <th className="py-3 px-3 text-right">Documento</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filasFiltradas.map((f, idx) => {
-                const key = `${f.codigo}_${f.docenteId}_${idx}`
+                const key = `${f.tipoDoc}_${f.codigo}_${f.docenteId}_${idx}`
+                const esRec = f.tipoDoc === 'reconocimiento'
                 return (
                   <tr key={key} className="hover:bg-slate-50/80 transition-colors">
+                    <td className="py-2.5 px-3">
+                      {esRec ? (
+                        <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded text-[10px] border border-purple-200">
+                          <span>🎖️</span>
+                          <span>Reconocimiento</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[10px] border border-blue-200">
+                          <span>📜</span>
+                          <span>Constancia</span>
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2.5 px-3 font-bold text-slate-800">
                       {f.nombre}
                       <span className="block text-[10px] text-slate-400 font-normal truncate max-w-xs">
@@ -687,9 +798,13 @@ export default function AdminReporteRH() {
                       <button
                         onClick={() => descargarIndividual(f)}
                         disabled={descargandoId === key || generandoZip}
-                        className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold border border-blue-200 transition-colors cursor-pointer text-[11px]"
+                        className={`px-2.5 py-1 rounded-lg font-bold border transition-colors cursor-pointer text-[11px] ${
+                          esRec
+                            ? 'bg-purple-50 hover:bg-purple-100 text-purple-800 border-purple-200'
+                            : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
+                        }`}
                       >
-                        {descargandoId === key ? '⏳' : '⬇ PDF'}
+                        {descargandoId === key ? '⏳' : esRec ? '⬇ Reconocimiento' : '⬇ Constancia'}
                       </button>
                     </td>
                   </tr>
