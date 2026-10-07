@@ -1,3 +1,4 @@
+// src/components/ValidadorConstancias.jsx
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import jsPDF from 'jspdf'
@@ -11,25 +12,28 @@ export default function ValidadorConstancias({ onVolver }) {
   const [resultado, setResultado] = useState(null)
 
   useEffect(() => {
-    const hash = window.location.hash // ej. "#validar?folio=TNM-054-36-2026-01"
+    // Revisa si viene un folio en el hash (ej. "#validar?folio=TNM-054-36-2026-01")
+    const hash = window.location.hash
     const partes = hash.split('?')
     if (partes.length > 1) {
       const params = new URLSearchParams(partes[1])
-      const folioUrl = params.get('folio')
+      const folioUrl = params.get('folio') || params.get('validar')
       if (folioUrl) {
         setQuery(folioUrl.toUpperCase())
         buscar(folioUrl.toUpperCase())
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function buscar(valorForzado) {
     const valor = (valorForzado ?? query).trim().toUpperCase()
     if (!valor) return
+
     setBuscando(true)
     setEstado('idle')
+
     const folioCompleto = valor.startsWith('TNM-054-') ? valor : PREFIJO + valor
+    const folioSinPrefijo = valor.replace(/^TNM-054-/, '')
 
     // 1. Probar RPC con prefijo TNM-054-
     let { data } = await supabase.rpc('validar_constancia', { p_folio: folioCompleto })
@@ -42,7 +46,7 @@ export default function ValidadorConstancias({ onVolver }) {
       }
     }
 
-    // 3. Si aún no encontró, buscar en la tabla inscripciones
+    // 3. Si aún no encontró, buscar en la tabla inscripciones (alumnos/participantes)
     if (!data || data.length === 0) {
       const { data: ins } = await supabase
         .from('inscripciones')
@@ -58,12 +62,12 @@ export default function ValidadorConstancias({ onVolver }) {
           fecha_texto: ins.cursos.fecha_inicio && ins.cursos.fecha_fin ? `${ins.cursos.fecha_inicio} al ${ins.cursos.fecha_fin}` : '',
           departamento: ins.cursos.departamento || ins.docentes?.departamento || '',
           horas: ins.cursos.horas || '',
-          tipo: ins.cursos.tipo || '',
+          tipo: ins.cursos.tipo || 'Constancia',
         }]
       }
     }
 
-    // 4. Si aún no encontró, buscar en inscripciones_historial
+    // 4. Si aún no encontró, buscar en inscripciones_historial (2024, 2025, etc.)
     if (!data || data.length === 0) {
       const { data: hist } = await supabase
         .from('inscripciones_historial')
@@ -79,7 +83,28 @@ export default function ValidadorConstancias({ onVolver }) {
           fecha_texto: '',
           departamento: '',
           horas: '',
-          tipo: '',
+          tipo: 'Constancia',
+        }]
+      }
+    }
+
+    // 5. Si aún no encontró, buscar en cursos (para Reconocimientos oficiales de Instructores)
+    if (!data || data.length === 0) {
+      const { data: curso } = await supabase
+        .from('cursos')
+        .select('id, folio, nombre, instructor, fecha_inicio, fecha_fin, horas, departamento, tipo')
+        .or(`folio.eq.${valor},folio.eq.${folioCompleto},folio.eq.${folioSinPrefijo}`)
+        .maybeSingle()
+
+      if (curso && curso.instructor) {
+        data = [{
+          folio: curso.folio || folioCompleto,
+          nombre: curso.instructor,
+          curso: curso.nombre,
+          fecha_texto: curso.fecha_inicio && curso.fecha_fin ? `${curso.fecha_inicio} al ${curso.fecha_fin}` : '',
+          departamento: curso.departamento || '',
+          horas: curso.horas || '',
+          tipo: 'Reconocimiento (Instructor)',
         }]
       }
     }
@@ -98,6 +123,7 @@ export default function ValidadorConstancias({ onVolver }) {
 
   function descargarComprobante() {
     if (!resultado) return
+
     const doc = new jsPDF('p', 'mm', 'letter')
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
@@ -168,12 +194,12 @@ export default function ValidadorConstancias({ onVolver }) {
       <header className="bg-white shadow-sm px-4 py-3 flex items-center gap-3 sticky top-0 z-10">
         <button
           onClick={onVolver}
-          className="text-sm text-itd-navy font-medium shrink-0"
+          className="text-sm text-[#1B396A] font-semibold shrink-0 cursor-pointer hover:underline"
         >
           ← Salir
         </button>
         <div className="flex-1 text-center">
-          <p className="text-sm font-bold text-slate-800">Validador de Constancias</p>
+          <p className="text-sm font-bold text-slate-800">Validador de Constancias y Reconocimientos</p>
           <p className="text-xs text-slate-500">Instituto Tecnológico de Durango</p>
         </div>
         <div className="w-10" />
@@ -181,13 +207,13 @@ export default function ValidadorConstancias({ onVolver }) {
 
       <main className="max-w-lg w-full mx-auto px-4 py-6 flex-1">
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-          <h2 className="text-lg font-bold text-slate-900 mb-1">Buscar Constancia</h2>
+          <h2 className="text-lg font-bold text-slate-900 mb-1">Buscar Documento Oficial</h2>
           <p className="text-sm text-slate-500 mb-4">
             Ingresa el folio exacto, con o sin el prefijo <strong>TNM-054-</strong>
           </p>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex flex-1 border border-slate-300 rounded-lg overflow-hidden focus-within:border-itd-navy">
+            <div className="flex flex-1 border border-slate-300 rounded-lg overflow-hidden focus-within:border-[#1B396A]">
               <span className="bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 border-r border-slate-200 flex items-center whitespace-nowrap">
                 TNM-054-
               </span>
@@ -200,19 +226,18 @@ export default function ValidadorConstancias({ onVolver }) {
                 autoFocus
               />
             </div>
-
             <div className="flex gap-2">
               <button
                 onClick={() => buscar()}
                 disabled={buscando || !query}
-                className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-semibold hover:bg-itd-navyDark disabled:opacity-50 whitespace-nowrap"
+                className="rounded-lg bg-[#1B396A] text-white px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 whitespace-nowrap cursor-pointer"
               >
                 {buscando ? '...' : 'Verificar'}
               </button>
               <button
                 onClick={limpiar}
                 disabled={buscando}
-                className="rounded-lg bg-slate-100 text-slate-600 px-3 py-2 text-sm font-medium hover:bg-slate-200"
+                className="rounded-lg bg-slate-100 text-slate-600 px-3 py-2 text-sm font-medium hover:bg-slate-200 cursor-pointer"
               >
                 Borrar
               </button>
@@ -227,33 +252,33 @@ export default function ValidadorConstancias({ onVolver }) {
               <span className="text-lg font-bold text-red-600">Documento no encontrado</span>
             </div>
             <p className="text-sm text-slate-600">
-              El folio no fue encontrado o no está vigente. Verifica que esté bien escrito.
+              El folio no fue encontrado o no está vigente en la base de datos oficial. Verifica que esté bien escrito.
             </p>
           </div>
         )}
 
         {estado === 'encontrado' && resultado && (
-          <div className="mt-4 rounded-2xl bg-green-50 border-l-4 border-green-500 p-5">
+          <div className="mt-4 rounded-2xl bg-green-50 border-l-4 border-green-500 p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-2xl">✅</span>
               <span className="text-lg font-bold text-green-700">Documento Válido</span>
             </div>
             <p className="text-sm text-slate-600 mb-4">
-              Folio: <strong className="text-slate-900">{resultado.folio}</strong>
+              Folio: <strong className="text-slate-900 font-mono">{resultado.folio}</strong>
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-4 border-t border-slate-200">
-              <Campo label="Nombre" valor={resultado.nombre} />
-              <Campo label="Curso" valor={resultado.curso} />
-              <Campo label="Fecha" valor={resultado.fecha_texto} />
+              <Campo label="Nombre / Titular" valor={resultado.nombre} />
+              <Campo label="Curso - Taller" valor={resultado.curso} />
+              <Campo label="Fecha / Periodo" valor={resultado.fecha_texto} />
               <Campo label="Departamento" valor={resultado.departamento} />
-              <Campo label="Duración" valor={`${resultado.horas} hrs`} />
+              <Campo label="Duración" valor={resultado.horas ? `${resultado.horas} hrs` : ''} />
               <Campo label="Tipo" valor={resultado.tipo} />
             </div>
 
             <button
               onClick={descargarComprobante}
-              className="mt-4 w-full rounded-lg bg-green-700 text-white px-4 py-2.5 text-sm font-semibold hover:bg-green-800"
+              className="mt-5 w-full rounded-lg bg-green-700 text-white px-4 py-2.5 text-sm font-semibold hover:bg-green-800 shadow cursor-pointer transition-colors"
             >
               ⬇ Descargar Comprobante de Validación (PDF)
             </button>

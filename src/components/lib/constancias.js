@@ -1,4 +1,4 @@
-import { PDFDocument, rgb } from 'pdf-lib'
+ import { PDFDocument, rgb } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import QRCode from 'qrcode'
 import { formatearRangoFechas } from './formatoFechas'
@@ -248,11 +248,11 @@ export async function descargarConstancia(tipoDocumento, datos) {
   }
 }
 
-// En constancias.js la función obtenerUrlValidacion limpia cualquier punto o diagonal:
+// Función que genera la URL de validación completamente limpia, SIN punto ni diagonales erróneas
 export function obtenerUrlValidacion(folioPersonal, tipoDocumento) {
   const folioEnc = encodeURIComponent((folioPersonal || '').trim())
   const tipoEnc = encodeURIComponent(tipoDocumento || 'constancia')
-  const origin = window.location.origin
+  const origin = window.location.origin.replace(/\.+$/, '')
   return `${origin}/?validar=${folioEnc}&tipo=${tipoEnc}`
 }
 
@@ -321,7 +321,7 @@ export async function generarPdfBytes(tipoDocumento, datos) {
       x = pos.x1 - anchoTexto
     }
 
-    page.drawText(texto, { x, y: yBase, size: tam, font, color })
+    page.drawText(texto, { x, y, size: tam, font, color })
   }
 
   // Párrafo principal
@@ -343,7 +343,8 @@ export async function generarPdfBytes(tipoDocumento, datos) {
   // Código QR oficial de validación
   if (config.qr && datos.folioPersonal) {
     try {
-      const urlValidacion = `${window.location.origin}${BASE}?validar=${encodeURIComponent(datos.folioPersonal)}&tipo=${tipoDocumento}`
+      // ✅ AHORA SÍ usa obtenerUrlValidacion (completamente limpia sin el punto de BASE)
+      const urlValidacion = obtenerUrlValidacion(datos.folioPersonal, tipoDocumento)
       const qrDataUrl = await QRCode.toDataURL(urlValidacion, { margin: 0, width: 256 })
       const qrBytes = await fetch(qrDataUrl).then((r) => r.arrayBuffer())
       const qrImagen = await pdfDoc.embedPng(qrBytes)
