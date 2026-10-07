@@ -248,6 +248,14 @@ export async function descargarConstancia(tipoDocumento, datos) {
   }
 }
 
+// En constancias.js la función obtenerUrlValidacion limpia cualquier punto o diagonal:
+export function obtenerUrlValidacion(folioPersonal, tipoDocumento) {
+  const folioEnc = encodeURIComponent((folioPersonal || '').trim())
+  const tipoEnc = encodeURIComponent(tipoDocumento || 'constancia')
+  const origin = window.location.origin
+  return `${origin}/?validar=${folioEnc}&tipo=${tipoEnc}`
+}
+
 export async function generarPdfBytes(tipoDocumento, datos) {
   const anioDoc = deducirAnio(datos)
   const config = CONFIG_POR_ANIO[anioDoc]?.[tipoDocumento] || CAMPOS[tipoDocumento]
