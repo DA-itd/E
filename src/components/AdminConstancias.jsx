@@ -5,11 +5,33 @@ import { formatearRangoFechas } from '../lib/formatoFechas'
 import { descargarConstancia } from '../lib/constancias'
 
 function normalizar(texto) {
-  return (texto || '')
+  if (texto === null || texto === undefined) return ''
+  return String(texto)
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
+}
+
+// Formateo de fechas a prueba de fallos: nunca lanza excepciones por fechas nulas o formatos históricos
+function formatearFechasSeguro(inicio, fin) {
+  if (!inicio && !fin) return 'Fechas registradas en constancia'
+  try {
+    if (typeof formatearRangoFechas === 'function') {
+      const res = formatearRangoFechas(inicio, fin)
+      if (res && typeof res === 'string' && !res.includes('undefined') && !res.includes('NaN')) {
+        return res
+      }
+    }
+  } catch {
+    // Si falla formatearRangoFechas por nulo o formato no estándar
+  }
+  const strIni = inicio ? String(inicio).trim() : ''
+  const strFin = fin ? String(fin).trim() : ''
+  if (strIni && strFin && strIni !== strFin) {
+    return `${strIni} al ${strFin}`
+  }
+  return strIni || strFin || 'Fechas registradas en constancia'
 }
 
 // Limpia títulos profesionales y honoríficos (Dr., Ing., Mtro., etc.)
@@ -31,6 +53,7 @@ function obtenerPalabrasClave(texto) {
 // Comprueba si dos nombres corresponden a la misma persona de forma rigurosa
 // Evita falsos positivos entre personas con nombres o apellidos compartidos (ej. José Luis vs José Lauro)
 function sonMismaPersona(nom1, nom2) {
+  if (!nom1 || !nom2) return false
   const n1 = limpiarTitulos(nom1)
   const n2 = limpiarTitulos(nom2)
   if (!n1 || !n2) return false
@@ -57,7 +80,6 @@ function sonMismaPersona(nom1, nom2) {
   }
 
   // Caso 2: Una es un subconjunto de la otra (ej. omitieron segundo nombre o segundo apellido)
-  // Ej: "JOSE LAURO SOLIS" dentro de "JOSE LAURO SOLIS GALLEGOS"
   const comunes = palabras1.filter((p) => palabras2.includes(p))
   if (comunes.length >= 2 && (dif1.length === 0 || dif2.length === 0)) {
     return true
@@ -69,9 +91,11 @@ function sonMismaPersona(nom1, nom2) {
 // Verifica si un docente es instructor o co-instructor del curso
 function esInstructorDelCurso(campoInstructor, nombreDocente) {
   if (!campoInstructor || !nombreDocente) return false
+  const strInst = typeof campoInstructor === 'string' ? campoInstructor : String(campoInstructor || '')
+  if (!strInst.trim()) return false
 
   // Soporta cursos con co-instructores separados por ',', ';', '/', ' e ', ' y ', o saltos de línea
-  const lista = campoInstructor
+  const lista = strInst
     .split(/[,;\/\n]+|\s+y\s+|\s+e\s+/i)
     .map((s) => s.trim())
     .filter(Boolean)
@@ -84,6 +108,35 @@ function esAprobadoHistorial(val) {
   const s = String(val).toLowerCase().trim()
   if (s === 'no' || s === 'false' || s === '0' || s === 'cancelado' || s === 'reprobado' || s === 'baja') return false
   return true
+}
+
+// Garantiza que la entidad curso sea siempre un objeto plano seguro para React y PDF
+function normalizarCurso(cursoRaw, fallback = {}) {
+  const c = Array.isArray(cursoRaw) ? cursoRaw[0] : cursoRaw
+  if (c && typeof c === 'object') {
+    return {
+      id: c.id || fallback.id || 'curso',
+      nombre: c.nombre || fallback.nombre || 'Curso Registrado',
+      folio: c.folio || fallback.folio || 'S/F',
+      horas: c.horas ?? fallback.horas ?? 30,
+      fecha_inicio: c.fecha_inicio ?? fallback.fecha_inicio ?? null,
+      fecha_fin: c.fecha_fin ?? fallback.fecha_fin ?? null,
+      departamento: c.departamento || fallback.departamento || 'Instituto Tecnológico de Durango',
+      tipo: c.tipo || fallback.tipo || 'Docente',
+      status: c.status || fallback.status || 'Activo',
+    }
+  }
+  return {
+    id: fallback.id || 'curso',
+    nombre: fallback.nombre || 'Curso Registrado',
+    folio: fallback.folio || 'S/F',
+    horas: fallback.horas ?? 30,
+    fecha_inicio: fallback.fecha_inicio ?? null,
+    fecha_fin: fallback.fecha_fin ?? null,
+    departamento: fallback.departamento || 'Instituto Tecnológico de Durango',
+    tipo: fallback.tipo || 'Docente',
+    status: fallback.status || 'Activo',
+  }
 }
 
 export default function AdminConstancias() {
@@ -131,35 +184,58 @@ export default function AdminConstancias() {
     }
   }
 
-  // Búsqueda inteligente: encuentra docentes del catálogo, instructores de cursos y nombres de cursos
+  // Búsqueda inteligente tolerante a palabras, nombres y títulos (ej. "jose lauro", "solis gallegos")
   const sugerencias = useMemo(() => {
     const q = normalizar(busqueda)
     if (q.length < 2) return []
 
+    const tokensQ = q.split(' ').filter((w) => w.length > 1)
+
     // 1. Docentes del catálogo oficial
     const docentesEncontrados = todosDocentes
-      .filter((d) => normalizar(d.nombre_completo).includes(q) || normalizar(d.email).includes(q))
+      .filter((d) => {
+        const nom = normalizar(d.nombre_completo)
+        const em = normalizar(d.email)
+        if (nom.includes(q) || em.includes(q)) return true
+        if (tokensQ.length > 1) {
+          const aciertos = tokensQ.filter((t) => nom.includes(t) || em.includes(t)).length
+          if (aciertos >= Math.max(2, Math.ceil(tokensQ.length * 0.6))) return true
+        }
+        return false
+      })
       .map((d) => ({
         id: d.id,
         tipoElemento: 'docente',
-        nombre_completo: d.nombre_completo,
+        nombre_completo: d.nombre_completo || 'Docente sin nombre',
         email: d.email || 'Sin correo',
         departamento: d.departamento || 'Sin departamento',
         badge: 'Docente registrado',
       }))
 
-    // 2. Instructores de cursos (incluso si no están dados de alta como docentes o tienen título Dr./Ing.)
+    // 2. Instructores de cursos
     const mapaInstructores = new Map()
     for (const c of todosCursos) {
       if (!c.instructor) continue
       const instNorm = normalizar(c.instructor)
-      if (instNorm.includes(q) || normalizar(c.nombre).includes(q) || normalizar(c.folio).includes(q)) {
-        if (!mapaInstructores.has(c.instructor)) {
-          mapaInstructores.set(c.instructor, {
+      const nomCurso = normalizar(c.nombre)
+      const folioCurso = normalizar(c.folio)
+
+      let coincide = instNorm.includes(q) || nomCurso.includes(q) || folioCurso.includes(q)
+      if (!coincide && tokensQ.length > 1) {
+        const aciertos = tokensQ.filter((t) => instNorm.includes(t) || nomCurso.includes(t)).length
+        if (aciertos >= Math.max(2, Math.ceil(tokensQ.length * 0.6))) {
+          coincide = true
+        }
+      }
+
+      if (coincide) {
+        const instructorClave = String(c.instructor).trim()
+        if (!mapaInstructores.has(instructorClave)) {
+          mapaInstructores.set(instructorClave, {
             id: `inst_${c.id}`,
             tipoElemento: 'instructor',
-            nombre_completo: c.instructor,
-            email: `Instructor del curso: ${c.nombre}`,
+            nombre_completo: instructorClave,
+            email: `Instructor del curso: ${c.nombre || ''}`,
             departamento: c.departamento || 'Desarrollo Académico',
             badge: 'Instructor de Curso',
             cursoDirecto: c,
@@ -170,7 +246,7 @@ export default function AdminConstancias() {
 
     const instructoresEncontrados = Array.from(mapaInstructores.values())
 
-    // Combinar sin duplicar nombres idénticos
+    // Combinar sin duplicar nombres de la misma persona
     const combinados = [...docentesEncontrados]
     for (const inst of instructoresEncontrados) {
       const yaExiste = combinados.some((d) => sonMismaPersona(d.nombre_completo, inst.nombre_completo))
@@ -183,60 +259,68 @@ export default function AdminConstancias() {
   }, [busqueda, todosDocentes, todosCursos])
 
   async function seleccionar(item) {
+    if (!item) return
     setDocenteSel(item)
     setBusqueda('')
     setCargandoDetalle(true)
     setError('')
 
-    // Cursos como instructor: busca cualquier curso donde figure legítimamente como instructor o co-instructor
-    const cursosImpartidos = todosCursos.filter((c) =>
-      esInstructorDelCurso(c.instructor, item.nombre_completo)
-    )
-    setCursosComoInstructor(cursosImpartidos)
+    try {
+      // Cursos como instructor: busca cualquier curso donde figure legítimamente como instructor o co-instructor
+      const cursosImpartidos = todosCursos
+        .filter((c) => esInstructorDelCurso(c.instructor, item.nombre_completo))
+        .map((c) => normalizarCurso(c, { id: c.id, nombre: c.nombre, folio: c.folio, departamento: c.departamento }))
+      setCursosComoInstructor(cursosImpartidos)
 
-    // Si tiene ID real en la tabla docentes, buscar también inscripciones de cursos como alumno
-    let inscripcionesActivas = []
-    let historialConCurso = []
+      // Si tiene ID real en la tabla docentes, buscar también inscripciones de cursos como alumno
+      let inscripcionesActivas = []
+      let historialConCurso = []
 
-    if (item.tipoElemento === 'docente' && item.id && !item.id.startsWith('inst_')) {
-      try {
-        const { data: insData } = await supabase
-          .from('inscripciones')
-          .select('id, folio_personal, fecha_descarga, created_at, asistencia_aprobada, cursos(id, nombre, fecha_inicio, fecha_fin, horas, folio, tipo, departamento)')
-          .eq('docente_id', item.id)
-          .eq('estado', 'activo')
-          .eq('asistencia_aprobada', true)
-          .order('fecha_inscripcion', { ascending: false })
+      if (item.tipoElemento === 'docente' && item.id && !String(item.id).startsWith('inst_')) {
+        try {
+          const { data: insData } = await supabase
+            .from('inscripciones')
+            .select('id, folio_personal, fecha_descarga, created_at, asistencia_aprobada, cursos(id, nombre, fecha_inicio, fecha_fin, horas, folio, tipo, departamento)')
+            .eq('docente_id', item.id)
+            .eq('estado', 'activo')
+            .eq('asistencia_aprobada', true)
+            .order('fecha_inscripcion', { ascending: false })
 
-        inscripcionesActivas = (insData || []).map((i) => ({ ...i, origen: 'activa' }))
+          inscripcionesActivas = (insData || []).map((i) => ({
+            ...i,
+            origen: 'activa',
+            cursos: normalizarCurso(i.cursos, {
+              id: `act_${i.id}`,
+              folio: i.folio_personal,
+              departamento: item.departamento,
+            }),
+          }))
 
-        // Historial previo (años anteriores: 2024, 2025, etc.)
-        if (item.email && item.email.includes('@')) {
-          const { data: histData } = await supabase
-            .from('inscripciones_historial')
-            .select('*')
-            .ilike('email', item.email.trim())
+          // Historial previo (años anteriores: 2024, 2025, etc.)
+          if (item.email && String(item.email).includes('@')) {
+            const { data: histData } = await supabase
+              .from('inscripciones_historial')
+              .select('*')
+              .ilike('email', String(item.email).trim())
 
-          if (histData && histData.length > 0) {
-            const histAprobados = histData.filter((h) => esAprobadoHistorial(h.asistencia_aprobada))
-            const folios = [...new Set(histAprobados.map((h) => h.folio_curso).filter(Boolean))]
+            if (histData && histData.length > 0) {
+              const histAprobados = histData.filter((h) => esAprobadoHistorial(h.asistencia_aprobada))
+              const folios = [...new Set(histAprobados.map((h) => h.folio_curso).filter(Boolean))]
 
-            let mapaCursos = {}
-            if (folios.length > 0) {
-              const { data: cursosPorFolio } = await supabase
-                .from('cursos')
-                .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento')
-                .in('folio', folios)
+              let mapaCursos = {}
+              if (folios.length > 0) {
+                const { data: cursosPorFolio } = await supabase
+                  .from('cursos')
+                  .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento')
+                  .in('folio', folios)
 
-              mapaCursos = Object.fromEntries((cursosPorFolio || []).map((c) => [c.folio, c]))
-            }
+                mapaCursos = Object.fromEntries((cursosPorFolio || []).map((c) => [c.folio, c]))
+              }
 
-            historialConCurso = histAprobados
-              .map((h) => {
+              historialConCurso = histAprobados.map((h, idx) => {
                 const cursoEncontrado = mapaCursos[h.folio_curso]
-                // Si el curso histórico no está en la tabla `cursos`, rescatar datos guardados en la fila del historial
                 const cursoFinal = cursoEncontrado || {
-                  id: h.curso_id || `hist_${h.id}`,
+                  id: h.curso_id || `hist_${h.id || idx}`,
                   folio: h.folio_curso || h.folio_personal || 'HIST',
                   nombre: h.curso || h.nombre_curso || h.nombre || 'Curso Registrado',
                   horas: h.horas || 30,
@@ -246,74 +330,83 @@ export default function AdminConstancias() {
                   tipo: h.tipo || 'Docente',
                 }
                 return {
-                  id: h.id,
+                  id: h.id || `hist_${h.folio_personal || idx}_${idx}`,
                   folio_personal: h.folio_personal,
                   fecha_descarga: h.fecha_descarga || h.created_at,
                   origen: 'historial',
-                  cursos: cursoFinal,
+                  cursos: normalizarCurso(cursoFinal),
                 }
               })
-              .filter(Boolean)
+            }
           }
+        } catch (err) {
+          console.warn('Error cargando inscripciones:', err)
         }
-      } catch (err) {
-        console.warn('Error cargando inscripciones:', err)
       }
-    }
 
-    setInscripciones([...inscripcionesActivas, ...historialConCurso])
-    setCargandoDetalle(false)
+      setInscripciones([...inscripcionesActivas, ...historialConCurso])
+    } catch (err) {
+      console.error('Error al seleccionar docente:', err)
+      setError('Ocurrió un error al cargar la información: ' + err.message)
+    } finally {
+      setCargandoDetalle(false)
+    }
   }
 
   function regresarABusqueda() {
     setDocenteSel(null)
     setInscripciones([])
     setCursosComoInstructor([])
+    setError('')
   }
 
   async function descargar(ins) {
+    const cursoObj = normalizarCurso(ins?.cursos)
     setGenerando(ins.id)
     try {
       await descargarConstancia('constancia', {
-        docenteId: docenteSel.id,
-        cursoId: ins.cursos?.id,
-        nombreCompleto: docenteSel.nombre_completo,
-        curso: ins.cursos?.nombre,
-        fechaInicio: ins.cursos?.fecha_inicio,
-        fechaFin: ins.cursos?.fecha_fin,
-        horas: ins.cursos?.horas,
-        departamento: ins.cursos?.departamento || docenteSel.departamento,
+        docenteId: docenteSel?.id,
+        cursoId: cursoObj.id,
+        nombreCompleto: docenteSel?.nombre_completo,
+        curso: cursoObj.nombre,
+        fechaInicio: cursoObj.fecha_inicio,
+        fechaFin: cursoObj.fecha_fin,
+        horas: cursoObj.horas,
+        departamento: cursoObj.departamento || docenteSel?.departamento,
         folioPersonal: ins.folio_personal,
-        tipo: ins.cursos?.tipo,
+        tipo: cursoObj.tipo,
         fechaDescarga: ins.fecha_descarga,
       })
     } catch (err) {
       console.error(err)
       alert('No se pudo generar la constancia: ' + err.message)
+    } finally {
+      setGenerando(null)
     }
-    setGenerando(null)
   }
 
   async function descargarReconocimiento(curso) {
-    setGenerando(curso.id)
+    const cursoObj = normalizarCurso(curso)
+    setGenerando(cursoObj.id)
     try {
       await descargarConstancia('reconocimiento', {
-        docenteId: docenteSel?.id || curso.id,
-        cursoId: curso.id,
-        nombreCompleto: curso.instructor || docenteSel?.nombre_completo,
-        curso: curso.nombre,
-        fechaInicio: curso.fecha_inicio,
-        fechaFin: curso.fecha_fin,
-        horas: curso.horas,
-        departamento: curso.departamento || docenteSel?.departamento,
-        folioPersonal: curso.folio,
-        tipo: curso.tipo,
+        docenteId: docenteSel?.id || cursoObj.id,
+        cursoId: cursoObj.id,
+        nombreCompleto: cursoObj.instructor || docenteSel?.nombre_completo,
+        curso: cursoObj.nombre,
+        fechaInicio: cursoObj.fecha_inicio,
+        fechaFin: cursoObj.fecha_fin,
+        horas: cursoObj.horas,
+        departamento: cursoObj.departamento || docenteSel?.departamento,
+        folioPersonal: cursoObj.folio,
+        tipo: cursoObj.tipo,
       })
     } catch (err) {
       console.error(err)
       alert('No se pudo generar el reconocimiento: ' + err.message)
+    } finally {
+      setGenerando(null)
     }
-    setGenerando(null)
   }
 
   return (
@@ -346,8 +439,15 @@ export default function AdminConstancias() {
       </p>
 
       {error && (
-        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium mb-4">
-          ⚠️ {error}
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium mb-4 flex items-center justify-between gap-2">
+          <span>⚠️ {error}</span>
+          <button
+            type="button"
+            onClick={() => setError('')}
+            className="text-rose-500 hover:text-rose-800 font-bold px-2 py-0.5"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -363,7 +463,7 @@ export default function AdminConstancias() {
               placeholder={
                 cargandoLista
                   ? 'Cargando catálogo…'
-                  : 'Escribe nombre del docente (ej. Jorge Enrique Loera, Loera, etc.)…'
+                  : 'Escribe nombre del docente (ej. José Lauro Solís, Gallegos, etc.)…'
               }
               disabled={cargandoLista}
               autoFocus
@@ -435,12 +535,12 @@ export default function AdminConstancias() {
           <div className="rounded-2xl border border-itd-navy/15 bg-gradient-to-r from-slate-50 via-white to-slate-50 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-xl bg-itd-navy text-white flex items-center justify-center font-display text-lg font-black shrink-0 shadow-xs">
-                {docenteSel.nombre_completo.charAt(0)}
+                {(docenteSel.nombre_completo || 'D').charAt(0).toUpperCase()}
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="text-base font-bold text-itd-navy">
-                    {docenteSel.nombre_completo}
+                    {docenteSel.nombre_completo || 'Docente'}
                   </h3>
                   <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full">
                     Activo en Sistema
@@ -479,9 +579,9 @@ export default function AdminConstancias() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {cursosComoInstructor.map((curso) => (
+                    {cursosComoInstructor.map((curso, idx) => (
                       <div
-                        key={curso.id}
+                        key={curso.id || `cur_inst_${idx}`}
                         className="rounded-xl border border-purple-200 bg-purple-50/70 hover:bg-purple-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all shadow-xs"
                       >
                         <div className="flex-1 min-w-0">
@@ -495,7 +595,7 @@ export default function AdminConstancias() {
                           </div>
                           <p className="font-bold text-sm text-itd-navy">{curso.nombre}</p>
                           <p className="text-xs text-slate-600 mt-1">
-                            📅 {formatearRangoFechas(curso.fecha_inicio, curso.fecha_fin)} · ⏱️ {curso.horas} hrs · 🏛️ {curso.departamento}
+                            📅 {formatearFechasSeguro(curso.fecha_inicio, curso.fecha_fin)} · ⏱️ {curso.horas} hrs · 🏛️ {curso.departamento}
                           </p>
                         </div>
 
@@ -531,9 +631,9 @@ export default function AdminConstancias() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {inscripciones.map((ins) => (
+                    {inscripciones.map((ins, idx) => (
                       <div
-                        key={ins.id}
+                        key={ins.id || `ins_${ins.folio_personal || idx}_${idx}`}
                         className="rounded-xl border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-50 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 transition-all shadow-xs"
                       >
                         <div className="flex-1 min-w-0">
@@ -549,7 +649,7 @@ export default function AdminConstancias() {
                           </div>
                           <p className="font-bold text-sm text-itd-navy">{ins.cursos?.nombre}</p>
                           <p className="text-xs text-slate-600 mt-1">
-                            📅 {formatearRangoFechas(ins.cursos?.fecha_inicio, ins.cursos?.fecha_fin)} · ⏱️ {ins.cursos?.horas} hrs · 🏛️ {ins.cursos?.departamento}
+                            📅 {formatearFechasSeguro(ins.cursos?.fecha_inicio, ins.cursos?.fecha_fin)} · ⏱️ {ins.cursos?.horas} hrs · 🏛️ {ins.cursos?.departamento}
                           </p>
                         </div>
 

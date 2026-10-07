@@ -1,28 +1,28 @@
-// src/components/lib/constancias.js
 import { PDFDocument, rgb } from 'pdf-lib'
 import fontkit from '@pdf-lib/fontkit'
 import QRCode from 'qrcode'
 import { formatearRangoFechas } from './formatoFechas'
 import { supabase } from './supabaseClient'
 
-// Tamaño de página (Carta: 612 x 792 pt)
+// Tamaño de página tal como está en tu PDF original (Carta: 612 x 792 pt)
 const ANCHO_PAGINA = 612
 const ALTO_PAGINA = 792
-const BASE = import.meta.env.BASE_URL || '/'
+const BASE = import.meta.env.BASE_URL // respeta el "base" de vite.config.js (ej. "/E/")
 
 const COLOR_TEXTO = '#1f2937'
 const COLOR_DORADO = '#B48A00'
 const COLOR_GRIS = '#6b7280'
 
 /**
- * Construye la URL limpia y oficial para el código QR de validación.
- * Elimina rutas relativas "./" que confunden a escáneres de iPhone y Android.
+ * Construye la URL oficial para el código QR de validación.
+ * Evita errores de rutas relativas ("./") que rompen el enlace en escáneres móviles,
+ * y permite configurar una URL pública fija mediante VITE_PUBLIC_URL en caso de generar desde localhost.
  */
 export function obtenerUrlValidacion(folioPersonal, tipoDocumento) {
   const folioEnc = encodeURIComponent((folioPersonal || '').trim())
   const tipoEnc = encodeURIComponent(tipoDocumento || 'constancia')
 
-  // 1. Si tienes configurado tu dominio público en .env (ej. VITE_PUBLIC_URL=https://tu-app.vercel.app)
+  // 1. Si existe URL pública configurada (útil para pruebas en localhost o dominio oficial)
   const envUrl = import.meta.env.VITE_PUBLIC_URL || import.meta.env.VITE_APP_URL
   if (envUrl && typeof envUrl === 'string' && envUrl.startsWith('http')) {
     const limpia = envUrl.replace(/\/+$/, '')
@@ -32,6 +32,7 @@ export function obtenerUrlValidacion(folioPersonal, tipoDocumento) {
   // 2. Origen del navegador en producción
   if (typeof window !== 'undefined') {
     const origin = window.location.origin
+    // Limpia la base para que nunca contenga "." ni dobles diagonales
     let rutaBase = (BASE || '/').replace(/^\.?\/+/, '/').replace(/\/+$/, '')
     if (rutaBase === '/') rutaBase = ''
     return `${origin}${rutaBase}/?validar=${folioEnc}&tipo=${tipoEnc}`
@@ -71,6 +72,8 @@ const CAMPOS = {
 }
 
 // Registro para años específicos (2024, 2025, 2026, 2027...)
+// Si algún año requiere ajustar coordenadas de texto por diseño de membrete,
+// se ajusta de forma independiente en su sección correspondiente.
 const CONFIG_POR_ANIO = {
   2024: {
     constancia: { ...CAMPOS.constancia },
@@ -91,12 +94,14 @@ const CONFIG_POR_ANIO = {
 }
 
 function deducirAnio(datos) {
+  // 1. Del folio personal (ej. TNM-054-40-2024-01 o TNM-054-40-2025-10 o TNM-054-40-2026-05)
   const matchFolio = (datos.folioPersonal || '').match(/-(20\d\d)-/)
   if (matchFolio) return parseInt(matchFolio[1], 10)
 
   const matchFolioFin = (datos.folioPersonal || '').match(/-(20\d\d)$/)
   if (matchFolioFin) return parseInt(matchFolioFin[1], 10)
 
+  // 2. De las fechas del curso
   if (datos.fechaInicio && datos.fechaInicio.length >= 4) {
     const a = parseInt(datos.fechaInicio.slice(0, 4), 10)
     if (!isNaN(a) && a >= 2000 && a <= 2050) return a
@@ -106,23 +111,28 @@ function deducirAnio(datos) {
     if (!isNaN(a) && a >= 2000 && a <= 2050) return a
   }
 
+  // 3. Del nombre o texto del curso (ej. "Taller 2024" o "Curso 2025")
   const matchCurso = (datos.curso || '').match(/\b(20\d\d)\b/)
   if (matchCurso) {
     const a = parseInt(matchCurso[1], 10)
     if (a >= 2000 && a <= 2050) return a
   }
 
+  // 4. De la fecha de creación / descarga
   if (datos.fechaDescarga || datos.fechaCreacion) {
     const d = new Date(datos.fechaDescarga || datos.fechaCreacion)
     if (!isNaN(d.getFullYear())) return d.getFullYear()
   }
 
-  return new Date().getFullYear() || 2026
+  return 2026
 }
 
+// Carga resiliente de plantilla: busca versiones específicas del año (ej. 2024, 2025, 2026...)
+// tanto localmente en public/plantillas/ como en GitHub institucional, y con fallback automático a la plantilla base.
 async function cargarImagenPlantilla(tipoDocumento, anio) {
   const anioStr = String(anio || '')
   const candidatos = [
+    // Rutas locales por año (ej. /plantillas/constancia_2024.jpg, /plantillas/2024/constancia.jpg)
     `${BASE}plantillas/${tipoDocumento}_${anioStr}.jpg`,
     `${BASE}plantillas/${tipoDocumento}_${anioStr}.png`,
     `${BASE}plantillas/${tipoDocumento}_${anioStr}.jpeg`,
@@ -130,10 +140,14 @@ async function cargarImagenPlantilla(tipoDocumento, anio) {
     `${BASE}plantillas/${anioStr}/${tipoDocumento}.png`,
     `/plantillas/${tipoDocumento}_${anioStr}.jpg`,
     `/plantillas/${tipoDocumento}_${anioStr}.png`,
+
+    // Respaldos remotos en GitHub de Desarrollo Académico ITD para 2024 y 2025
     `https://raw.githubusercontent.com/DA-itd/E/main/public/plantillas/${tipoDocumento}_${anioStr}.jpg`,
     `https://raw.githubusercontent.com/DA-itd/E/main/public/plantillas/${tipoDocumento}_${anioStr}.png`,
     `https://raw.githubusercontent.com/DA-itd/E/main/public/plantillas/${anioStr}/${tipoDocumento}.jpg`,
     `https://raw.githubusercontent.com/DA-itd/E/main/plantillas/${tipoDocumento}_${anioStr}.jpg`,
+
+    // Plantillas base de respaldo (por si aún no se coloca la del año específico)
     `${BASE}plantillas/${tipoDocumento}.jpg`,
     `${BASE}plantillas/${tipoDocumento}.png`,
     `/plantillas/${tipoDocumento}.jpg`,
@@ -147,11 +161,14 @@ async function cargarImagenPlantilla(tipoDocumento, anio) {
       const resp = await fetch(url)
       if (resp.ok) {
         const buffer = await resp.arrayBuffer()
+        // Evita falsos positivos de SPA router que devuelve index.html (404)
         const primero = new Uint8Array(buffer.slice(0, 4))
-        if (primero[0] === 0x3C) continue // '<' indica HTML (404 de Vite)
+        if (primero[0] === 0x3C) continue // '<' indica HTML
         return { buffer, url }
       }
-    } catch {}
+    } catch {
+      // Intenta siguiente candidato
+    }
   }
 
   throw new Error(`No se encontró la plantilla para ${tipoDocumento} (año ${anio}).`)
@@ -261,15 +278,24 @@ function segmentosParrafo(tipoDocumento, valores) {
   ]
 }
 
+/**
+ * Descarga una constancia o reconocimiento.
+ * Se genera 100% "al vuelo" en el navegador del docente (0 MB en Storage de Supabase).
+ * No almacena archivos pesados en el servidor, permitiendo descargas ilimitadas.
+ */
 export async function descargarConstancia(tipoDocumento, datos) {
+  // Si la petición solo requiere los bytes (ej. para empaquetar en el ZIP de Recursos Humanos)
   if (datos.retornarBytes) {
     return await generarPdfBytes(tipoDocumento, datos)
   }
 
   const nombreArchivo = `${tipoDocumento}_${(datos.folioPersonal || 'ITD').replace(/\s+/g, '_')}.pdf`
+
+  // Genera el PDF directamente en memoria
   const bytes = await generarPdfBytes(tipoDocumento, datos)
   descargarBytes(bytes, nombreArchivo)
 
+  // Opcional: Registra la fecha de primera descarga en la base de datos (solo una fecha en texto, 0 bytes en storage)
   try {
     if (datos.docenteId && datos.cursoId) {
       supabase
@@ -281,7 +307,9 @@ export async function descargarConstancia(tipoDocumento, datos) {
         .then(() => {})
         .catch(() => {})
     }
-  } catch {}
+  } catch {
+    // Si la columna no existe en la base de datos, continúa sin problema
+  }
 }
 
 export async function generarPdfBytes(tipoDocumento, datos) {
@@ -293,9 +321,10 @@ export async function generarPdfBytes(tipoDocumento, datos) {
   pdfDoc.registerFontkit(fontkit)
   const page = pdfDoc.addPage([ANCHO_PAGINA, ALTO_PAGINA])
 
+  // Carga inteligente de plantilla por año (ej. constancia_2027.jpg o constancia.jpg)
   const { buffer: imgBytes, url: urlCargada } = await cargarImagenPlantilla(tipoDocumento, anioDoc)
   const u8 = new Uint8Array(imgBytes.slice(0, 8))
-  const esPng = (u8[0] === 0x89 && u8[1] === 0x4E && u8[2] === 0x47) || urlCargada.toLowerCase().endsWith('.png')
+  const esPng = (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) || urlCargada.toLowerCase().endsWith('.png')
   const imagen = esPng ? await pdfDoc.embedPng(imgBytes) : await pdfDoc.embedJpg(imgBytes)
   page.drawImage(imagen, { x: 0, y: 0, width: ANCHO_PAGINA, height: ALTO_PAGINA })
 
@@ -306,15 +335,38 @@ export async function generarPdfBytes(tipoDocumento, datos) {
   const fontNormal = await pdfDoc.embedFont(regularBytes)
   const fontNegrita = await pdfDoc.embedFont(boldBytes)
 
+  // La fecha de emisión se mantiene consistente: si ya tenía fecha registrada la usa; si no, la fecha actual
   const fechaReferencia = datos.fechaDescarga || datos.fechaCreacion || datos.created_at
   const fechaObj = fechaReferencia ? new Date(fechaReferencia) : new Date()
   const fechaCreacionTexto = fechaObj.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
-  const fechaSemana = formatearRangoFechas(datos.fechaFin, datos.fechaFin)
+
+  // La fecha oficial de fin del curso en el pie ("VICTORIA DE DURANGO...A <fecha>") siempre es fija
+  let fechaSemana = ''
+  try {
+    if (datos.fechaFin) {
+      fechaSemana = formatearRangoFechas(datos.fechaFin, datos.fechaFin)
+    }
+  } catch {}
+  if (!fechaSemana) {
+    fechaSemana = fechaCreacionTexto
+  }
+
+  let fechaCursoTexto = ''
+  try {
+    if (datos.fechaInicio || datos.fechaFin) {
+      fechaCursoTexto = formatearRangoFechas(datos.fechaInicio, datos.fechaFin)
+    }
+  } catch {}
+  if (!fechaCursoTexto) {
+    fechaCursoTexto = (datos.fechaInicio && datos.fechaFin)
+      ? `${datos.fechaInicio} AL ${datos.fechaFin}`
+      : (datos.fechaFin || datos.fechaInicio || 'PERIODO REGISTRADO')
+  }
 
   const valores = {
     NombreCompleto: (datos.nombreCompleto || '').toUpperCase(),
     Curso: (datos.curso || '').toUpperCase(),
-    FechaCurso: formatearRangoFechas(datos.fechaInicio, datos.fechaFin),
+    FechaCurso: (fechaCursoTexto || '').toUpperCase(),
     Horas: `${datos.horas || ''}`,
     Departamento: datos.departamento || '',
     FolioPersonal: datos.folioPersonal || '',
@@ -322,6 +374,7 @@ export async function generarPdfBytes(tipoDocumento, datos) {
     FECHA_CREACION: fechaCreacionTexto,
   }
 
+  // Campos de una sola línea
   for (const [nombreCampo, pos] of Object.entries(config.campos)) {
     let texto = valores[nombreCampo] ?? ''
     const font = pos.negrita ? fontNegrita : fontNormal
@@ -347,6 +400,7 @@ export async function generarPdfBytes(tipoDocumento, datos) {
     page.drawText(texto, { x, y: yBase, size: tam, font, color })
   }
 
+  // Párrafo principal
   const p = config.parrafo
   const segmentosP = segmentosParrafo(tipoDocumento, valores)
   const lineasP = armarLineas(segmentosP, fontNormal, fontNegrita, p.tam, 480)
@@ -355,13 +409,14 @@ export async function generarPdfBytes(tipoDocumento, datos) {
   const yInicialP = centroVerticalP + altoBloqueP / 2 - p.tam
   dibujarLineasCentradas(page, lineasP, fontNormal, fontNegrita, p.tam, p.interlineado, yInicialP, ANCHO_PAGINA / 2, COLOR_TEXTO)
 
+  // Línea oficial de fecha en dorado
   const lf = config.lineaFecha
   const segmentosF = [{ texto: `VICTORIA DE DURANGO, DGO., A ${fechaSemana}`, negrita: true }]
   const lineasF = armarLineas(segmentosF, fontNegrita, fontNegrita, lf.tam, 480)
   const yF = ALTO_PAGINA - (lf.top + lf.bottom) / 2 - lf.tam / 2.8
   dibujarLineasCentradas(page, lineasF, fontNegrita, fontNegrita, lf.tam, 0, yF, ANCHO_PAGINA / 2, COLOR_DORADO)
 
-  // Código QR oficial de validación sin errores de ruta "./"
+  // Código QR oficial de validación
   if (config.qr && datos.folioPersonal) {
     try {
       const urlValidacion = obtenerUrlValidacion(datos.folioPersonal, tipoDocumento)

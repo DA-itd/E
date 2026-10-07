@@ -13,6 +13,22 @@ function normalizar(texto) {
     .trim()
 }
 
+function formatearFechasSeguro(inicio, fin) {
+  if (!inicio && !fin) return 'Fechas registradas en constancia'
+  try {
+    if (typeof formatearRangoFechas === 'function') {
+      const res = formatearRangoFechas(inicio, fin)
+      if (res && typeof res === 'string' && !res.includes('undefined') && !res.includes('NaN')) {
+        return res
+      }
+    }
+  } catch {}
+  const strIni = inicio ? String(inicio).trim() : ''
+  const strFin = fin ? String(fin).trim() : ''
+  if (strIni && strFin && strIni !== strFin) return `${strIni} al ${strFin}`
+  return strIni || strFin || 'Fechas registradas en constancia'
+}
+
 // La encuesta de opinión es obligatoria para desbloquear la constancia a partir
 // del PRÓXIMO periodo (posterior a Agosto 2026).
 // Para el periodo de Agosto 2026 y anteriores, por esta ocasión la descarga se
@@ -259,7 +275,7 @@ export default function DescargaConstancias({ docente }) {
                       )}
                     </p>
                     <p className="text-xs text-itd-navyDark/60 mt-1">
-                      Folio {ins.folio_personal} · {formatearRangoFechas(ins.cursos?.fecha_inicio, ins.cursos?.fecha_fin)} · {ins.cursos?.horas} hrs
+                      Folio {ins.folio_personal} · {formatearFechasSeguro(ins.cursos?.fecha_inicio, ins.cursos?.fecha_fin)} · {ins.cursos?.horas} hrs
                     </p>
                   </div>
                   <div className="flex flex-col sm:items-end gap-1.5 shrink-0">
@@ -334,7 +350,7 @@ export default function DescargaConstancias({ docente }) {
                 <div>
                   <p className="font-medium text-sm text-itd-navyDark">{curso.nombre}</p>
                   <p className="text-xs text-itd-navyDark/60 mt-1">
-                    Folio {curso.folio} · {formatearRangoFechas(curso.fecha_inicio, curso.fecha_fin)} · {curso.horas} hrs
+                    Folio {curso.folio} · {formatearFechasSeguro(curso.fecha_inicio, curso.fecha_fin)} · {curso.horas} hrs
                   </p>
                 </div>
                 <button
