@@ -33,8 +33,20 @@ import AdminRecordatorios from './components/AdminRecordatorios.jsx'
 import AvisosBanner from './components/AvisosBanner'
 
 export default function App() {
+  // Soporta tanto parámetros de búsqueda (?validar=FOLIO o ?folio=FOLIO)
+  // como parámetros en hash (#validar?folio=FOLIO o #?validar=FOLIO) habituales en lectores móviles
   const parametros = new URLSearchParams(window.location.search)
-  const folioAValidar = parametros.get('validar')
+  let folioAValidar = parametros.get('validar') || parametros.get('folio')
+  let tipoAValidar = parametros.get('tipo')
+
+  if (!folioAValidar && typeof window !== 'undefined' && window.location.hash) {
+    const hashPartes = window.location.hash.split('?')
+    if (hashPartes.length > 1) {
+      const hashParams = new URLSearchParams(hashPartes[1])
+      folioAValidar = hashParams.get('validar') || hashParams.get('folio')
+      tipoAValidar = tipoAValidar || hashParams.get('tipo')
+    }
+  }
 
   const [sesion, setSesion] = useState(undefined) // undefined = cargando, null = sin sesión
   const [docente, setDocente] = useState(undefined) // undefined = cargando, null = no encontrado
@@ -99,7 +111,6 @@ export default function App() {
     if (!subTabsAdmin.some((t) => t.id === subTabAdmin)) {
       setSubTabAdmin(subTabsAdmin[0].id)
     }
-
   }, [subTabsAdmin])
 
   async function manejarSesion(session) {
@@ -177,7 +188,14 @@ export default function App() {
     setSubTabInscripcion('wizard')
   }
 
-  if (mostrarValidador || hashActual.startsWith('#validar')) {
+  // 1. Si hay un folio específico para validar (por escaneo de QR o enlace directo),
+  // muestra DIRECTAMENTE la pantalla de validación oficial sin pedir iniciar sesión:
+  if (folioAValidar) {
+    return <ValidarConstancia folio={folioAValidar} tipo={tipoAValidar} />
+  }
+
+  // 2. Si el usuario abrió el buscador manual de constancias desde el menú:
+  if (mostrarValidador || (hashActual.startsWith('#validar') && !folioAValidar)) {
     return (
       <ValidadorConstancias
         onVolver={() => {
@@ -191,10 +209,6 @@ export default function App() {
         }}
       />
     )
-  }
-
-  if (folioAValidar) {
-    return <ValidarConstancia folio={folioAValidar} tipo={parametros.get('tipo')} />
   }
 
   if (sesion === undefined) {
@@ -246,7 +260,7 @@ export default function App() {
           </p>
           <button
             onClick={() => supabase.auth.signOut()}
-            className="text-sm text-itd-navy underline"
+            className="text-sm text-itd-navy underline cursor-pointer"
           >
             Cerrar sesión
           </button>
@@ -362,8 +376,6 @@ export default function App() {
               />
             )}
             {subTabAdmin === 'avisos' && <AdminAvisos />}
-            {/* "administradores" solo se muestra como botón para el súper admin
-                (ver subTabsAdmin arriba), pero además se protege aquí por si acaso */}
             {subTabAdmin === 'administradores' && esSuperAdmin && <AdminAdministradores />}
             {subTabAdmin === 'formatos' && <AdminFormatos />}
             {subTabAdmin === 'recordatorios' && (
