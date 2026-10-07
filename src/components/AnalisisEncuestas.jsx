@@ -641,6 +641,8 @@ export default function AnalisisEncuestas() {
   const [copiadoCorreos, setCopiadoCorreos] = useState(false)
   const [copiadoMensaje, setCopiadoMensaje] = useState(false)
   const [generandoPDFEnvio, setGenerandoPDFEnvio] = useState(false)
+  const [enviandoAutomatico, setEnviandoAutomatico] = useState(false)
+  const [resultadoEnvioAuto, setResultadoEnvioAuto] = useState(null)
   const [historicoCargado, setHistoricoCargado] = useState([])
   const [rankingDeptosCargado, setRankingDeptosCargado] = useState([])
 
@@ -1486,6 +1488,88 @@ Instituto Tecnológico de Durango`
     const mailtoUrl = `mailto:?bcc=${encodeURIComponent(bccStr)}&subject=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
 
     window.location.href = mailtoUrl
+  }
+
+  function abrirGmailWeb() {
+    const seleccionados = Array.from(docentesSeleccionados)
+    const extras = correosExtra
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c) => c && c.includes('@'))
+    const todos = Array.from(new Set([...seleccionados, ...extras]))
+
+    if (todos.length === 0) {
+      alert('Por favor selecciona al menos un docente o ingresa un correo destinatario.')
+      return
+    }
+
+    // Descargar el PDF para que lo adjunte en 1 clic
+    try {
+      descargarPDFModal()
+    } catch (e) {
+      console.warn('Descarga en apertura Gmail:', e)
+    }
+
+    const bccStr = todos.join(',')
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&bcc=${encodeURIComponent(bccStr)}&su=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
+    window.open(gmailUrl, '_blank')
+  }
+
+  async function enviarCorreoAutomatico() {
+    const seleccionados = Array.from(docentesSeleccionados)
+    const extras = correosExtra
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c) => c && c.includes('@'))
+    const todos = Array.from(new Set([...seleccionados, ...extras]))
+
+    if (todos.length === 0) {
+      alert('Por favor selecciona al menos un docente o ingresa un correo destinatario.')
+      return
+    }
+
+    setEnviandoAutomatico(true)
+    setResultadoEnvioAuto(null)
+
+    try {
+      // 1. Generar el PDF y obtener su base64
+      const resPDF = await generarYDescargarPDFDepartamental(deptoParaEnvio, false)
+      const dataUri = resPDF.doc.output('datauristring')
+      const base64Data = dataUri.split(',')[1]
+
+      // 2. Invocar la función Edge de Supabase
+      const { data, error } = await supabase.functions.invoke('send-email', {
+        body: {
+          tipo: 'informe_ejecutivo',
+          emails: todos,
+          asunto: asuntoCorreo,
+          mensaje: cuerpoCorreo,
+          adjuntoBase64: base64Data,
+          nombreArchivo: resPDF.nombreArchivo,
+        },
+      })
+
+      if (error) {
+        throw new Error(error.message || 'Error al conectar con la función de correo de Supabase.')
+      }
+
+      if (data && data.success === false) {
+        throw new Error(data.message || 'Error reportado por el servidor de correo.')
+      }
+
+      setResultadoEnvioAuto({
+        ok: true,
+        mensaje: `¡Excelente! Se envió el correo automáticamente a ${todos.length} docentes con el PDF adjunto.`,
+      })
+    } catch (err) {
+      console.error('Error en envío automático:', err)
+      setResultadoEnvioAuto({
+        ok: false,
+        mensaje: `No se pudo enviar automáticamente (${err.message || 'Error de servicio'}). Recuerda desplegar la Edge Function en Supabase o usa el botón "Redactar en Gmail Web" o "Abrir en Cliente".`,
+      })
+    } finally {
+      setEnviandoAutomatico(false)
+    }
   }
 
   async function exportarPDFInstitucional() {
@@ -3188,35 +3272,59 @@ Instituto Tecnológico de Durango`
                 </div>
               </div>
 
-              {/* Instrucciones claras de envío */}
-              <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-[11px] text-blue-900 space-y-1">
-                <p className="font-bold flex items-center gap-1">
-                  <span>💡</span>
-                  <span>¿Cómo funciona el envío?</span>
+              {/* Banner de resultado de envío automático */}
+              {resultadoEnvioAuto && (
+                <div
+                  className={`p-4 rounded-2xl border text-xs font-semibold flex items-start gap-2.5 animate-fade-in ${
+                    resultadoEnvioAuto.ok
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-amber-50 border-amber-200 text-amber-900'
+                  }`}
+                >
+                  <span className="text-base shrink-0">{resultadoEnvioAuto.ok ? '✅' : '⚠️'}</span>
+                  <div className="flex-1">
+                    <p className="font-bold">{resultadoEnvioAuto.ok ? 'Envío Exitoso' : 'Aviso de Envío'}</p>
+                    <p className="mt-0.5 font-normal">{resultadoEnvioAuto.mensaje}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setResultadoEnvioAuto(null)}
+                    className="text-xs opacity-60 hover:opacity-100 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Instrucciones y Opciones de Envío */}
+              <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-2xl text-[11px] text-blue-900 space-y-1.5">
+                <p className="font-bold flex items-center gap-1.5">
+                  <span>⚡</span>
+                  <span>Opciones de Envío:</span>
                 </p>
-                <ol className="list-decimal list-inside space-y-0.5 text-blue-800">
+                <ul className="space-y-1 text-blue-800">
                   <li>
-                    Al presionar <strong>"Abrir en Cliente de Correo"</strong>, se descargará en automático el <strong>PDF institucional de 2 páginas</strong>.
+                    • <strong>Envío Automático (Recomendado):</strong> Envía el correo directamente desde el servidor con el archivo PDF adjunto a todos los docentes seleccionados sin abrir aplicaciones externas.
                   </li>
                   <li>
-                    Se abrirá tu gestor de correo (Gmail, Outlook, etc.) con los docentes colocados en <strong>CCO (Copia Oculta)</strong> para cuidar su privacidad.
+                    • <strong>Redactar en Gmail Web:</strong> Abre Gmail en tu navegador con los docentes en CCO y el mensaje prellenado en 1 clic.
                   </li>
                   <li>
-                    Solo adjuntas el PDF descargado y haces clic en <strong>Enviar</strong>.
+                    • <strong>Cliente de Correo / Copiar CCO:</strong> Para Outlook, Thunderbird o copiar y pegar manualmente.
                   </li>
-                </ol>
+                </ul>
               </div>
             </div>
 
             {/* Botones de Acción del Modal */}
             <div className="bg-slate-50 border-t border-slate-200 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={copiarCorreosAlPortapapeles}
                   className="px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  <span>{copiadoCorreos ? '✓ Correos Copiados' : '📋 Copiar lista CCO'}</span>
+                  <span>{copiadoCorreos ? '✓ Correos Copiados' : '📋 Copiar CCO'}</span>
                 </button>
                 <button
                   type="button"
@@ -3228,22 +3336,37 @@ Instituto Tecnológico de Durango`
                 </button>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setModalCorreoAbierto(false)}
-                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                  onClick={abrirGmailWeb}
+                  disabled={generandoPDFEnvio || enviandoAutomatico || (docentesSeleccionados.size === 0 && !correosExtra.trim())}
+                  title="Abrir ventana de redacción en Gmail Web con los correos en CCO"
+                  className="px-3 py-2 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-800 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  Cerrar
+                  <span>📮</span>
+                  <span>Gmail Web</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={abrirClienteCorreo}
-                  disabled={generandoPDFEnvio || (docentesSeleccionados.size === 0 && !correosExtra.trim())}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#1b396a] to-[#2563eb] hover:from-[#122748] hover:to-[#1d4ed8] text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  disabled={generandoPDFEnvio || enviandoAutomatico || (docentesSeleccionados.size === 0 && !correosExtra.trim())}
+                  title="Abrir en gestor local (Outlook, Mail, etc.)"
+                  className="px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <span>✉️</span>
-                  <span>Abrir en Cliente de Correo</span>
+                  <span>Cliente Correo</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={enviarCorreoAutomatico}
+                  disabled={enviandoAutomatico || generandoPDFEnvio || (docentesSeleccionados.size === 0 && !correosExtra.trim())}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  <span>{enviandoAutomatico ? '⏳' : '🚀'}</span>
+                  <span>{enviandoAutomatico ? 'Enviando por Correo…' : 'Enviar Automático (con PDF)'}</span>
                 </button>
               </div>
             </div>

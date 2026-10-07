@@ -105,7 +105,94 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { tipo, email, nombre, cursos } = body
+    const { tipo } = body
+
+    // -------------------------------------------------------------------------
+    // CASO 1: ENVÍO DE INFORME EJECUTIVO DEPARTAMENTAL (CON PDF ADJUNTO)
+    // -------------------------------------------------------------------------
+    if (tipo === 'informe_ejecutivo') {
+      const { emails, asunto, mensaje, adjuntoBase64, nombreArchivo } = body
+      const listaDestinatarios = Array.isArray(emails) ? emails : [body.email].filter(Boolean)
+
+      if (listaDestinatarios.length === 0) {
+        throw new Error('Faltan correos destinatarios.')
+      }
+
+      const asuntoCorreo = asunto || 'Informe Ejecutivo de Actualización Docente ITD'
+      const htmlCorreo = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',sans-serif;background-color:#f3f4f6;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:20px;">
+          <div style="max-width:620px;margin:0 auto;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
+            <div style="background-color:#1B396A;padding:26px 20px;text-align:center;">
+              <img src="${LOGO_URL}" alt="ITD" style="height:75px;margin-bottom:10px;background-color:white;border-radius:50%;padding:6px;">
+              <h1 style="color:white;margin:0;font-size:20px;font-weight:bold;">Coordinación de Actualización Docente</h1>
+              <p style="color:#bfdbfe;margin:4px 0 0;font-size:13px;">Instituto Tecnológico de Durango</p>
+            </div>
+            <div style="padding:32px 26px;">
+              <div style="white-space:pre-wrap;font-size:14px;color:#334155;line-height:1.65;">${mensaje || ''}</div>
+              <div style="margin-top:24px;padding:14px;background-color:#f8fafc;border-left:4px solid #1B396A;border-radius:6px;font-size:13px;color:#475569;">
+                <p style="margin:0;font-weight:bold;color:#1B396A;">📎 Archivo PDF Adjunto Oficial:</p>
+                <p style="margin:4px 0 0;color:#64748b;">${nombreArchivo || 'Informe_Ejecutivo.pdf'} (Incluye resumen ejecutivo, gráficas de ubicación departamental y evolución acumulada multianual 2022-2026).</p>
+              </div>
+            </div>
+            <div style="background-color:#f8fafc;padding:18px;text-align:center;border-top:1px solid #e2e8f0;">
+              <p style="font-size:12px;font-weight:bold;color:#64748b;margin:0;">Coordinación de Actualización Docente · ITD</p>
+              <p style="font-size:11px;color:#94a3b8;margin:4px 0 0;">Instituto Tecnológico de Durango · Excelencia en Educación Tecnológica</p>
+            </div>
+          </div>
+        </td></tr></table>
+      </body></html>`
+
+      const attachments = adjuntoBase64
+        ? [
+            {
+              content: adjuntoBase64,
+              filename: nombreArchivo || 'Informe_Ejecutivo.pdf',
+              type: 'application/pdf',
+              disposition: 'attachment',
+            },
+          ]
+        : []
+
+      const sendGridPayload = {
+        personalizations: [
+          {
+            to: [{ email: FROM_EMAIL, name: FROM_NAME }],
+            bcc: listaDestinatarios.map((e: string) => ({ email: e.trim() })),
+          },
+        ],
+        from: { email: FROM_EMAIL, name: FROM_NAME },
+        subject: asuntoCorreo,
+        content: [{ type: 'text/html', value: htmlCorreo }],
+        attachments,
+      }
+
+      const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SENDGRID_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(sendGridPayload),
+      })
+
+      if (!resp.ok) {
+        let mensajeErr = `Error al enviar correo con SendGrid (${resp.status})`
+        try {
+          const errData = await resp.json()
+          if (errData?.errors?.length) mensajeErr = errData.errors.map((e: any) => e.message).join('; ')
+        } catch {}
+        throw new Error(mensajeErr)
+      }
+
+      return new Response(JSON.stringify({ success: true, count: listaDestinatarios.length }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 2: CONFIRMACIÓN O CANCELACIÓN DE INSCRIPCIÓN A CURSOS
+    // -------------------------------------------------------------------------
+    const { email, nombre, cursos } = body
 
     if (!email || !nombre || !Array.isArray(cursos) || cursos.length === 0) {
       throw new Error('Faltan datos (email, nombre o cursos).')
