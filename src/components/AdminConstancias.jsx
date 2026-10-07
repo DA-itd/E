@@ -15,24 +15,75 @@ function normalizar(texto) {
 // Limpia títulos profesionales y honoríficos (Dr., Ing., Mtro., etc.)
 function limpiarTitulos(texto) {
   return normalizar(texto)
-    .replace(/\b(DR|DRA|ING|MTRO|MTRA|LIC|DOC|PHD|MC|MA|PROF|PROFA)\b\.?/gi, '')
+    .replace(/\b(DR|DRA|ING|MTRO|MTRA|LIC|DOC|PHD|MC|MA|PROF|PROFA|ARQ|CP|C\.P\.)\b\.?/gi, '')
+    .replace(/[.,\-_/]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-// Compara nombres de forma flexible ignorando títulos y orden parcial
-function coincidenNombres(nom1, nom2) {
+function obtenerPalabrasClave(texto) {
+  const ignorar = new Set(['DE', 'DEL', 'LA', 'LAS', 'LOS', 'SAN', 'SANTA', 'Y', 'E'])
+  return limpiarTitulos(texto)
+    .split(' ')
+    .filter((p) => p.length > 2 && !ignorar.has(p))
+}
+
+// Comprueba si dos nombres corresponden a la misma persona de forma rigurosa
+// Evita falsos positivos entre personas con nombres o apellidos compartidos (ej. José Luis vs José Lauro)
+function sonMismaPersona(nom1, nom2) {
   const n1 = limpiarTitulos(nom1)
   const n2 = limpiarTitulos(nom2)
   if (!n1 || !n2) return false
   if (n1 === n2) return true
-  if (n1.includes(n2) || n2.includes(n1)) return true
 
-  // Comparar por palabras clave de apellidos y nombres
-  const palabras1 = n1.split(' ').filter((p) => p.length > 2)
-  const palabras2 = n2.split(' ').filter((p) => p.length > 2)
-  const coincidencias = palabras1.filter((p) => palabras2.includes(p))
-  return coincidencias.length >= 2
+  const palabras1 = obtenerPalabrasClave(nom1)
+  const palabras2 = obtenerPalabrasClave(nom2)
+  if (palabras1.length === 0 || palabras2.length === 0) return false
+
+  // Caso 1: Exactamente las mismas palabras en cualquier orden
+  if (palabras1.length === palabras2.length && palabras1.every((p) => palabras2.includes(p))) {
+    return true
+  }
+
+  // Palabras diferentes en cada lado
+  const dif1 = palabras1.filter((p) => !palabras2.includes(p))
+  const dif2 = palabras2.filter((p) => !palabras1.includes(p))
+
+  // Si AMBOS tienen nombres/apellidos diferentes, son personas distintas
+  // Ejemplo: "JOSE LAURO SOLIS GALLEGOS" vs "JOSE LUIS SOLIS HERNANDEZ":
+  // dif1=["LAURO", "GALLEGOS"] y dif2=["LUIS", "HERNANDEZ"] => false definitivo
+  if (dif1.length > 0 && dif2.length > 0) {
+    return false
+  }
+
+  // Caso 2: Una es un subconjunto de la otra (ej. omitieron segundo nombre o segundo apellido)
+  // Ej: "JOSE LAURO SOLIS" dentro de "JOSE LAURO SOLIS GALLEGOS"
+  const comunes = palabras1.filter((p) => palabras2.includes(p))
+  if (comunes.length >= 2 && (dif1.length === 0 || dif2.length === 0)) {
+    return true
+  }
+
+  return false
+}
+
+// Verifica si un docente es instructor o co-instructor del curso
+function esInstructorDelCurso(campoInstructor, nombreDocente) {
+  if (!campoInstructor || !nombreDocente) return false
+
+  // Soporta cursos con co-instructores separados por ',', ';', '/', ' e ', ' y ', o saltos de línea
+  const lista = campoInstructor
+    .split(/[,;\/\n]+|\s+y\s+|\s+e\s+/i)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  return lista.some((inst) => sonMismaPersona(inst, nombreDocente))
+}
+
+function esAprobadoHistorial(val) {
+  if (val === null || val === undefined || val === '') return true
+  const s = String(val).toLowerCase().trim()
+  if (s === 'no' || s === 'false' || s === '0' || s === 'cancelado' || s === 'reprobado' || s === 'baja') return false
+  return true
 }
 
 export default function AdminConstancias() {
@@ -122,7 +173,7 @@ export default function AdminConstancias() {
     // Combinar sin duplicar nombres idénticos
     const combinados = [...docentesEncontrados]
     for (const inst of instructoresEncontrados) {
-      const yaExiste = combinados.some((d) => coincidenNombres(d.nombre_completo, inst.nombre_completo))
+      const yaExiste = combinados.some((d) => sonMismaPersona(d.nombre_completo, inst.nombre_completo))
       if (!yaExiste) {
         combinados.push(inst)
       }
@@ -137,9 +188,9 @@ export default function AdminConstancias() {
     setCargandoDetalle(true)
     setError('')
 
-    // Cursos como instructor: busca cualquier curso que coincida con su nombre (con o sin Dr./Ing.)
+    // Cursos como instructor: busca cualquier curso donde figure legítimamente como instructor o co-instructor
     const cursosImpartidos = todosCursos.filter((c) =>
-      coincidenNombres(c.instructor, item.nombre_completo)
+      esInstructorDelCurso(c.instructor, item.nombre_completo)
     )
     setCursosComoInstructor(cursosImpartidos)
 
@@ -159,32 +210,47 @@ export default function AdminConstancias() {
 
         inscripcionesActivas = (insData || []).map((i) => ({ ...i, origen: 'activa' }))
 
-        // Historial previo
+        // Historial previo (años anteriores: 2024, 2025, etc.)
         if (item.email && item.email.includes('@')) {
           const { data: histData } = await supabase
             .from('inscripciones_historial')
-            .select('id, folio_personal, folio_curso, asistencia_aprobada, fecha_descarga, created_at')
-            .ilike('email', item.email)
-            .eq('asistencia_aprobada', 'Sí')
+            .select('*')
+            .ilike('email', item.email.trim())
 
           if (histData && histData.length > 0) {
-            const folios = [...new Set(histData.map((h) => h.folio_curso).filter(Boolean))]
-            const { data: cursosPorFolio } = await supabase
-              .from('cursos')
-              .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento')
-              .in('folio', folios)
+            const histAprobados = histData.filter((h) => esAprobadoHistorial(h.asistencia_aprobada))
+            const folios = [...new Set(histAprobados.map((h) => h.folio_curso).filter(Boolean))]
 
-            const mapaCursos = Object.fromEntries((cursosPorFolio || []).map((c) => [c.folio, c]))
-            historialConCurso = histData
+            let mapaCursos = {}
+            if (folios.length > 0) {
+              const { data: cursosPorFolio } = await supabase
+                .from('cursos')
+                .select('id, folio, nombre, fecha_inicio, fecha_fin, horas, tipo, departamento')
+                .in('folio', folios)
+
+              mapaCursos = Object.fromEntries((cursosPorFolio || []).map((c) => [c.folio, c]))
+            }
+
+            historialConCurso = histAprobados
               .map((h) => {
-                const curso = mapaCursos[h.folio_curso]
-                if (!curso) return null
+                const cursoEncontrado = mapaCursos[h.folio_curso]
+                // Si el curso histórico no está en la tabla `cursos`, rescatar datos guardados en la fila del historial
+                const cursoFinal = cursoEncontrado || {
+                  id: h.curso_id || `hist_${h.id}`,
+                  folio: h.folio_curso || h.folio_personal || 'HIST',
+                  nombre: h.curso || h.nombre_curso || h.nombre || 'Curso Registrado',
+                  horas: h.horas || 30,
+                  fecha_inicio: h.fecha_inicio || null,
+                  fecha_fin: h.fecha_fin || null,
+                  departamento: h.departamento || item.departamento || 'Instituto Tecnológico de Durango',
+                  tipo: h.tipo || 'Docente',
+                }
                 return {
                   id: h.id,
                   folio_personal: h.folio_personal,
                   fecha_descarga: h.fecha_descarga || h.created_at,
                   origen: 'historial',
-                  cursos: curso,
+                  cursos: cursoFinal,
                 }
               })
               .filter(Boolean)
