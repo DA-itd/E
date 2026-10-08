@@ -158,7 +158,7 @@ export function construirPlantillaHTML({
               </p>
 
               <p>
-                Esperando se encuentren bien, la <strong>Coordinación de Actualización Docente del Instituto Tecnológico de Durango</strong> les comparte el <strong>Informe Ejecutivo de Satisfacción y Desempeño Docente (${periodoDesc})</strong>, generado a partir de las evaluaciones institucionales <strong>ITD-AD-FO-09</strong>.
+                Esperando se encuentren bien, la <strong>Coordinación de Actualización Docente del Instituto Tecnológico de Durango</strong> les comparte el <strong>Informe Ejecutivo de Satisfacción y Desempeño Docente (${periodoDesc})</strong>, generado a partir de las evaluaciones institucionales <strong>ITD-AD-FO-01</strong>.
               </p>
 
               <!-- Métricas -->
@@ -191,7 +191,7 @@ export function construirPlantillaHTML({
               </table>
 
               <p>
-                En el documento PDF adjunto con logotipos oficiales encontrarán:
+                En el documento PDF adjunto encontrarán:
               </p>
 
               <ol style="padding-left:20px;margin:15px 0;">
@@ -211,7 +211,6 @@ export function construirPlantillaHTML({
                 <strong>Atentamente,</strong><br>
                 ${remitenteNombre || 'Alejandro Calderón Rentería'}<br>
                 Coordinación de Actualización Docente<br>
-                Instituto Tecnológico de Durango
               </p>
 
             </td>
@@ -221,7 +220,6 @@ export function construirPlantillaHTML({
           <tr>
             <td style="background:#eeeeee;padding:15px;text-align:center;font-size:12px;color:#666666;">
               Instituto Tecnológico de Durango · Desarrollo Académico<br>
-              Coordinación de Actualización Docente
             </td>
           </tr>
 
