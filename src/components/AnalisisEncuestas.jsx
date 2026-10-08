@@ -256,34 +256,34 @@ function generarCanvasHistoricoMultianual({ historico = [] }) {
   ctx.lineWidth = 1.5
   ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10)
 
-  // Título
+  // Título (longitud y tamaño balanceados para no colisionar con la leyenda)
   ctx.fillStyle = '#1B396A'
-  ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('2. EVOLUCIÓN DE INSCRIPCIONES Y CRECIMIENTO ACUMULADO MULTIANUAL (2022 - 2026)', 20, 30)
+  ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('2. EVOLUCIÓN HISTÓRICA Y CRECIMIENTO ACUMULADO', 20, 26)
 
   ctx.fillStyle = '#64748B'
-  ctx.font = '10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('Histórico de capacitación docente ITD (Barras: Inscripciones anuales · Línea: Crecimiento acumulado)', 20, 46)
+  ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('Histórico multianual de capacitación docente ITD (2022 - 2026)', 20, 44)
 
-  // Leyenda superior derecha
+  // Leyenda superior derecha (ubicada limpiamente a la derecha sin empalmarse)
   ctx.fillStyle = '#1B396A'
-  ctx.fillRect(440, 32, 14, 9)
+  ctx.fillRect(475, 23, 13, 9)
   ctx.fillStyle = '#1E293B'
-  ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('Inscripciones por año', 458, 40)
+  ctx.font = 'bold 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('Inscripciones por año', 493, 31)
 
   ctx.strokeStyle = '#D97706'
   ctx.lineWidth = 2.5
   ctx.beginPath()
-  ctx.moveTo(580, 36)
-  ctx.lineTo(600, 36)
+  ctx.moveTo(615, 27)
+  ctx.lineTo(635, 27)
   ctx.stroke()
   ctx.fillStyle = '#D97706'
   ctx.beginPath()
-  ctx.arc(590, 36, 3.5, 0, Math.PI * 2)
+  ctx.arc(625, 27, 3.5, 0, Math.PI * 2)
   ctx.fill()
   ctx.fillStyle = '#1E293B'
-  ctx.fillText('Total Acumulado', 608, 40)
+  ctx.fillText('Total Acumulado', 643, 31)
 
   let datos = Array.isArray(historico) && historico.length > 0 ? historico : [
     { anio: '2022', totalInscripciones: 240, totalAcumulado: 240 },
@@ -336,24 +336,32 @@ function generarCanvasHistoricoMultianual({ historico = [] }) {
     const xCentro = left + step * i + step / 2
     const hBarra = ((d.totalInscripciones || 0) / (maxInscripciones * 1.25)) * graphHeight
     const yBarra = bottom - hBarra
+    const yAcum = bottom - ((d.totalAcumulado || 0) / (maxAcumulado * 1.15)) * graphHeight
 
     // Barra
     ctx.fillStyle = '#1B396A'
     ctx.fillRect(xCentro - anchoBarra / 2, yBarra, anchoBarra, hBarra)
 
-    // Etiqueta en barra
-    ctx.fillStyle = '#1B396A'
-    ctx.font = 'bold 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillText(`${d.totalInscripciones || 0}`, xCentro, yBarra - 5)
+    // Si la cima de la barra y el punto de la línea coinciden de cerca (< 24px),
+    // dibuja el número de la barra adentro con texto blanco para evitar que se empalmen los textos
+    const colisiona = Math.abs(yBarra - yAcum) < 24
+    if (colisiona && hBarra > 18) {
+      ctx.fillStyle = '#FFFFFF'
+      ctx.font = 'bold 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(`${d.totalInscripciones || 0}`, xCentro, yBarra + 13)
+    } else {
+      ctx.fillStyle = '#1B396A'
+      ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText(`${d.totalInscripciones || 0}`, xCentro, yBarra - 5)
+    }
 
     // Año en eje X
     ctx.fillStyle = '#0F172A'
     ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     ctx.fillText(`${d.anio}`, xCentro, bottom + 18)
 
-    // Punto acumulado
-    const yAcum = bottom - ((d.totalAcumulado || 0) / (maxAcumulado * 1.15)) * graphHeight
     puntosLinea.push({ x: xCentro, y: yAcum, valor: d.totalAcumulado || 0 })
   })
 
@@ -490,14 +498,14 @@ async function generarPDFInformeDepartamentalCompleto({
   })
 
   // 2. Tabla de Cursos Evaluados por el Departamento
-  let currentY = doc.lastAutoTable.finalY + 8
+  let currentY = doc.lastAutoTable.finalY + 9
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10.5)
   doc.setTextColor(27, 57, 106)
   doc.text('2. Cursos Evaluados por Docentes del Departamento', 14, currentY)
 
   autoTable(doc, {
-    startY: currentY + 4,
+    startY: currentY + 5.5,
     margin: { left: 14, right: 14 },
     head: [['Curso', 'Encuestas', 'Satisfacción', 'Aplicación en Aula', 'Recomendación']],
     body: (cursosAnalizados.length > 0 ? cursosAnalizados.slice(0, 8) : [
@@ -522,7 +530,7 @@ async function generarPDFInformeDepartamentalCompleto({
   })
 
   // 3. Conclusiones y Retroalimentación
-  currentY = doc.lastAutoTable.finalY + 7
+  currentY = doc.lastAutoTable.finalY + 8
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9.5)
   doc.setTextColor(27, 57, 106)
@@ -536,10 +544,13 @@ async function generarPDFInformeDepartamentalCompleto({
     'Los resultados reflejan una alta pertinencia de los contenidos impartidos y una aplicación práctica significativa en las aulas del ITD.',
     'Se recomienda continuar impulsando la participación docente en las convocatorias intersemestrales para fortalecer la acreditación de programas educativos.',
   ]
-  let retroY = currentY + 4.5
+  let retroY = currentY + 5
   for (const t of textoRetro) {
-    doc.text(`• ${t}`, 16, retroY)
-    retroY += 4
+    const lineas = doc.splitTextToSize(`• ${t}`, 184)
+    for (const l of lineas) {
+      doc.text(l, 16, retroY)
+      retroY += 4
+    }
   }
 
   // Pie de página 1
@@ -1682,7 +1693,7 @@ Instituto Tecnológico de Durango`
     })
 
     // Semáforo por Departamento
-    let currentY = doc.lastAutoTable.finalY + 8
+    let currentY = doc.lastAutoTable.finalY + 9
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10.5)
     doc.setTextColor(27, 57, 106)
@@ -1690,10 +1701,10 @@ Instituto Tecnológico de Durango`
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
     doc.setTextColor(71, 85, 105)
-    doc.text('(Criterios: Verde >= 4.5  |  Amarillo 4.0 - 4.49  |  Rojo < 4.0)', 14, currentY + 4)
+    doc.text('(Criterios: Verde >= 4.5  |  Amarillo 4.0 - 4.49  |  Rojo < 4.0)', 14, currentY + 4.8)
 
     autoTable(doc, {
-      startY: currentY + 7,
+      startY: currentY + 8.5,
       margin: { left: 14, right: 14 },
       head: [['Departamento', 'Encuestas', 'Satisfacción', 'Semáforo']],
       body: departamentosAnalizados.map((d) => [
@@ -2140,7 +2151,7 @@ Instituto Tecnológico de Durango`
     })
 
     // Sección b)
-    let currentY = doc.lastAutoTable.finalY + 5
+    let currentY = doc.lastAutoTable.finalY + 6
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(7.5)
     doc.setTextColor(27, 57, 106)
@@ -2161,7 +2172,7 @@ Instituto Tecnológico de Durango`
     ]
 
     autoTable(doc, {
-      startY: currentY + 2,
+      startY: currentY + 4,
       margin: { left: 12, right: 12 },
       head: [['Asignaturas especialidad', 'Contenidos temáticos requeridos', 'No. Prof.', 'Periodo', 'Facilitadores propuestos']],
       body: filasBodyB,
@@ -2285,7 +2296,7 @@ Instituto Tecnológico de Durango`
     ]
 
     autoTable(doc, {
-      startY: currentY + 2,
+      startY: currentY + 4,
       margin: { left: 12, right: 12 },
       head: [['Actividad o Evento (Cursos, talleres, conferencias)', 'Carrera(s) atendidas / No. profesores', 'Fecha de realización']],
       body: filasP2Especialidad,
