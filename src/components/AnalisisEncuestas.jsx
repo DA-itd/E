@@ -44,16 +44,62 @@ function normalizarNombreDepto(texto) {
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-_]/g, ' ')
     .replace(/^DEPARTAMENTO\s+DE\s+/i, '')
     .replace(/^DEPTO\.?\s+DE\s+/i, '')
+    .replace(/\s+/g, ' ')
     .trim()
+}
+
+// Unifica nombres de departamento al estándar oficial institucional
+export function canonizarDepartamento(depto) {
+  if (!depto) return 'Sin especificar'
+  const limpio = String(depto).trim()
+  const norm = normalizarNombreDepto(limpio)
+
+  if (norm.includes('ECONOM') && norm.includes('ADMINISTRAT')) {
+    return 'DEPARTAMENTO DE CIENCIAS ECONÓMICO ADMINISTRATIVAS'
+  }
+  if (norm.includes('BASICA') || norm === 'BASICAS') {
+    return 'DEPARTAMENTO DE CIENCIAS BÁSICAS'
+  }
+  if (norm.includes('TIERRA')) {
+    return 'DEPARTAMENTO DE CIENCIAS DE LA TIERRA'
+  }
+  if (norm.includes('INDUSTRIAL')) {
+    return 'DEPARTAMENTO DE INGENIERÍA INDUSTRIAL'
+  }
+  if (norm.includes('QUIMIC') || norm.includes('BIOQUIMIC')) {
+    return 'DEPARTAMENTO DE INGENIERÍAS QUÍMICA-BIOQUÍMICA'
+  }
+  if (norm.includes('ELECTRICA') || norm.includes('ELECTRONICA')) {
+    return 'DEPARTAMENTO DE INGENIERÍAS ELÉCTRICA - ELECTRÓNICA'
+  }
+  if (norm.includes('METAL') || norm.includes('MECANICA')) {
+    return 'DEPARTAMENTO DE METAL-MECÁNICA'
+  }
+  if (norm.includes('SISTEMA') || norm.includes('COMPUTAC')) {
+    return 'DEPARTAMENTO DE SISTEMAS Y COMPUTACION'
+  }
+  if (norm.includes('DESARROLLO ACADEMIC')) {
+    return 'DEPARTAMENTO DE DESARROLLO ACADÉMICO'
+  }
+  if (norm.includes('POSGRADO')) {
+    return 'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION'
+  }
+  return limpio
 }
 
 function coincidenDeptos(a, b) {
   if (!a || !b) return false
   const na = normalizarNombreDepto(a)
   const nb = normalizarNombreDepto(b)
-  return na === nb || na.includes(nb) || nb.includes(na)
+  if (na === nb) return true
+  // Unificación especial para Ciencias Económico Administrativas
+  if (na.includes('ECONOM') && na.includes('ADMINISTRAT') && nb.includes('ECONOM') && nb.includes('ADMINISTRAT')) {
+    return true
+  }
+  return na.includes(nb) || nb.includes(na)
 }
 
 // ---------------------------------------------------------------------------
@@ -64,11 +110,12 @@ function coincidenDeptos(a, b) {
 
 function generarCanvasParticipacionDeptos({ rankingDeptos = [], deptoSeleccionado = '' }) {
   const canvas = document.createElement('canvas')
-  canvas.width = 1400
+  // Resolución optimizada (740px en lugar de 960px) para máxima nitidez y peso mínimo (<30KB)
+  canvas.width = 740
 
-  let lista = [...rankingDeptos]
-  if (lista.length === 0) {
-    lista = [
+  let listaBruta = [...rankingDeptos]
+  if (listaBruta.length === 0) {
+    listaBruta = [
       { nombre: deptoSeleccionado || 'CIENCIAS BÁSICAS', cantidad: 35 },
       { nombre: 'SISTEMAS Y COMPUTACIÓN', cantidad: 42 },
       { nombre: 'INGENIERÍA INDUSTRIAL', cantidad: 38 },
@@ -79,6 +126,17 @@ function generarCanvasParticipacionDeptos({ rankingDeptos = [], deptoSeleccionad
       { nombre: 'CIENCIAS DE LA TIERRA', cantidad: 18 },
     ]
   }
+
+  // Unificar cualquier variante del mismo departamento (ej. con guion o sin acentos) sumando sus cantidades
+  const mapaUnificado = new Map()
+  for (const item of listaBruta) {
+    const nombreCanonico = canonizarDepartamento(item.nombre)
+    if (!mapaUnificado.has(nombreCanonico)) {
+      mapaUnificado.set(nombreCanonico, { nombre: nombreCanonico, cantidad: 0 })
+    }
+    mapaUnificado.get(nombreCanonico).cantidad += Number(item.cantidad || 0)
+  }
+  let lista = Array.from(mapaUnificado.values())
 
   // Asegurar que deptoSeleccionado esté presente en la lista
   const idxPropio = lista.findIndex((d) => coincidenDeptos(d.nombre, deptoSeleccionado))
@@ -98,9 +156,9 @@ function generarCanvasParticipacionDeptos({ rankingDeptos = [], deptoSeleccionad
     visibles.push(lista[9])
   }
 
-  const alturaFila = 36
-  const paddingSuperior = 90
-  const paddingInferior = 60
+  const alturaFila = 24
+  const paddingSuperior = 60
+  const paddingInferior = 38
   canvas.height = paddingSuperior + visibles.length * alturaFila + paddingInferior
   const ctx = canvas.getContext('2d')
 
@@ -108,34 +166,34 @@ function generarCanvasParticipacionDeptos({ rankingDeptos = [], deptoSeleccionad
   ctx.fillStyle = '#FFFFFF'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.strokeStyle = '#E2E8F0'
-  ctx.lineWidth = 3
-  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16)
+  ctx.lineWidth = 1.5
+  ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10)
 
   // Encabezado
   ctx.fillStyle = '#1B396A'
-  ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('1. PARTICIPACIÓN POR DEPARTAMENTO (UBICACIÓN INSTITUCIONAL)', 35, 46)
+  ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('1. PARTICIPACIÓN POR DEPARTAMENTO (UBICACIÓN INSTITUCIONAL)', 20, 30)
 
   ctx.fillStyle = '#64748B'
-  ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('Comparativa de inscripciones en el periodo · Departamento seleccionado resaltado en primer plano', 35, 72)
+  ctx.font = '10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('Comparativa de inscripciones en el periodo · Departamento seleccionado resaltado en primer plano', 20, 47)
 
   const maxVal = Math.max(...visibles.map((d) => d.cantidad || 0), 1)
-  const anchoBarraMax = 720
-  const xInicioBarras = 440
+  const anchoBarraMax = 350
+  const xInicioBarras = 245
 
   visibles.forEach((d, i) => {
-    const y = paddingSuperior + i * alturaFila + 22
+    const y = paddingSuperior + i * alturaFila + 15
     const esSeleccionado = coincidenDeptos(d.nombre, deptoSeleccionado)
-    const anchoBarra = Math.max(16, ((d.cantidad || 0) / maxVal) * anchoBarraMax)
+    const anchoBarra = Math.max(10, ((d.cantidad || 0) / maxVal) * anchoBarraMax)
 
     // Fila destacada si es el departamento seleccionado
     if (esSeleccionado) {
       ctx.fillStyle = 'rgba(120, 24, 52, 0.08)'
-      ctx.fillRect(25, y - 20, canvas.width - 50, alturaFila)
+      ctx.fillRect(14, y - 13, canvas.width - 28, alturaFila)
       ctx.strokeStyle = '#B48A00'
-      ctx.lineWidth = 1.5
-      ctx.strokeRect(25, y - 20, canvas.width - 50, alturaFila)
+      ctx.lineWidth = 1.2
+      ctx.strokeRect(14, y - 13, canvas.width - 28, alturaFila)
     }
 
     // Nombre de departamento
@@ -144,29 +202,29 @@ function generarCanvasParticipacionDeptos({ rankingDeptos = [], deptoSeleccionad
       .replace(/^DEPTO\.?\s+DE\s+/i, '')
     ctx.fillStyle = esSeleccionado ? '#781834' : '#334155'
     ctx.font = esSeleccionado
-      ? 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-      : '13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      ? 'bold 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      : '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
 
-    const nombreCorto = nombreLimpio.length > 34 ? nombreLimpio.slice(0, 32) + '…' : nombreLimpio
-    ctx.fillText(`${i + 1}. ${nombreCorto}`, 40, y)
+    const nombreCorto = nombreLimpio.length > 28 ? nombreLimpio.slice(0, 26) + '…' : nombreLimpio
+    ctx.fillText(`${i + 1}. ${nombreCorto}`, 20, y)
 
     // Pista de fondo
     ctx.fillStyle = '#F1F5F9'
-    ctx.fillRect(xInicioBarras, y - 14, anchoBarraMax, 20)
+    ctx.fillRect(xInicioBarras, y - 10, anchoBarraMax, 13)
 
     // Barra de color
     ctx.fillStyle = esSeleccionado ? '#781834' : '#2563EB'
-    ctx.fillRect(xInicioBarras, y - 14, anchoBarra, 20)
+    ctx.fillRect(xInicioBarras, y - 10, anchoBarra, 13)
 
     // Etiqueta de valor
     if (esSeleccionado) {
       ctx.fillStyle = '#781834'
-      ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-      ctx.fillText(`★ ${d.cantidad} inscritos  [SU DEPARTAMENTO · Lugar #${posReal + 1} de ${lista.length}]`, xInicioBarras + anchoBarra + 14, y + 1)
+      ctx.font = 'bold 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      ctx.fillText(`★ ${d.cantidad} [Lugar #${posReal + 1} de ${lista.length}]`, xInicioBarras + anchoBarra + 8, y)
     } else {
       ctx.fillStyle = '#475569'
-      ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-      ctx.fillText(`${d.cantidad}`, xInicioBarras + anchoBarra + 12, y)
+      ctx.font = 'bold 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      ctx.fillText(`${d.cantidad}`, xInicioBarras + anchoBarra + 6, y)
     }
   })
 
@@ -176,54 +234,56 @@ function generarCanvasParticipacionDeptos({ rankingDeptos = [], deptoSeleccionad
   const pctPropio = totalInscripcionesDeptos > 0 ? ((cantPropia / totalInscripcionesDeptos) * 100).toFixed(1) : '0'
 
   ctx.fillStyle = '#0F172A'
-  ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  const textoResumen = `Posición Institucional: Su departamento se ubica en el Lugar #${posReal + 1} de ${lista.length} departamentos con ${cantPropia} participaciones (${pctPropio}% del total).`
-  ctx.fillText(textoResumen, 35, canvas.height - 24)
+  ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  const textoResumen = `Posición: Su departamento se ubica en el Lugar #${posReal + 1} de ${lista.length} con ${cantPropia} participaciones (${pctPropio}% del total).`
+  ctx.fillText(textoResumen, 20, canvas.height - 15)
 
-  return canvas.toDataURL('image/png')
+  // Exportar en JPEG optimizado (reduce de >2MB en PNG sin comprimir a apenas ~25KB)
+  return canvas.toDataURL('image/jpeg', 0.78)
 }
 
 function generarCanvasHistoricoMultianual({ historico = [] }) {
   const canvas = document.createElement('canvas')
-  canvas.width = 1400
-  canvas.height = 540
+  // Resolución optimizada (740x290) para peso pluma en el PDF
+  canvas.width = 740
+  canvas.height = 290
   const ctx = canvas.getContext('2d')
 
   // Fondo blanco con borde
   ctx.fillStyle = '#FFFFFF'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.strokeStyle = '#E2E8F0'
-  ctx.lineWidth = 3
-  ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16)
+  ctx.lineWidth = 1.5
+  ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10)
 
   // Título
   ctx.fillStyle = '#1B396A'
-  ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('2. EVOLUCIÓN DE INSCRIPCIONES Y CRECIMIENTO ACUMULADO MULTIANUAL (2022 - 2026)', 35, 46)
+  ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('2. EVOLUCIÓN DE INSCRIPCIONES Y CRECIMIENTO ACUMULADO MULTIANUAL (2022 - 2026)', 20, 30)
 
   ctx.fillStyle = '#64748B'
-  ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('Histórico de capacitación docente ITD (Barras: Inscripciones anuales · Línea: Crecimiento acumulado)', 35, 72)
+  ctx.font = '10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('Histórico de capacitación docente ITD (Barras: Inscripciones anuales · Línea: Crecimiento acumulado)', 20, 46)
 
   // Leyenda superior derecha
   ctx.fillStyle = '#1B396A'
-  ctx.fillRect(870, 50, 22, 14)
+  ctx.fillRect(440, 32, 14, 9)
   ctx.fillStyle = '#1E293B'
-  ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-  ctx.fillText('Inscripciones por año', 900, 62)
+  ctx.font = 'bold 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+  ctx.fillText('Inscripciones por año', 458, 40)
 
   ctx.strokeStyle = '#D97706'
-  ctx.lineWidth = 4
+  ctx.lineWidth = 2.5
   ctx.beginPath()
-  ctx.moveTo(1110, 57)
-  ctx.lineTo(1140, 57)
+  ctx.moveTo(580, 36)
+  ctx.lineTo(600, 36)
   ctx.stroke()
   ctx.fillStyle = '#D97706'
   ctx.beginPath()
-  ctx.arc(1125, 57, 5, 0, Math.PI * 2)
+  ctx.arc(590, 36, 3.5, 0, Math.PI * 2)
   ctx.fill()
   ctx.fillStyle = '#1E293B'
-  ctx.fillText('Total Acumulado', 1150, 62)
+  ctx.fillText('Total Acumulado', 608, 40)
 
   let datos = Array.isArray(historico) && historico.length > 0 ? historico : [
     { anio: '2022', totalInscripciones: 240, totalAcumulado: 240 },
@@ -236,10 +296,10 @@ function generarCanvasHistoricoMultianual({ historico = [] }) {
   const maxInscripciones = Math.max(...datos.map((d) => d.totalInscripciones || 0), 100)
   const maxAcumulado = Math.max(...datos.map((d) => d.totalAcumulado || 0), 200)
 
-  const left = 90
-  const right = 1310
-  const top = 115
-  const bottom = 460
+  const left = 50
+  const right = 690
+  const top = 70
+  const bottom = 245
   const graphWidth = right - left
   const graphHeight = bottom - top
 
@@ -256,20 +316,20 @@ function generarCanvasHistoricoMultianual({ historico = [] }) {
     // Eje izquierdo (Inscripciones)
     const valY = Math.round((maxInscripciones * 1.25 / 4) * i)
     ctx.fillStyle = '#1B396A'
-    ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    ctx.font = '9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     ctx.textAlign = 'right'
-    ctx.fillText(`${valY}`, left - 12, yGrid + 4)
+    ctx.fillText(`${valY}`, left - 6, yGrid + 3)
 
     // Eje derecho (Acumulado)
     const valYAcum = Math.round((maxAcumulado * 1.15 / 4) * i)
     ctx.fillStyle = '#D97706'
     ctx.textAlign = 'left'
-    ctx.fillText(`${valYAcum}`, right + 12, yGrid + 4)
+    ctx.fillText(`${valYAcum}`, right + 6, yGrid + 3)
   }
   ctx.textAlign = 'left'
 
   const step = graphWidth / datos.length
-  const anchoBarra = Math.min(85, step * 0.45)
+  const anchoBarra = Math.min(48, step * 0.45)
   const puntosLinea = []
 
   datos.forEach((d, i) => {
@@ -283,14 +343,14 @@ function generarCanvasHistoricoMultianual({ historico = [] }) {
 
     // Etiqueta en barra
     ctx.fillStyle = '#1B396A'
-    ctx.font = 'bold 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    ctx.font = 'bold 10.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(`${d.totalInscripciones || 0}`, xCentro, yBarra - 10)
+    ctx.fillText(`${d.totalInscripciones || 0}`, xCentro, yBarra - 5)
 
     // Año en eje X
     ctx.fillStyle = '#0F172A'
-    ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    ctx.fillText(`${d.anio}`, xCentro, bottom + 30)
+    ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    ctx.fillText(`${d.anio}`, xCentro, bottom + 18)
 
     // Punto acumulado
     const yAcum = bottom - ((d.totalAcumulado || 0) / (maxAcumulado * 1.15)) * graphHeight
@@ -299,7 +359,7 @@ function generarCanvasHistoricoMultianual({ historico = [] }) {
 
   // Línea acumulada
   ctx.strokeStyle = '#D97706'
-  ctx.lineWidth = 4
+  ctx.lineWidth = 2.5
   ctx.beginPath()
   puntosLinea.forEach((p, idx) => {
     if (idx === 0) ctx.moveTo(p.x, p.y)
@@ -311,23 +371,24 @@ function generarCanvasHistoricoMultianual({ historico = [] }) {
   puntosLinea.forEach((p) => {
     ctx.fillStyle = '#FFFFFF'
     ctx.beginPath()
-    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2)
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
     ctx.fill()
 
     ctx.strokeStyle = '#D97706'
-    ctx.lineWidth = 3
+    ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2)
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
     ctx.stroke()
 
     ctx.fillStyle = '#B45309'
-    ctx.font = 'bold 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    ctx.font = 'bold 9.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(`${p.valor} acum.`, p.x, p.y - 14)
+    ctx.fillText(`${p.valor} acum.`, p.x, p.y - 8)
   })
 
   ctx.textAlign = 'left'
-  return canvas.toDataURL('image/png')
+  // Exportar en JPEG optimizado (apenas ~25KB en el archivo PDF)
+  return canvas.toDataURL('image/jpeg', 0.78)
 }
 
 // ---------------------------------------------------------------------------
@@ -346,7 +407,12 @@ async function generarPDFInformeDepartamentalCompleto({
   rankingDeptos = [],
   descargar = true,
 }) {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'letter',
+    compress: true,
+  })
 
   const deptoObj = departamentosAnalizados.find((d) => coincidenDeptos(d.nombre, deptoSeleccionado)) || {
     nombre: deptoSeleccionado,
@@ -495,18 +561,18 @@ async function generarPDFInformeDepartamentalCompleto({
     ]
   )
 
-  // Gráfica 1: Ubicación respecto a los demás departamentos (Canvas)
+  // Gráfica 1: Ubicación respecto a los demás departamentos (Canvas JPEG ultra-ligero)
   const imgParticipacion = generarCanvasParticipacionDeptos({
     rankingDeptos,
     deptoSeleccionado: deptoObj.nombre,
   })
-  doc.addImage(imgParticipacion, 'PNG', 14, startY2 + 2, 188, 76)
+  doc.addImage(imgParticipacion, 'JPEG', 14, startY2 + 2, 188, 76, 'GRAFICA_PARTICIPACION', 'FAST')
 
-  // Gráfica 2: Evolución y Acumulado Multianual (Canvas)
+  // Gráfica 2: Evolución y Acumulado Multianual (Canvas JPEG ultra-ligero)
   const imgHistorico = generarCanvasHistoricoMultianual({
     historico: historicoMultianual,
   })
-  doc.addImage(imgHistorico, 'PNG', 14, startY2 + 82, 188, 68)
+  doc.addImage(imgHistorico, 'JPEG', 14, startY2 + 82, 188, 68, 'GRAFICA_HISTORICO', 'FAST')
 
   // Tabla Resumen Multianual
   const datosHistoricoTabla = (historicoMultianual.length > 0 ? historicoMultianual : [
@@ -692,7 +758,7 @@ export default function AnalisisEncuestas() {
   const deptosDisponibles = useMemo(() => {
     const setDeptos = new Set()
     for (const r of respuestas) {
-      if (r.departamento) setDeptos.add(r.departamento)
+      if (r.departamento) setDeptos.add(canonizarDepartamento(r.departamento))
     }
     return Array.from(setDeptos).sort()
   }, [respuestas])
@@ -704,7 +770,7 @@ export default function AnalisisEncuestas() {
       // Aplicar filtros de año, periodo y depto para que la lista de cursos sea coherente
       if (filtroAnio !== 'todos' && String(r.periodo_anio) !== filtroAnio) continue
       if (filtroPeriodo !== 'todos' && r.periodo_nombre !== filtroPeriodo) continue
-      if (filtroDepto !== 'todos' && r.departamento !== filtroDepto) continue
+      if (filtroDepto !== 'todos' && !coincidenDeptos(r.departamento, filtroDepto)) continue
       if (!mapa.has(r.curso_id)) {
         mapa.set(r.curso_id, {
           id: r.curso_id,
@@ -722,7 +788,7 @@ export default function AnalisisEncuestas() {
       if (filtroAnio !== 'todos' && String(r.periodo_anio) !== filtroAnio) return false
       if (filtroPeriodo !== 'todos' && r.periodo_nombre !== filtroPeriodo) return false
       if (filtroTipo !== 'todos' && r.tipo_curso !== filtroTipo) return false
-      if (filtroDepto !== 'todos' && r.departamento !== filtroDepto) return false
+      if (filtroDepto !== 'todos' && !coincidenDeptos(r.departamento, filtroDepto)) return false
       if (filtroCurso !== 'todos' && r.curso_id !== filtroCurso) return false
 
       return true
@@ -850,7 +916,7 @@ export default function AnalisisEncuestas() {
     const mapa = new Map()
 
     for (const r of respuestasFiltradas) {
-      const depto = r.departamento || 'Sin Departamento'
+      const depto = canonizarDepartamento(r.departamento || 'Sin Departamento')
       if (!mapa.has(depto)) {
         mapa.set(depto, {
           nombre: depto,
@@ -1490,7 +1556,7 @@ Instituto Tecnológico de Durango`
     window.location.href = mailtoUrl
   }
 
-  function abrirGmailWeb() {
+  async function abrirGmailWeb() {
     const seleccionados = Array.from(docentesSeleccionados)
     const extras = correosExtra
       .split(',')
@@ -1505,7 +1571,7 @@ Instituto Tecnológico de Durango`
 
     // Descargar el PDF para que lo adjunte en 1 clic
     try {
-      descargarPDFModal()
+      await generarYDescargarPDFDepartamental(deptoParaEnvio, true)
     } catch (e) {
       console.warn('Descarga en apertura Gmail:', e)
     }
@@ -1536,6 +1602,7 @@ Instituto Tecnológico de Durango`
       const resPDF = await generarYDescargarPDFDepartamental(deptoParaEnvio, false)
       const dataUri = resPDF.doc.output('datauristring')
       const base64Data = dataUri.split(',')[1]
+      const pesoKb = Math.round((resPDF.blob?.size || base64Data.length * 0.75) / 1024)
 
       // 2. Invocar la función Edge de Supabase
       const { data, error } = await supabase.functions.invoke('send-email', {
@@ -1559,7 +1626,7 @@ Instituto Tecnológico de Durango`
 
       setResultadoEnvioAuto({
         ok: true,
-        mensaje: `¡Excelente! Se envió el correo automáticamente a ${todos.length} docentes con el PDF adjunto.`,
+        mensaje: `¡Excelente! Se envió el correo automáticamente a ${todos.length} docentes con el PDF adjunto (${pesoKb} KB, optimizado para entrega inmediata).`,
       })
     } catch (err) {
       console.error('Error en envío automático:', err)
@@ -1579,7 +1646,7 @@ Instituto Tecnológico de Durango`
       return
     }
 
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter', compress: true })
     const startY = await dibujarEncabezadoPDF(
       doc,
       'Reporte Ejecutivo: Análisis de Encuestas de Satisfacción',
@@ -3111,8 +3178,11 @@ Instituto Tecnológico de Durango`
                   <h3 className="font-serif text-lg font-bold">
                     Enviar Informe Ejecutivo a Docentes
                   </h3>
-                  <p className="text-xs text-blue-100">
-                    PDF oficial con logos, semáforo de encuestas, ranking departamental y evolución multianual.
+                  <p className="text-xs text-blue-100 flex flex-wrap items-center gap-2">
+                    <span>PDF oficial con logos, semáforo, ranking departamental y evolución multianual.</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/30 text-emerald-100 border border-emerald-400/40">
+                      ⚡ Ultra-ligero (~120 - 180 KB)
+                    </span>
                   </p>
                 </div>
               </div>

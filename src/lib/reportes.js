@@ -50,6 +50,54 @@ function normalizar(texto) {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+// Unifica nombres de departamento para evitar duplicados en conteos y rankings
+// (ej. "CIENCIAS ECONOMICO-ADMINISTRATIVAS" vs "CIENCIAS ECONÓMICO ADMINISTRATIVAS")
+export function canonizarDepartamento(depto) {
+  if (!depto) return 'Sin especificar'
+  const limpio = String(depto).trim()
+  const norm = limpio
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/^DEPARTAMENTO\s+DE\s+/i, '')
+    .replace(/^DEPTO\.?\s+DE\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (norm.includes('ECONOM') && norm.includes('ADMINISTRAT')) {
+    return 'DEPARTAMENTO DE CIENCIAS ECONÓMICO ADMINISTRATIVAS'
+  }
+  if (norm.includes('BASICA') || norm === 'BASICAS') {
+    return 'DEPARTAMENTO DE CIENCIAS BÁSICAS'
+  }
+  if (norm.includes('TIERRA')) {
+    return 'DEPARTAMENTO DE CIENCIAS DE LA TIERRA'
+  }
+  if (norm.includes('INDUSTRIAL')) {
+    return 'DEPARTAMENTO DE INGENIERÍA INDUSTRIAL'
+  }
+  if (norm.includes('QUIMIC') || norm.includes('BIOQUIMIC')) {
+    return 'DEPARTAMENTO DE INGENIERÍAS QUÍMICA-BIOQUÍMICA'
+  }
+  if (norm.includes('ELECTRICA') || norm.includes('ELECTRONICA')) {
+    return 'DEPARTAMENTO DE INGENIERÍAS ELÉCTRICA - ELECTRÓNICA'
+  }
+  if (norm.includes('METAL') || norm.includes('MECANICA')) {
+    return 'DEPARTAMENTO DE METAL-MECÁNICA'
+  }
+  if (norm.includes('SISTEMA') || norm.includes('COMPUTAC')) {
+    return 'DEPARTAMENTO DE SISTEMAS Y COMPUTACION'
+  }
+  if (norm.includes('DESARROLLO ACADEMIC')) {
+    return 'DEPARTAMENTO DE DESARROLLO ACADÉMICO'
+  }
+  if (norm.includes('POSGRADO')) {
+    return 'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION'
+  }
+  return limpio
+}
+
 // Deriva "Licenciatura" / "Posgrado" / null a partir del código crudo de
 // docentes.nivel (L / M / P / "M, Maestría" / NULL / etc.)
 function nivelAgrupado(nivelCrudo) {
@@ -166,8 +214,8 @@ export async function calcularReporte(periodo) {
       tipoCurso: fila.cursos?.tipo,
       cursoNombre: fila.cursos?.nombre,
       cursoClave: `C-${fila.cursos?.id}`,
-      departamento: fila.docentes?.departamento || 'Sin especificar',
-      departamentoOferente: fila.cursos?.departamento || 'Sin especificar',
+      departamento: canonizarDepartamento(fila.docentes?.departamento || 'Sin especificar'),
+      departamentoOferente: canonizarDepartamento(fila.cursos?.departamento || 'Sin especificar'),
     })
   }
 
@@ -182,10 +230,10 @@ export async function calcularReporte(periodo) {
       tipoCurso: fila.tipo,
       cursoNombre: fila.curso,
       cursoClave: `H-${fila.folio_curso || fila.curso}`,
-      departamento: fila.departamento || 'Sin especificar',
+      departamento: canonizarDepartamento(fila.departamento || 'Sin especificar'),
       // Los históricos no tienen un departamento de curso por separado --
       // se usa el mismo como mejor aproximación disponible.
-      departamentoOferente: fila.departamento || 'Sin especificar',
+      departamentoOferente: canonizarDepartamento(fila.departamento || 'Sin especificar'),
     })
   }
 
@@ -253,7 +301,8 @@ export async function calcularReporte(periodo) {
       if (!generoPorCurso.has(cursoNombre)) generoPorCurso.set(cursoNombre, { Hombre: 0, Mujer: 0 })
       if (genero === 'Hombre' || genero === 'Mujer') generoPorCurso.get(cursoNombre)[genero]++
     }
-    conteoPorDepartamento.set(departamento, (conteoPorDepartamento.get(departamento) || 0) + 1)
+    const deptoFinal = canonizarDepartamento(departamento)
+    conteoPorDepartamento.set(deptoFinal, (conteoPorDepartamento.get(deptoFinal) || 0) + 1)
   }
 
   const distribucion = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, '6+': 0 }

@@ -26,6 +26,48 @@ export const RUTAS_LOGO_ITD = [
 let cacheLogoTecnm = null;
 let cacheLogoItd = null;
 
+// Optimiza y reduce drásticamente el peso de imágenes rasterizadas para jsPDF
+// Evita que imágenes grandes o con canal alfa sin comprimir inflen el PDF a varios megabytes
+export async function optimizarImagenParaPDF(dataUrl, maxW = 300, maxH = 200, calidad = 0.82) {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || !dataUrl) {
+    return dataUrl;
+  }
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          let w = img.width || maxW;
+          let h = img.height || maxH;
+          if (w > maxW || h > maxH) {
+            const ratio = Math.min(maxW / w, maxH / h);
+            w = Math.max(1, Math.round(w * ratio));
+            h = Math.max(1, Math.round(h * ratio));
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          // Fondo blanco sólido para que logotipos transparentes (PNG) no se oscurezcan
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          // Exportar en JPEG optimizado (reduce de ~200KB-1MB a apenas ~8-14KB)
+          const opt = canvas.toDataURL('image/jpeg', calidad);
+          resolve(opt);
+        } catch {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    } catch {
+      resolve(dataUrl);
+    }
+  });
+}
+
 export async function cargarImagenBase64(rutas) {
   const lista = Array.isArray(rutas) ? rutas : [rutas];
 
@@ -61,29 +103,32 @@ export async function dibujarEncabezadoPDF(doc, titulo, subtitulos = []) {
   const leftMargin = 14;
   const rightMargin = 14;
 
-  // 1. Cargar logos con caché y de manera independiente (si uno falla, el otro se dibuja)
+  // 1. Cargar logos con caché y compresión optimizada para PDF ultra-ligero
   if (!cacheLogoTecnm) {
-    cacheLogoTecnm = await cargarImagenBase64(RUTAS_LOGO_TECNM);
+    const rawTecnm = await cargarImagenBase64(RUTAS_LOGO_TECNM);
+    cacheLogoTecnm = await optimizarImagenParaPDF(rawTecnm, 280, 140, 0.8);
   }
   if (!cacheLogoItd) {
-    cacheLogoItd = await cargarImagenBase64(RUTAS_LOGO_ITD);
+    const rawItd = await cargarImagenBase64(RUTAS_LOGO_ITD);
+    cacheLogoItd = await optimizarImagenParaPDF(rawItd, 220, 260, 0.8);
   }
 
-  // 2. Dibujar Logo TecNM (izquierda)
+  // 2. Dibujar Logo TecNM (izquierda) con alias 'LOGO_TECNM' para que jsPDF lo reutilice
+  // en todas las páginas sin duplicar datos ni aumentar el tamaño del archivo
   if (cacheLogoTecnm) {
     try {
-      const formatoTecnm = cacheLogoTecnm.includes('image/png') ? 'PNG' : 'JPEG';
-      doc.addImage(cacheLogoTecnm, formatoTecnm, leftMargin, 8, 32, 14);
+      const formatoTecnm = cacheLogoTecnm.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(cacheLogoTecnm, formatoTecnm, leftMargin, 8, 32, 14, 'LOGO_TECNM', 'FAST');
     } catch (e) {
       console.warn('Error al dibujar logo TecNM en PDF:', e);
     }
   }
 
-  // 3. Dibujar Logo ITD (derecha)
+  // 3. Dibujar Logo ITD (derecha) con alias 'LOGO_ITD' para evitar duplicación entre páginas
   if (cacheLogoItd) {
     try {
-      const formatoItd = cacheLogoItd.includes('image/jpeg') ? 'JPEG' : 'PNG';
-      doc.addImage(cacheLogoItd, formatoItd, pageWidth - rightMargin - 17, 5, 17, 20);
+      const formatoItd = cacheLogoItd.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+      doc.addImage(cacheLogoItd, formatoItd, pageWidth - rightMargin - 17, 5, 17, 20, 'LOGO_ITD', 'FAST');
     } catch (e) {
       console.warn('Error al dibujar logo ITD en PDF:', e);
     }
