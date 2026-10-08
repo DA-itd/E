@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
     // CASO 1: ENVÍO DE INFORME EJECUTIVO DEPARTAMENTAL (CON PDF ADJUNTO)
     // -------------------------------------------------------------------------
     if (tipo === 'informe_ejecutivo') {
-      const { emails, asunto, mensaje, adjuntoBase64, nombreArchivo } = body
+      const { emails, asunto, mensaje, html, adjuntoBase64, nombreArchivo } = body
       const listaDestinatarios = Array.isArray(emails) ? emails : [body.email].filter(Boolean)
 
       if (listaDestinatarios.length === 0) {
@@ -119,28 +119,56 @@ Deno.serve(async (req) => {
       }
 
       const asuntoCorreo = asunto || 'Informe Ejecutivo de Actualización Docente ITD'
-      const htmlCorreo = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:0;font-family:'Segoe UI',sans-serif;background-color:#f3f4f6;">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0"><tr><td align="center" style="padding:20px;">
-          <div style="max-width:620px;margin:0 auto;background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.05);border:1px solid #e2e8f0;">
-            <div style="background-color:#1B396A;padding:26px 20px;text-align:center;">
-              <img src="${LOGO_URL}" alt="ITD" style="height:75px;margin-bottom:10px;background-color:white;border-radius:50%;padding:6px;">
-              <h1 style="color:white;margin:0;font-size:20px;font-weight:bold;">Coordinación de Actualización Docente</h1>
-              <p style="color:#bfdbfe;margin:4px 0 0;font-size:13px;">Instituto Tecnológico de Durango</p>
-            </div>
-            <div style="padding:32px 26px;">
-              <div style="white-space:pre-wrap;font-size:14px;color:#334155;line-height:1.65;">${mensaje || ''}</div>
-              <div style="margin-top:24px;padding:14px;background-color:#f8fafc;border-left:4px solid #1B396A;border-radius:6px;font-size:13px;color:#475569;">
-                <p style="margin:0;font-weight:bold;color:#1B396A;">📎 Archivo PDF Adjunto Oficial:</p>
+      const htmlCorreo = html || `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${asuntoCorreo}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;padding:20px 0;">
+    <tr>
+      <td align="center">
+        <table width="700" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.08);max-width:95%;">
+          <tr>
+            <td style="background:#7A003C;padding:25px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:bold;">
+                Informe Ejecutivo de Satisfacción y Desempeño Docente
+              </h1>
+              <p style="margin:8px 0 0 0;color:#f5f5f5;font-size:14px;">
+                Coordinación de Actualización Docente
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:35px;color:#333333;font-size:15px;line-height:1.7;">
+              <div style="white-space:pre-wrap;">${mensaje || ''}</div>
+              <div style="margin-top:24px;padding:14px;background-color:#f8fafc;border-left:4px solid #005A9C;border-radius:6px;font-size:13px;color:#475569;">
+                <p style="margin:0;font-weight:bold;color:#005A9C;">📎 Archivo PDF Adjunto Oficial:</p>
                 <p style="margin:4px 0 0;color:#64748b;">${nombreArchivo || 'Informe_Ejecutivo.pdf'} (Incluye resumen ejecutivo, gráficas de ubicación departamental y evolución acumulada multianual 2022-2026).</p>
               </div>
-            </div>
-            <div style="background-color:#f8fafc;padding:18px;text-align:center;border-top:1px solid #e2e8f0;">
-              <p style="font-size:12px;font-weight:bold;color:#64748b;margin:0;">Coordinación de Actualización Docente · ITD</p>
-              <p style="font-size:11px;color:#94a3b8;margin:4px 0 0;">Instituto Tecnológico de Durango · Excelencia en Educación Tecnológica</p>
-            </div>
-          </div>
-        </td></tr></table>
-      </body></html>`
+              <br>
+              <p style="margin-bottom:0;">
+                <strong>Atentamente,</strong><br>
+                Alejandro Calderón Rentería<br>
+                Coordinación de Actualización Docente<br>
+                Instituto Tecnológico de Durango
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#eeeeee;padding:15px;text-align:center;font-size:12px;color:#666666;">
+              Instituto Tecnológico de Durango · Desarrollo Académico<br>
+              Coordinación de Actualización Docente
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
 
       const attachments = adjuntoBase64
         ? [

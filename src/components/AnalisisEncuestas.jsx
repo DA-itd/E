@@ -103,6 +103,174 @@ function coincidenDeptos(a, b) {
 }
 
 // ---------------------------------------------------------------------------
+// PLANTILLAS DE CORREO ELECTRÓNICO (HTML PROFESIONAL Y TEXTO PLANO)
+// Con diseño institucional ITD (encabezado #7A003C, tabla de métricas y firma oficial)
+// ---------------------------------------------------------------------------
+
+export function construirPlantillaHTML({
+  deptoNombre = '',
+  periodoDesc = 'Periodo reciente',
+  promedioSat = '4.70',
+  impactoAula = '4.76',
+  semaforoTxt = 'Excelente (≥ 4.5)',
+  rankingTxt = 'Lugar destacado institucionalmente',
+  remitenteNombre = 'Alejandro Calderón Rentería',
+}) {
+  const deptoRaw = String(deptoNombre || 'DEPARTAMENTO ACADÉMICO').trim()
+  const deptoTitulo = deptoRaw.toUpperCase().startsWith('DEPARTAMENTO')
+    ? deptoRaw.toUpperCase()
+    : `DEPARTAMENTO DE ${deptoRaw.toUpperCase()}`
+
+  const numSat = parseFloat(promedioSat) || 0
+  const colorBadge = numSat >= 4.5 ? '#198754' : numSat >= 4.0 ? '#d97706' : '#dc2626'
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Informe Ejecutivo de Satisfacción y Desempeño Docente</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f4;padding:20px 0;">
+    <tr>
+      <td align="center">
+        <table width="700" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.08);max-width:96%;">
+          
+          <!-- Encabezado -->
+          <tr>
+            <td style="background:#7A003C;padding:25px;text-align:center;">
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:bold;">
+                Informe Ejecutivo de Satisfacción y Desempeño Docente
+              </h1>
+              <p style="margin:8px 0 0 0;color:#f5f5f5;font-size:14px;">
+                Coordinación de Actualización Docente
+              </p>
+            </td>
+          </tr>
+
+          <!-- Contenido -->
+          <tr>
+            <td style="padding:35px;color:#333333;font-size:15px;line-height:1.7;">
+              
+              <p>
+                <strong>Estimadas y estimados docentes del ${deptoTitulo}:</strong>
+              </p>
+
+              <p>
+                Esperando se encuentren bien, la <strong>Coordinación de Actualización Docente del Instituto Tecnológico de Durango</strong> les comparte el <strong>Informe Ejecutivo de Satisfacción y Desempeño Docente (${periodoDesc})</strong>, generado a partir de las evaluaciones institucionales <strong>ITD-AD-FO-09</strong>.
+              </p>
+
+              <!-- Métricas -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fa;border-left:5px solid #005A9C;padding:15px;margin:20px 0;border-radius:4px;">
+                <tr>
+                  <td style="padding:15px;">
+                    <h3 style="margin-top:0;color:#005A9C;font-size:16px;">
+                      📊 Métricas Destacadas de su Departamento
+                    </h3>
+
+                    <p style="margin:8px 0;">
+                      <strong>• Satisfacción General (Curso e Instructor):</strong>
+                      ${promedioSat} / 5.00
+                      <span style="color:${colorBadge};font-weight:bold;">
+                        (${semaforoTxt})
+                      </span>
+                    </p>
+
+                    <p style="margin:8px 0;">
+                      <strong>• Indicador de Impacto / Aplicación Práctica en el Aula:</strong>
+                      ${impactoAula} / 5.00
+                    </p>
+
+                    <p style="margin:8px 0;">
+                      <strong>• Posición en Participación Institucional:</strong>
+                      ${rankingTxt}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p>
+                En el documento PDF adjunto con logotipos oficiales encontrarán:
+              </p>
+
+              <ol style="padding-left:20px;margin:15px 0;">
+                <li>Resumen ejecutivo de satisfacción y semáforo departamental.</li>
+                <li>Desglose de cursos evaluados por docentes del departamento.</li>
+                <li>Gráfica de ubicación de participación respecto a todos los demás departamentos del ITD.</li>
+                <li>Gráfica de evolución y crecimiento acumulado multianual (2022 - 2026).</li>
+              </ol>
+
+              <p>
+                Agradecemos profundamente su valiosa labor académica y su compromiso con la excelencia educativa del Instituto Tecnológico de Durango.
+              </p>
+
+              <br>
+
+              <p style="margin-bottom:0;">
+                <strong>Atentamente,</strong><br>
+                ${remitenteNombre || 'Alejandro Calderón Rentería'}<br>
+                Coordinación de Actualización Docente<br>
+                Instituto Tecnológico de Durango
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Pie -->
+          <tr>
+            <td style="background:#eeeeee;padding:15px;text-align:center;font-size:12px;color:#666666;">
+              Instituto Tecnológico de Durango · Desarrollo Académico<br>
+              Coordinación de Actualización Docente
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+}
+
+export function construirPlantillaTexto({
+  deptoNombre = '',
+  periodoDesc = 'Periodo reciente',
+  promedioSat = '4.70',
+  impactoAula = '4.76',
+  semaforoTxt = 'Excelente (≥ 4.5)',
+  rankingTxt = 'Lugar destacado institucionalmente',
+  remitenteNombre = 'Alejandro Calderón Rentería',
+}) {
+  const deptoRaw = String(deptoNombre || 'DEPARTAMENTO ACADÉMICO').trim()
+  const deptoTitulo = deptoRaw.toUpperCase().startsWith('DEPARTAMENTO')
+    ? deptoRaw.toUpperCase()
+    : `DEPARTAMENTO DE ${deptoRaw.toUpperCase()}`
+
+  return `Estimadas y estimados docentes del ${deptoTitulo}:
+
+Esperando se encuentren bien, la Coordinación de Actualización Docente del Instituto Tecnológico de Durango les comparte el Informe Ejecutivo de Satisfacción y Desempeño Docente (${periodoDesc}), generado a partir de las evaluaciones institucionales ITD-AD-FO-09:
+
+📊 Métricas Destacadas de su Departamento:
+• Satisfacción General (Curso e Instructor): ${promedioSat} / 5.00 (${semaforoTxt})
+• Indicador de Impacto / Aplicación Práctica en el Aula: ${impactoAula} / 5.00
+• Posición en Participación Institucional: ${rankingTxt}
+
+En el documento PDF adjunto con logotipos oficiales encontrarán:
+1. Resumen ejecutivo de satisfacción y semáforo departamental.
+2. Desglose de cursos evaluados por docentes del departamento.
+3. Gráfica de ubicación de participación respecto a todos los demás departamentos del ITD.
+4. Gráfica de evolución y crecimiento acumulado multianual (2022 - 2026).
+
+Agradecemos profundamente su valiosa labor académica y su compromiso con la excelencia educativa del Instituto Tecnológico de Durango.
+
+Atentamente,
+${remitenteNombre || 'Alejandro Calderón Rentería'}
+Coordinación de Actualización Docente
+Instituto Tecnológico de Durango`
+}
+
+// ---------------------------------------------------------------------------
 // RENDERIZADO EN CANVAS DE LAS GRÁFICAS DE "REPORTE" PARA EMBEBER EN EL PDF
 // 1. Participación por departamento (destacando el departamento seleccionado)
 // 2. Evolución y Acumulado Multianual (2022 - 2026)
@@ -714,9 +882,15 @@ export default function AnalisisEncuestas() {
   const [cargandoDocentes, setCargandoDocentes] = useState(false)
   const [asuntoCorreo, setAsuntoCorreo] = useState('')
   const [cuerpoCorreo, setCuerpoCorreo] = useState('')
+  const [htmlCorreo, setHtmlCorreo] = useState('')
+  const [remitenteFirma, setRemitenteFirma] = useState('Alejandro Calderón Rentería')
+  const [pestanaCorreo, setPestanaCorreo] = useState('visual') // 'visual' | 'texto' | 'html'
   const [correosExtra, setCorreosExtra] = useState('')
   const [copiadoCorreos, setCopiadoCorreos] = useState(false)
   const [copiadoMensaje, setCopiadoMensaje] = useState(false)
+  const [copiadoHtml, setCopiadoHtml] = useState(false)
+  const [copiadoFormatoGmail, setCopiadoFormatoGmail] = useState(false)
+  const [avisoPegarGmail, setAvisoPegarGmail] = useState(false)
   const [generandoPDFEnvio, setGenerandoPDFEnvio] = useState(false)
   const [enviandoAutomatico, setEnviandoAutomatico] = useState(false)
   const [resultadoEnvioAuto, setResultadoEnvioAuto] = useState(null)
@@ -1397,33 +1571,64 @@ export default function AnalisisEncuestas() {
 
       setAsuntoCorreo(`[TecNM / ITD] Informe Ejecutivo de Análisis de Encuestas y Desempeño - ${deptoNombre}`)
 
-      const plantillaMensaje = `Estimadas y estimados docentes del ${deptoNombre}:
+      const firma = remitenteFirma || 'Alejandro Calderón Rentería'
+      const htmlGen = construirPlantillaHTML({
+        deptoNombre,
+        periodoDesc,
+        promedioSat,
+        impactoAula,
+        semaforoTxt,
+        rankingTxt,
+        remitenteNombre: firma,
+      })
+      const textoGen = construirPlantillaTexto({
+        deptoNombre,
+        periodoDesc,
+        promedioSat,
+        impactoAula,
+        semaforoTxt,
+        rankingTxt,
+        remitenteNombre: firma,
+      })
 
-Esperando se encuentren bien, la Coordinación de Actualización Docente del Instituto Tecnológico de Durango les comparte el Informe Ejecutivo de Satisfacción y Desempeño Docente (${periodoDesc}), generado a partir de las evaluaciones institucionales ITD-AD-FO-09:
-
-📊 Métricas Destacadas de su Departamento:
-• Satisfacción General (Curso e Instructor): ${promedioSat} / 5.00 (${semaforoTxt})
-• Indicador de Impacto / Aplicación Práctica en el Aula: ${impactoAula} / 5.00
-• Posición en Participación Institucional: ${rankingTxt}
-
-En el documento PDF adjunto con logotipos oficiales encontrarán:
-1. Resumen ejecutivo de satisfacción y semáforo departamental.
-2. Desglose de cursos evaluados por docentes del departamento.
-3. Gráfica de ubicación de participación respecto a todos los demás departamentos del ITD.
-4. Gráfica de evolución y crecimiento acumulado multianual (2022 - 2026).
-
-Agradecemos profundamente su valiosa labor académica y su compromiso con la excelencia educativa del ITD.
-
-Atentamente,
-Coordinación de Actualización Docente
-Instituto Tecnológico de Durango`
-
-      setCuerpoCorreo(plantillaMensaje)
+      setHtmlCorreo(htmlGen)
+      setCuerpoCorreo(textoGen)
     } catch (err) {
       console.error('Error al preparar envío:', err)
     } finally {
       setCargandoDocentes(false)
     }
+  }
+
+  function cambiarRemitenteFirma(nuevaFirma) {
+    setRemitenteFirma(nuevaFirma)
+    if (!deptoParaEnvio) return
+    const deptoObj = departamentosAnalizados.find((d) => coincidenDeptos(d.nombre, deptoParaEnvio))
+    const promedioSat = (deptoObj?.promedioB || deptoObj?.promedioGeneral || 5.0).toFixed(2)
+    const impactoAula = (deptoObj?.promedioA || 4.8).toFixed(2)
+    const semaforoTxt = deptoObj?.labelSemaforo || 'Excelente (≥ 4.5)'
+    const pos = rankingDeptosCargado.findIndex((d) => coincidenDeptos(d.nombre, deptoParaEnvio))
+    const rankingTxt = pos >= 0 ? `Lugar #${pos + 1} de ${rankingDeptosCargado.length} departamentos` : 'Destacada participación institucional'
+    const periodoDesc = `${filtroPeriodo === 'todos' ? 'Periodo reciente' : filtroPeriodo} ${filtroAnio === 'todos' ? '' : filtroAnio}`.trim()
+
+    setHtmlCorreo(construirPlantillaHTML({
+      deptoNombre: deptoParaEnvio,
+      periodoDesc,
+      promedioSat,
+      impactoAula,
+      semaforoTxt,
+      rankingTxt,
+      remitenteNombre: nuevaFirma,
+    }))
+    setCuerpoCorreo(construirPlantillaTexto({
+      deptoNombre: deptoParaEnvio,
+      periodoDesc,
+      promedioSat,
+      impactoAula,
+      semaforoTxt,
+      rankingTxt,
+      remitenteNombre: nuevaFirma,
+    }))
   }
 
   function abrirModalEnvioCorreo(nombreDepto) {
@@ -1435,6 +1640,10 @@ Instituto Tecnológico de Durango`
     setModalCorreoAbierto(true)
     setCopiadoCorreos(false)
     setCopiadoMensaje(false)
+    setCopiadoHtml(false)
+    setCopiadoFormatoGmail(false)
+    setAvisoPegarGmail(false)
+    setPestanaCorreo('visual')
     if (deptoTarget) {
       cargarDatosEnvioDepto(deptoTarget)
     }
@@ -1475,6 +1684,60 @@ Instituto Tecnológico de Durango`
     navigator.clipboard.writeText(cuerpoCorreo)
     setCopiadoMensaje(true)
     setTimeout(() => setCopiadoMensaje(false), 3000)
+  }
+
+  function copiarCodigoHTML() {
+    navigator.clipboard.writeText(htmlCorreo)
+    setCopiadoHtml(true)
+    setTimeout(() => setCopiadoHtml(false), 3000)
+  }
+
+  async function copiarFormatoGmail() {
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const blobHtml = new Blob([htmlCorreo], { type: 'text/html' })
+        const blobText = new Blob([cuerpoCorreo], { type: 'text/plain' })
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': blobHtml,
+            'text/plain': blobText,
+          }),
+        ])
+        setCopiadoFormatoGmail(true)
+        setAvisoPegarGmail(true)
+        setTimeout(() => setCopiadoFormatoGmail(false), 4500)
+        return true
+      }
+    } catch (e) {
+      console.warn('ClipboardItem fallback:', e)
+    }
+
+    try {
+      const container = document.createElement('div')
+      container.innerHTML = htmlCorreo
+      container.style.position = 'fixed'
+      container.style.left = '-9999px'
+      container.setAttribute('contenteditable', 'true')
+      document.body.appendChild(container)
+      container.focus()
+      const sel = window.getSelection()
+      const range = document.createRange()
+      range.selectNodeContents(container)
+      sel.removeAllRanges()
+      sel.addRange(range)
+      document.execCommand('copy')
+      sel.removeAllRanges()
+      document.body.removeChild(container)
+      setCopiadoFormatoGmail(true)
+      setAvisoPegarGmail(true)
+      setTimeout(() => setCopiadoFormatoGmail(false), 4500)
+      return true
+    } catch (err) {
+      navigator.clipboard.writeText(cuerpoCorreo)
+      setCopiadoMensaje(true)
+      setTimeout(() => setCopiadoMensaje(false), 3000)
+      return false
+    }
   }
 
   async function generarYDescargarPDFDepartamental(deptoNombre, descargar = true) {
@@ -1580,6 +1843,9 @@ Instituto Tecnológico de Durango`
       return
     }
 
+    // Copiar automáticamente el formato enriquecido (con tablas, colores y firma de Alejandro) al portapapeles
+    await copiarFormatoGmail()
+
     // Descargar el PDF para que lo adjunte en 1 clic
     try {
       await generarYDescargarPDFDepartamental(deptoParaEnvio, true)
@@ -1590,6 +1856,7 @@ Instituto Tecnológico de Durango`
     const bccStr = todos.join(',')
     const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&bcc=${encodeURIComponent(bccStr)}&su=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
     window.open(gmailUrl, '_blank')
+    setAvisoPegarGmail(true)
   }
 
   async function enviarCorreoAutomatico() {
@@ -1615,13 +1882,14 @@ Instituto Tecnológico de Durango`
       const base64Data = dataUri.split(',')[1]
       const pesoKb = Math.round((resPDF.blob?.size || base64Data.length * 0.75) / 1024)
 
-      // 2. Invocar la función Edge de Supabase
+      // 2. Invocar la función Edge de Supabase con HTML y mensaje
       const { data, error } = await supabase.functions.invoke('send-email', {
         body: {
           tipo: 'informe_ejecutivo',
           emails: todos,
           asunto: asuntoCorreo,
           mensaje: cuerpoCorreo,
+          html: htmlCorreo,
           adjuntoBase64: base64Data,
           nombreArchivo: resPDF.nombreArchivo,
         },
@@ -3174,7 +3442,7 @@ Instituto Tecnológico de Durango`
       {/* ===================================================================== */}
       {modalCorreoAbierto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-2xl w-full my-8 overflow-hidden text-slate-800 transition-all">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-3xl w-full my-8 overflow-hidden text-slate-800 transition-all">
             {/* Header Modal */}
             <div className="bg-gradient-to-r from-[#1b396a] via-[#1e427b] to-[#781834] text-white p-6 relative">
               <button
@@ -3317,40 +3585,162 @@ Instituto Tecnológico de Durango`
                 </div>
               </div>
 
-              {/* Asunto y Contenido del Correo */}
+              {/* Asunto, Firma y Contenido del Correo */}
               <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    📝 Asunto del Correo:
-                  </label>
-                  <input
-                    type="text"
-                    value={asuntoCorreo}
-                    onChange={(e) => setAsuntoCorreo(e.target.value)}
-                    className="w-full text-xs font-semibold px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1b396a] focus:outline-hidden"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      📝 Asunto del Correo:
+                    </label>
+                    <input
+                      type="text"
+                      value={asuntoCorreo}
+                      onChange={(e) => setAsuntoCorreo(e.target.value)}
+                      className="w-full text-xs font-semibold px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1b396a] focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      ✍️ Remitente en Firma (Atentamente):
+                    </label>
+                    <input
+                      type="text"
+                      value={remitenteFirma}
+                      onChange={(e) => cambiarRemitenteFirma(e.target.value)}
+                      placeholder="Alejandro Calderón Rentería"
+                      className="w-full text-xs font-semibold px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1b396a] focus:outline-hidden"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-slate-700">
-                      💬 Mensaje / Cuerpo del Correo:
-                    </label>
+                {/* Barra de pestañas y botones de copiado */}
+                <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setPestanaCorreo('visual')}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                          pestanaCorreo === 'visual'
+                            ? 'bg-[#7A003C] text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        🎨 Vista Previa Oficial (HTML)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPestanaCorreo('texto')}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                          pestanaCorreo === 'texto'
+                            ? 'bg-[#1b396a] text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        📝 Texto Plano
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPestanaCorreo('html')}
+                        className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                          pestanaCorreo === 'html'
+                            ? 'bg-slate-800 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        💻 Código HTML
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={copiarFormatoGmail}
+                        className="px-3 py-1.5 text-xs font-bold rounded-xl bg-gradient-to-r from-[#7A003C] to-[#a11b55] hover:from-[#640031] hover:to-[#851646] text-white shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="Copia el correo con tablas, colores y formato visual para pegar directamente en Gmail (Ctrl+V)"
+                      >
+                        <span>{copiadoFormatoGmail ? '✓ ¡Copiado con Formato!' : '📋 Copiar para Gmail'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={copiarCodigoHTML}
+                        className="px-2.5 py-1.5 text-[11px] font-bold rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Copiar código HTML crudo"
+                      >
+                        <span>{copiadoHtml ? '✓ HTML Copiado' : '💻 Copiar HTML'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={copiarMensajeAlPortapapeles}
+                        className="px-2.5 py-1.5 text-[11px] font-bold rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Copiar texto plano simple"
+                      >
+                        <span>{copiadoMensaje ? '✓ Texto Copiado' : '📝 Copiar Texto'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Vista activa */}
+                  {pestanaCorreo === 'visual' && (
+                    <div className="relative rounded-xl border border-slate-200 overflow-hidden bg-[#f4f4f4] shadow-xs">
+                      <div className="bg-slate-100 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
+                        <span className="font-semibold flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                          Diseño Institucional ITD (Encabezado guinda, métricas y firma oficial)
+                        </span>
+                        <span className="text-[10px] text-slate-400">Atentamente: {remitenteFirma || 'Alejandro Calderón Rentería'}</span>
+                      </div>
+                      <iframe
+                        title="Vista previa del correo en HTML"
+                        srcDoc={htmlCorreo}
+                        className="w-full h-[340px] border-0 bg-white"
+                      />
+                    </div>
+                  )}
+
+                  {pestanaCorreo === 'texto' && (
+                    <div>
+                      <textarea
+                        rows={10}
+                        value={cuerpoCorreo}
+                        onChange={(e) => setCuerpoCorreo(e.target.value)}
+                        className="w-full text-xs font-mono p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1b396a] focus:outline-hidden leading-relaxed bg-white"
+                      />
+                    </div>
+                  )}
+
+                  {pestanaCorreo === 'html' && (
+                    <div>
+                      <textarea
+                        rows={10}
+                        value={htmlCorreo}
+                        onChange={(e) => setHtmlCorreo(e.target.value)}
+                        className="w-full text-[11px] font-mono p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1b396a] focus:outline-hidden leading-relaxed bg-slate-900 text-emerald-400"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Banner de aviso para pegar en Gmail */}
+                {avisoPegarGmail && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-900 flex items-start gap-2.5 animate-fade-in">
+                    <span className="text-base shrink-0">✨</span>
+                    <div className="flex-1">
+                      <p className="font-bold">¡Formato profesional copiado al portapapeles!</p>
+                      <p className="mt-0.5 text-amber-800 leading-relaxed">
+                        Al abrirse Gmail (o cualquier cliente de correo), da un clic dentro del cuerpo del mensaje y pulsa <strong>Pegar (Ctrl+V)</strong>. Aparecerá el diseño completo con el encabezado institucional en guinda, la caja de métricas con bordes y la firma de <strong>{remitenteFirma || 'Alejandro Calderón Rentería'}</strong>.
+                      </p>
+                    </div>
                     <button
                       type="button"
-                      onClick={copiarMensajeAlPortapapeles}
-                      className="text-[11px] font-bold text-[#1b396a] hover:underline flex items-center gap-1 cursor-pointer"
+                      onClick={() => setAvisoPegarGmail(false)}
+                      className="text-amber-600 hover:text-amber-900 font-bold cursor-pointer"
                     >
-                      <span>{copiadoMensaje ? '✓ Copiado' : '📋 Copiar mensaje'}</span>
+                      ✕
                     </button>
                   </div>
-                  <textarea
-                    rows={6}
-                    value={cuerpoCorreo}
-                    onChange={(e) => setCuerpoCorreo(e.target.value)}
-                    className="w-full text-xs font-mono p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#1b396a] focus:outline-hidden leading-relaxed"
-                  />
-                </div>
+                )}
               </div>
 
               {/* Banner de resultado de envío automático */}
@@ -3385,13 +3775,13 @@ Instituto Tecnológico de Durango`
                 </p>
                 <ul className="space-y-1 text-blue-800">
                   <li>
-                    • <strong>Envío Automático (Recomendado):</strong> Envía el correo directamente desde el servidor con el archivo PDF adjunto a todos los docentes seleccionados sin abrir aplicaciones externas.
+                    • <strong>Envío Automático (Recomendado):</strong> Envía el correo directamente desde el servidor con el diseño HTML profesional y el archivo PDF adjunto a todos los docentes seleccionados sin abrir aplicaciones externas.
                   </li>
                   <li>
-                    • <strong>Redactar en Gmail Web:</strong> Abre Gmail en tu navegador con los docentes en CCO y el mensaje prellenado en 1 clic.
+                    • <strong>Redactar en Gmail Web:</strong> Abre Gmail en tu navegador con los docentes en CCO y copia el formato profesional a tu portapapeles listo para pegar con <strong>Ctrl+V</strong>.
                   </li>
                   <li>
-                    • <strong>Cliente de Correo / Copiar CCO:</strong> Para Outlook, Thunderbird o copiar y pegar manualmente.
+                    • <strong>Cliente de Correo / Copiar para Gmail:</strong> Para pegar en Gmail, Outlook o Thunderbird con el diseño completo.
                   </li>
                 </ul>
               </div>
