@@ -2,10 +2,15 @@ import { supabase } from './supabaseClient'
 
 // ---------------------------------------------------------------
 // Determina el rango de fechas (mes exacto) según el periodo elegido.
-// Los 3 trimestres de capacitación son meses fijos: enero, junio, agosto.
-// ---------------------------------------------------------------
-const MESES_TRIMESTRE = { 1: 1, 2: 6, 3: 8 }
-const NOMBRE_MES = { 1: 'ENERO', 6: 'JUNIO', 8: 'AGOSTO' }
+// Los 4 trimestres de capacitación institucional TecNM / ITD
+const MESES_TRIMESTRE = { 1: 1, 2: 6, 3: 8, 4: 10 }
+const NOMBRE_MES = { 1: 'ENERO', 6: 'JUNIO', 8: 'AGOSTO', 10: 'OCTUBRE' }
+const MESES_HASTA_TRIMESTRE = {
+  1: [1],
+  2: [1, 6],
+  3: [1, 6, 8],
+  4: [1, 6, 8, 10],
+}
 const TOP_CURSOS_DEMANDADOS = 10
 const TOP_DEPARTAMENTOS = 15
 
@@ -21,26 +26,35 @@ function trimestreActual() {
   const hoy = new Date()
   const anio = hoy.getFullYear()
   const mesHoy = hoy.getMonth() + 1
-  const mesesOrden = [8, 6, 1]
+  const mesesOrden = [10, 8, 6, 1]
   for (const mes of mesesOrden) {
     if (mesHoy >= mes) return { anio, mes }
   }
-  return { anio: anio - 1, mes: 8 }
+  return { anio: anio - 1, mes: 10 }
 }
 
 /**
- * @param {{ tipo: 'trimestre'|'anio'|'actual', anio: number, trimestre?: 1|2|3 }} periodo
+ * @param {{ tipo: 'trimestre'|'anio'|'actual'|'acumulado'|'acumulado_trimestre', anio: number, trimestre?: 1|2|3|4 }} periodo
  */
 function calcularRango(periodo) {
   if (periodo.tipo === 'anio') {
-    return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined }
+    return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true }
+  }
+  if (periodo.tipo === 'acumulado' || periodo.tipo === 'acumulado_trimestre') {
+    const t = periodo.trimestre || 4
+    if (t >= 4) {
+      return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true, trimestreAcumulado: t }
+    }
+    const mesFin = MESES_TRIMESTRE[t] || 10
+    const finDate = new Date(periodo.anio, mesFin, 0).toISOString().slice(0, 10)
+    return { inicio: `${periodo.anio}-01-01`, fin: finDate, anio: periodo.anio, mesesAcumulados: MESES_HASTA_TRIMESTRE[t], esAcumulado: true, trimestreAcumulado: t }
   }
   if (periodo.tipo === 'actual') {
     const { anio, mes } = trimestreActual()
-    return { ...rangoDelMes(anio, mes), anio, mes }
+    return { ...rangoDelMes(anio, mes), anio, mes, esAcumulado: false }
   }
   const mes = MESES_TRIMESTRE[periodo.trimestre]
-  return { ...rangoDelMes(periodo.anio, mes), anio: periodo.anio, mes }
+  return { ...rangoDelMes(periodo.anio, mes), anio: periodo.anio, mes, esAcumulado: false }
 }
 
 function normalizar(texto) {
@@ -48,6 +62,54 @@ function normalizar(texto) {
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+}
+
+// Unifica nombres de departamento para evitar duplicados en conteos y rankings
+// (ej. "CIENCIAS ECONOMICO-ADMINISTRATIVAS" vs "CIENCIAS ECONÓMICO ADMINISTRATIVAS")
+export function canonizarDepartamento(depto) {
+  if (!depto) return 'Sin especificar'
+  const limpio = String(depto).trim()
+  const norm = limpio
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/^DEPARTAMENTO\s+DE\s+/i, '')
+    .replace(/^DEPTO\.?\s+DE\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (norm.includes('ECONOM') && norm.includes('ADMINISTRAT')) {
+    return 'DEPARTAMENTO DE CIENCIAS ECONÓMICO ADMINISTRATIVAS'
+  }
+  if (norm.includes('BASICA') || norm === 'BASICAS') {
+    return 'DEPARTAMENTO DE CIENCIAS BÁSICAS'
+  }
+  if (norm.includes('TIERRA')) {
+    return 'DEPARTAMENTO DE CIENCIAS DE LA TIERRA'
+  }
+  if (norm.includes('INDUSTRIAL')) {
+    return 'DEPARTAMENTO DE INGENIERÍA INDUSTRIAL'
+  }
+  if (norm.includes('QUIMIC') || norm.includes('BIOQUIMIC')) {
+    return 'DEPARTAMENTO DE INGENIERÍAS QUÍMICA-BIOQUÍMICA'
+  }
+  if (norm.includes('ELECTRICA') || norm.includes('ELECTRONICA')) {
+    return 'DEPARTAMENTO DE INGENIERÍAS ELÉCTRICA - ELECTRÓNICA'
+  }
+  if (norm.includes('METAL') || norm.includes('MECANICA')) {
+    return 'DEPARTAMENTO DE METAL-MECÁNICA'
+  }
+  if (norm.includes('SISTEMA') || norm.includes('COMPUTAC')) {
+    return 'DEPARTAMENTO DE SISTEMAS Y COMPUTACION'
+  }
+  if (norm.includes('DESARROLLO ACADEMIC')) {
+    return 'DEPARTAMENTO DE DESARROLLO ACADÉMICO'
+  }
+  if (norm.includes('POSGRADO')) {
+    return 'DIVISION DE ESTUDIOS DE POSGRADO E INVESTIGACION'
+  }
+  return limpio
 }
 
 // Deriva "Licenciatura" / "Posgrado" / null a partir del código crudo de
@@ -78,7 +140,7 @@ function top(mapa, n) {
 }
 
 export async function calcularReporte(periodo) {
-  const { inicio, fin, anio, mes } = calcularRango(periodo)
+  const { inicio, fin, anio, mes, esAcumulado, mesesAcumulados, trimestreAcumulado } = calcularRango(periodo)
 
   // Palabras clave por categoría (habilidades_digitales / salud_emocional).
   const { data: palabrasData } = await supabase
@@ -109,8 +171,24 @@ export async function calcularReporte(periodo) {
     if (d.genero === 'Hombre' || d.genero === 'Mujer') totalPlantillaPorGenero[d.genero]++
   }
 
+  // Helper para traer todos los registros sin topar con el límite por defecto de 1000 de Supabase
+  async function traerTodosLosRegistros(consultaBase) {
+    let todos = []
+    let desde = 0
+    const paso = 1000
+    while (true) {
+      const { data, error } = await consultaBase.range(desde, desde + paso - 1)
+      if (error) throw error
+      if (!data || data.length === 0) break
+      todos = todos.concat(data)
+      if (data.length < paso) break
+      desde += paso
+    }
+    return todos
+  }
+
   // --- Fuente 1: inscripciones activas del ciclo actual ---
-  const { data: inscripcionesActuales, error: errorActuales } = await supabase
+  const queryActuales = supabase
     .from('inscripciones')
     .select(`
       docente_id,
@@ -122,7 +200,7 @@ export async function calcularReporte(periodo) {
     .gte('cursos.fecha_inicio', inicio)
     .lte('cursos.fecha_inicio', fin)
 
-  if (errorActuales) throw errorActuales
+  const inscripcionesActuales = await traerTodosLosRegistros(queryActuales)
 
   // --- Fuente 2: histórico 2022-2026 (sin fecha real, solo año + texto) ---
   let queryHistorico = supabase
@@ -135,8 +213,14 @@ export async function calcularReporte(periodo) {
     queryHistorico = queryHistorico.ilike('fecha_curso_texto', `%${NOMBRE_MES[mes]}%`)
   }
 
-  const { data: historico, error: errorHistorico } = await queryHistorico
-  if (errorHistorico) throw errorHistorico
+  let historico = await traerTodosLosRegistros(queryHistorico)
+  if (mesesAcumulados && mesesAcumulados.length > 0) {
+    const nombresPermitidos = mesesAcumulados.map((m) => NOMBRE_MES[m])
+    historico = historico.filter((h) => {
+      const txt = normalizar(h.fecha_curso_texto || '')
+      return nombresPermitidos.some((nom) => txt.includes(nom))
+    })
+  }
 
   // --- Unificar ambas fuentes en un mismo formato ---
   const filas = []
@@ -151,8 +235,8 @@ export async function calcularReporte(periodo) {
       tipoCurso: fila.cursos?.tipo,
       cursoNombre: fila.cursos?.nombre,
       cursoClave: `C-${fila.cursos?.id}`,
-      departamento: fila.docentes?.departamento || 'Sin especificar',
-      departamentoOferente: fila.cursos?.departamento || 'Sin especificar',
+      departamento: canonizarDepartamento(fila.docentes?.departamento || 'Sin especificar'),
+      departamentoOferente: canonizarDepartamento(fila.cursos?.departamento || 'Sin especificar'),
     })
   }
 
@@ -167,10 +251,10 @@ export async function calcularReporte(periodo) {
       tipoCurso: fila.tipo,
       cursoNombre: fila.curso,
       cursoClave: `H-${fila.folio_curso || fila.curso}`,
-      departamento: fila.departamento || 'Sin especificar',
+      departamento: canonizarDepartamento(fila.departamento || 'Sin especificar'),
       // Los históricos no tienen un departamento de curso por separado --
       // se usa el mismo como mejor aproximación disponible.
-      departamentoOferente: fila.departamento || 'Sin especificar',
+      departamentoOferente: canonizarDepartamento(fila.departamento || 'Sin especificar'),
     })
   }
 
@@ -238,7 +322,8 @@ export async function calcularReporte(periodo) {
       if (!generoPorCurso.has(cursoNombre)) generoPorCurso.set(cursoNombre, { Hombre: 0, Mujer: 0 })
       if (genero === 'Hombre' || genero === 'Mujer') generoPorCurso.get(cursoNombre)[genero]++
     }
-    conteoPorDepartamento.set(departamento, (conteoPorDepartamento.get(departamento) || 0) + 1)
+    const deptoFinal = canonizarDepartamento(departamento)
+    conteoPorDepartamento.set(deptoFinal, (conteoPorDepartamento.get(deptoFinal) || 0) + 1)
   }
 
   const distribucion = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, '6+': 0 }
@@ -291,5 +376,66 @@ export async function calcularReporte(periodo) {
     (a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.curso.localeCompare(b.curso, 'es')
   )
 
+  reporte.esAcumulado = !!esAcumulado
+  reporte.modalidad = esAcumulado ? 'acumulado' : 'trimestre'
+  reporte.trimestre = periodo.trimestre || trimestreAcumulado
+  reporte.trimestreAcumulado = trimestreAcumulado
+
   return reporte
+}
+
+/**
+ * Consulta y calcula el comparativo multi-anual histórico (2022 a año actual)
+ * para gráficas de evolución, inscripciones acumuladas, docentes por género,
+ * tipo de curso, nivel (Licenciatura vs Posgrado) y docentes sin participar.
+ */
+export async function calcularHistoricoMultianual(anios = [2022, 2023, 2024, 2025, 2026]) {
+  const promesas = anios.map(async (anio) => {
+    try {
+      const rep = await calcularReporte({ tipo: 'anio', anio })
+      return {
+        anio: String(anio),
+        totalInscripciones: rep.totalInscripciones || 0,
+        docentesUnicos: rep.docentesUnicos || 0,
+        hombres: rep.porGenero?.Hombre || 0,
+        mujeres: rep.porGenero?.Mujer || 0,
+        tipoDocente: rep.porTipo?.Docente || 0,
+        tipoProfesional: rep.porTipo?.Profesional || 0,
+        licenciatura: rep.licenciatura?.total || 0,
+        posgrado: rep.posgrado?.total || 0,
+        sinParticipar: rep.sinParticipar?.total || 0,
+        cobertura: rep.porcentajeParticipacion || 0,
+      }
+    } catch (e) {
+      console.warn(`Error al calcular histórico para ${anio}:`, e)
+      return {
+        anio: String(anio),
+        totalInscripciones: 0,
+        docentesUnicos: 0,
+        hombres: 0,
+        mujeres: 0,
+        tipoDocente: 0,
+        tipoProfesional: 0,
+        licenciatura: 0,
+        posgrado: 0,
+        sinParticipar: 0,
+        cobertura: 0,
+      }
+    }
+  })
+
+  const resultados = await Promise.all(promesas)
+  resultados.sort((a, b) => Number(a.anio) - Number(b.anio))
+
+  // Calcular acumulado progresivo
+  let acumulado = 0
+  const conAcumulado = resultados.map((r) => {
+    acumulado += r.totalInscripciones
+    return {
+      ...r,
+      totalAcumulado: acumulado,
+    }
+  })
+
+  return conAcumulado
 }

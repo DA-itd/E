@@ -2,10 +2,15 @@ import { supabase } from './supabaseClient'
 
 // ---------------------------------------------------------------
 // Determina el rango de fechas (mes exacto) según el periodo elegido.
-// Los 3 trimestres de capacitación son meses fijos: enero, junio, agosto.
-// ---------------------------------------------------------------
-const MESES_TRIMESTRE = { 1: 1, 2: 6, 3: 8 }
-const NOMBRE_MES = { 1: 'ENERO', 6: 'JUNIO', 8: 'AGOSTO' }
+// Los 4 trimestres de capacitación institucional TecNM / ITD
+const MESES_TRIMESTRE = { 1: 1, 2: 6, 3: 8, 4: 10 }
+const NOMBRE_MES = { 1: 'ENERO', 6: 'JUNIO', 8: 'AGOSTO', 10: 'OCTUBRE' }
+const MESES_HASTA_TRIMESTRE = {
+  1: [1],
+  2: [1, 6],
+  3: [1, 6, 8],
+  4: [1, 6, 8, 10],
+}
 const TOP_CURSOS_DEMANDADOS = 10
 const TOP_DEPARTAMENTOS = 15
 
@@ -21,26 +26,35 @@ function trimestreActual() {
   const hoy = new Date()
   const anio = hoy.getFullYear()
   const mesHoy = hoy.getMonth() + 1
-  const mesesOrden = [8, 6, 1]
+  const mesesOrden = [10, 8, 6, 1]
   for (const mes of mesesOrden) {
     if (mesHoy >= mes) return { anio, mes }
   }
-  return { anio: anio - 1, mes: 8 }
+  return { anio: anio - 1, mes: 10 }
 }
 
 /**
- * @param {{ tipo: 'trimestre'|'anio'|'actual', anio: number, trimestre?: 1|2|3 }} periodo
+ * @param {{ tipo: 'trimestre'|'anio'|'actual'|'acumulado'|'acumulado_trimestre', anio: number, trimestre?: 1|2|3|4 }} periodo
  */
 function calcularRango(periodo) {
   if (periodo.tipo === 'anio') {
-    return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined }
+    return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true }
+  }
+  if (periodo.tipo === 'acumulado' || periodo.tipo === 'acumulado_trimestre') {
+    const t = periodo.trimestre || 4
+    if (t >= 4) {
+      return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true, trimestreAcumulado: t }
+    }
+    const mesFin = MESES_TRIMESTRE[t] || 10
+    const finDate = new Date(periodo.anio, mesFin, 0).toISOString().slice(0, 10)
+    return { inicio: `${periodo.anio}-01-01`, fin: finDate, anio: periodo.anio, mesesAcumulados: MESES_HASTA_TRIMESTRE[t], esAcumulado: true, trimestreAcumulado: t }
   }
   if (periodo.tipo === 'actual') {
     const { anio, mes } = trimestreActual()
-    return { ...rangoDelMes(anio, mes), anio, mes }
+    return { ...rangoDelMes(anio, mes), anio, mes, esAcumulado: false }
   }
   const mes = MESES_TRIMESTRE[periodo.trimestre]
-  return { ...rangoDelMes(periodo.anio, mes), anio: periodo.anio, mes }
+  return { ...rangoDelMes(periodo.anio, mes), anio: periodo.anio, mes, esAcumulado: false }
 }
 
 function normalizar(texto) {
@@ -126,7 +140,7 @@ function top(mapa, n) {
 }
 
 export async function calcularReporte(periodo) {
-  const { inicio, fin, anio, mes } = calcularRango(periodo)
+  const { inicio, fin, anio, mes, esAcumulado, mesesAcumulados, trimestreAcumulado } = calcularRango(periodo)
 
   // Palabras clave por categoría (habilidades_digitales / salud_emocional).
   const { data: palabrasData } = await supabase
@@ -199,7 +213,14 @@ export async function calcularReporte(periodo) {
     queryHistorico = queryHistorico.ilike('fecha_curso_texto', `%${NOMBRE_MES[mes]}%`)
   }
 
-  const historico = await traerTodosLosRegistros(queryHistorico)
+  let historico = await traerTodosLosRegistros(queryHistorico)
+  if (mesesAcumulados && mesesAcumulados.length > 0) {
+    const nombresPermitidos = mesesAcumulados.map((m) => NOMBRE_MES[m])
+    historico = historico.filter((h) => {
+      const txt = normalizar(h.fecha_curso_texto || '')
+      return nombresPermitidos.some((nom) => txt.includes(nom))
+    })
+  }
 
   // --- Unificar ambas fuentes en un mismo formato ---
   const filas = []
@@ -354,6 +375,11 @@ export async function calcularReporte(periodo) {
   reporte.detalleParticipantes = detalleParticipantes.sort(
     (a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.curso.localeCompare(b.curso, 'es')
   )
+
+  reporte.esAcumulado = !!esAcumulado
+  reporte.modalidad = esAcumulado ? 'acumulado' : 'trimestre'
+  reporte.trimestre = periodo.trimestre || trimestreAcumulado
+  reporte.trimestreAcumulado = trimestreAcumulado
 
   return reporte
 }
