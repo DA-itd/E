@@ -190,13 +190,44 @@ export function generarOficioDOC(datos) {
       color: #374151;
     }
     .pie-ccp {
-      margin-top: 28pt;
+      margin-top: 24pt;
       font-size: 8.5pt;
       color: #4b5563;
+    }
+    .membrete-superior-barras {
+      border-top: 4pt solid #1B396A;
+      border-bottom: 2pt solid #9F2241;
+      padding-bottom: 8pt;
+      margin-bottom: 18pt;
+    }
+    .membrete-inferior-pie {
+      border-top: 1pt solid #cbd5e1;
+      border-bottom: 2pt solid #9F2241;
+      margin-top: 32pt;
+      padding-top: 6pt;
+      padding-bottom: 6pt;
+      font-size: 8pt;
+      color: #64748b;
     }
   </style>
 </head>
 <body>
+  <!-- Membrete Superior Institucional -->
+  <div class="membrete-superior-barras">
+    <table style="width: 100%; border: none; border-collapse: collapse;">
+      <tr>
+        <td style="border: none; vertical-align: middle;">
+          <strong style="color: #000; font-size: 11pt;">EDUCACIÓN</strong><br>
+          <span style="font-size: 8pt; color: #64748b;">SECRETARÍA DE EDUCACIÓN PÚBLICA</span>
+        </td>
+        <td style="border: none; vertical-align: middle; padding-left: 12pt;">
+          <strong style="color: #1B396A; font-size: 10pt;">TECNOLÓGICO NACIONAL DE MÉXICO®</strong><br>
+          <span style="font-size: 8pt; color: #9F2241; font-weight: bold;">INSTITUTO TECNOLÓGICO DE DURANGO</span>
+        </td>
+      </tr>
+    </table>
+  </div>
+
   <!-- Encabezado superior derecho -->
   <div class="encabezado-superior">
     <div class="inst-titulo">Instituto Tecnológico de Durango</div>
@@ -256,6 +287,25 @@ export function generarOficioDOC(datos) {
   <div class="pie-ccp">
     c.c.p Archivo
   </div>
+
+  <!-- Membrete Inferior Institucional -->
+  <div class="membrete-inferior-pie">
+    <table style="width: 100%; border: none; border-collapse: collapse; font-size: 8pt;">
+      <tr>
+        <td style="border: none; vertical-align: middle; width: 25%;">
+          <strong style="color: #92400e;">2026</strong><br>
+          <span style="font-style: italic;">Año de Margarita Maza</span>
+        </td>
+        <td style="border: none; text-align: center; vertical-align: middle; width: 50%;">
+          Blvd. Felipe Pescador No. 1830 Ote., Durango, Dgo., C.P. 34080<br>
+          e-mail: depdesarrolloacademico@itdurango.edu.mx · <strong>tecnm.mx</strong> | <strong>itdurango.edu.mx</strong>
+        </td>
+        <td style="border: none; text-align: right; vertical-align: middle; width: 25%;">
+          <strong style="color: #1B396A;">SGI · 100% LIBRE DE PLÁSTICO</strong>
+        </td>
+      </tr>
+    </table>
+  </div>
 </body>
 </html>
 `
@@ -294,16 +344,48 @@ export async function generarOficioPDF(datos) {
   })
 
   const pageWidth = doc.internal.pageSize.getWidth() // 215.9 mm
+  const pageHeight = doc.internal.pageSize.getHeight() // 279.4 mm
   const marginX = 20
 
-  // 1. Franja institucional superior sutil
+  // 1. Franja institucional superior (Navy + Guinda)
   doc.setFillColor(27, 57, 106) // ITD Navy
-  doc.rect(0, 0, pageWidth, 4, 'F')
-  doc.setFillColor(155, 17, 30) // ITD Guinda
-  doc.rect(0, 4, pageWidth, 1.5, 'F')
+  doc.rect(0, 0, pageWidth, 5, 'F')
+  doc.setFillColor(159, 34, 65) // ITD Guinda
+  doc.rect(0, 5, pageWidth, 2, 'F')
 
-  // 2. Encabezado superior derecho
-  let y = 20
+  // 2. Logotipos y Membrete Superior
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(20, 20, 20)
+  doc.text('EDUCACIÓN', marginX, 14)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.setTextColor(100, 116, 139)
+  doc.text('SECRETARÍA DE EDUCACIÓN PÚBLICA', marginX, 17.5)
+
+  // Separador vertical
+  doc.setDrawColor(203, 213, 225)
+  doc.setLineWidth(0.3)
+  doc.line(marginX + 52, 10, marginX + 52, 19)
+
+  // TecNM
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9.5)
+  doc.setTextColor(27, 57, 106)
+  doc.text('TECNOLÓGICO NACIONAL DE MÉXICO®', marginX + 56, 14)
+
+  doc.setFontSize(7)
+  doc.setTextColor(159, 34, 65)
+  doc.text('INSTITUTO TECNOLÓGICO DE DURANGO', marginX + 56, 17.5)
+
+  // Línea divisoria bajo el membrete
+  doc.setDrawColor(226, 232, 240)
+  doc.setLineWidth(0.4)
+  doc.line(marginX, 21, pageWidth - marginX, 21)
+
+  // 3. Encabezado superior derecho
+  let y = 28
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(10)
   doc.setTextColor(20, 20, 20)
@@ -315,7 +397,7 @@ export async function generarOficioPDF(datos) {
   doc.setTextColor(60, 60, 60)
   doc.text('Departamento de desarrollo académico', pageWidth - marginX, y, { align: 'right' })
 
-  y += 6.5
+  y += 6
   doc.setFontSize(9)
   doc.setTextColor(20, 20, 20)
   doc.text(fechaTexto, pageWidth - marginX, y, { align: 'right' })
@@ -324,31 +406,31 @@ export async function generarOficioPDF(datos) {
   doc.setFont('helvetica', 'bold')
   doc.text(`Oficio No. ${numOficio}/${anio}`, pageWidth - marginX, y, { align: 'right' })
 
-  // 3. Destinatario
-  y += 10
+  // 4. Destinatario
+  y += 8
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
+  doc.setFontSize(9.5)
   doc.setTextColor(0, 0, 0)
   doc.text(nombreJefe.toUpperCase(), marginX, y)
 
-  y += 4.5
+  y += 4.2
   doc.text(cargoJefe.toUpperCase(), marginX, y)
 
-  y += 4.5
+  y += 4.2
   doc.text('PRESENTE', marginX, y)
 
-  // 4. Párrafo introductorio
-  y += 8
+  // 5. Párrafo introductorio
+  y += 7
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9.5)
+  doc.setFontSize(9)
   doc.setTextColor(30, 30, 30)
   const textoIntro = `Sirva la presente para informarle que durante el ${periodoTexto}, el programa de Formación y Actualización Docente presenta los siguientes resultados:`
   const lineasIntro = doc.splitTextToSize(textoIntro, pageWidth - marginX * 2)
   doc.text(lineasIntro, marginX, y)
 
-  y += lineasIntro.length * 4.5 + 2
+  y += lineasIntro.length * 4.2 + 2
 
-  // 5. Tabla de Indicadores
+  // 6. Tabla de Indicadores
   const filas = obtenerFilasIndicadores(indicadores)
   autoTable(doc, {
     startY: y,
@@ -356,8 +438,8 @@ export async function generarOficioPDF(datos) {
     head: [['Indicador / Concepto', 'Valor / Cantidad']],
     body: filas.map((f) => [f.concepto, String(f.valor)]),
     styles: {
-      fontSize: 8,
-      cellPadding: 1.8,
+      fontSize: 7.8,
+      cellPadding: 1.5,
       textColor: [30, 30, 30],
       lineColor: [203, 213, 225],
       lineWidth: 0.2,
@@ -371,58 +453,93 @@ export async function generarOficioPDF(datos) {
     },
     columnStyles: {
       0: { cellWidth: 'auto', fontStyle: 'normal' },
-      1: { cellWidth: 42, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
+      1: { cellWidth: 38, halign: 'right', fontStyle: 'bold', textColor: [15, 23, 42] },
     },
     alternateRowStyles: {
       fillColor: [255, 255, 255],
     },
   })
 
-  // 6. Párrafo de conclusión
-  let finalY = doc.lastAutoTable.finalY + 6
+  // 7. Párrafo de conclusión
+  let finalY = doc.lastAutoTable.finalY + 5
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9.5)
+  doc.setFontSize(9)
   doc.setTextColor(30, 30, 30)
   const cobertura = indicadores.coberturaPorcentaje ?? '0'
   const textoConcl = `Los indicadores muestran una participación en las actividades de actualización docente, alcanzando una cobertura del ${cobertura}%.`
   const lineasConcl = doc.splitTextToSize(textoConcl, pageWidth - marginX * 2)
   doc.text(lineasConcl, marginX, finalY)
 
-  finalY += lineasConcl.length * 4.5 + 8
+  finalY += lineasConcl.length * 4.2 + 6
 
-  // 7. Bloque de firma
+  // 8. Bloque de firma
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9.5)
+  doc.setFontSize(9)
   doc.setTextColor(0, 0, 0)
   doc.text('A T E N T A M E N T E', marginX, finalY)
 
-  finalY += 4
+  finalY += 3.8
   doc.setFont('helvetica', 'italic')
-  doc.setFontSize(8.5)
-  doc.setTextColor(50, 50, 50)
+  doc.setFontSize(8)
+  doc.setTextColor(60, 60, 60)
   doc.text('Excelencia en Educación Tecnológica®', marginX, finalY)
 
-  finalY += 4
+  finalY += 3.8
   doc.text('La Técnica al Servicio de la Patria', marginX, finalY)
 
-  finalY += 16
+  finalY += 14
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9.5)
+  doc.setFontSize(9)
   doc.setTextColor(0, 0, 0)
   doc.text(nombreFirma, marginX, finalY)
 
-  finalY += 4
+  finalY += 3.8
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(8.5)
-  doc.setTextColor(60, 60, 60)
+  doc.setFontSize(8)
+  doc.setTextColor(70, 70, 70)
   doc.text(cargoFirma, marginX, finalY)
 
-  // 8. Pie de página c.c.p
-  finalY += 10
+  // 9. Pie c.c.p Archivo
+  finalY += 7
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(7.5)
   doc.setTextColor(100, 116, 139)
   doc.text('c.c.p Archivo', marginX, finalY)
+
+  // 10. Membrete Inferior Oficial (Pie Institucional)
+  const pieY = pageHeight - 16
+  doc.setDrawColor(226, 232, 240)
+  doc.setLineWidth(0.4)
+  doc.line(marginX, pieY, pageWidth - marginX, pieY)
+
+  // Año de Margarita Maza
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7.5)
+  doc.setTextColor(146, 64, 14) // Amber-800
+  doc.text('2026', marginX, pieY + 4)
+  doc.setFont('helvetica', 'italic')
+  doc.setFontSize(6.5)
+  doc.setTextColor(100, 116, 139)
+  doc.text('Año de Margarita Maza', marginX, pieY + 7.5)
+
+  // Dirección central
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(6.2)
+  doc.setTextColor(71, 85, 105)
+  doc.text('Blvd. Felipe Pescador No. 1830 Ote., Durango, Dgo., C.P. 34080', pageWidth / 2, pieY + 4, { align: 'center' })
+  doc.text('e-mail: depdesarrolloacademico@itdurango.edu.mx · tecnm.mx | itdurango.edu.mx', pageWidth / 2, pieY + 7.5, { align: 'center' })
+
+  // Sellos a la derecha
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7)
+  doc.setTextColor(27, 57, 106)
+  doc.text('SGI · 100% LIBRE DE PLÁSTICO', pageWidth - marginX, pieY + 5.5, { align: 'right' })
+
+  // Franja institucional inferior
+  doc.setFillColor(159, 34, 65) // Guinda
+  doc.rect(0, pageHeight - 4, pageWidth, 1.5, 'F')
+  doc.setFillColor(27, 57, 106) // Navy
+  doc.rect(0, pageHeight - 2.5, pageWidth, 2.5, 'F')
 
   if (descargar) {
     doc.save(`Oficio_TecNM_${numOficio}_${anio}.pdf`)
