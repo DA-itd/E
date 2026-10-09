@@ -3,9 +3,9 @@ import { supabase } from './supabaseClient'
 // ---------------------------------------------------------------
 // Determina el rango de fechas (mes exacto) según el periodo elegido.
 // Los 4 trimestres de capacitación institucional TecNM / ITD
-const MESES_TRIMESTRE = { 1: 1, 2: 6, 3: 8, 4: 10 }
-const NOMBRE_MES = { 1: 'ENERO', 6: 'JUNIO', 8: 'AGOSTO', 10: 'OCTUBRE' }
-const MESES_HASTA_TRIMESTRE = {
+export const MESES_TRIMESTRE = { 1: 1, 2: 6, 3: 8, 4: 10 }
+export const NOMBRE_MES = { 1: 'ENERO', 6: 'JUNIO', 8: 'AGOSTO', 10: 'OCTUBRE' }
+export const MESES_HASTA_TRIMESTRE = {
   1: [1],
   2: [1, 6],
   3: [1, 6, 8],
@@ -14,47 +14,111 @@ const MESES_HASTA_TRIMESTRE = {
 const TOP_CURSOS_DEMANDADOS = 10
 const TOP_DEPARTAMENTOS = 15
 
-function rangoDelMes(anio, mes) {
-  const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
-  const finDate = new Date(anio, mes, 0)
-  const fin = finDate.toISOString().slice(0, 10)
+export function rangoDelMes(anio, mes) {
+  const anioNum = Number(anio) || new Date().getFullYear()
+  const mesNum = Number(mes) || 1
+  const inicio = `${anioNum}-${String(mesNum).padStart(2, '0')}-01`
+
+  let fin
+  try {
+    const finDate = new Date(anioNum, mesNum, 0)
+    if (isNaN(finDate.getTime())) {
+      fin = `${anioNum}-${String(mesNum).padStart(2, '0')}-28`
+    } else {
+      fin = finDate.toISOString().slice(0, 10)
+    }
+  } catch {
+    fin = `${anioNum}-${String(mesNum).padStart(2, '0')}-28`
+  }
+
   return { inicio, fin }
 }
 
 // "Actual" = el trimestre más reciente cuyo mes ya inició respecto a hoy.
-function trimestreActual() {
+export function trimestreActual() {
   const hoy = new Date()
   const anio = hoy.getFullYear()
   const mesHoy = hoy.getMonth() + 1
-  const mesesOrden = [10, 8, 6, 1]
-  for (const mes of mesesOrden) {
-    if (mesHoy >= mes) return { anio, mes }
+  const mesesOrden = [
+    { t: 4, mes: 10 },
+    { t: 3, mes: 8 },
+    { t: 2, mes: 6 },
+    { t: 1, mes: 1 },
+  ]
+  for (const item of mesesOrden) {
+    if (mesHoy >= item.mes) return { anio, mes: item.mes, trimestre: item.t }
   }
-  return { anio: anio - 1, mes: 10 }
+  return { anio: anio - 1, mes: 10, trimestre: 4 }
 }
 
 /**
- * @param {{ tipo: 'trimestre'|'anio'|'actual'|'acumulado'|'acumulado_trimestre', anio: number, trimestre?: 1|2|3|4 }} periodo
+ * @param {{ tipo: 'trimestre'|'anio'|'actual'|'acumulado'|'acumulado_trimestre', anio?: number, trimestre?: 1|2|3|4 }} periodo
  */
-function calcularRango(periodo) {
-  if (periodo.tipo === 'anio') {
-    return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true }
+export function calcularRango(periodo = {}) {
+  const anioBase = Number(periodo?.anio) || new Date().getFullYear()
+
+  if (periodo?.tipo === 'anio') {
+    return {
+      inicio: `${anioBase}-01-01`,
+      fin: `${anioBase}-12-31`,
+      anio: anioBase,
+      mes: undefined,
+      trimestre: 4,
+      esAcumulado: true,
+    }
   }
-  if (periodo.tipo === 'acumulado' || periodo.tipo === 'acumulado_trimestre') {
-    const t = periodo.trimestre || 4
+
+  if (periodo?.tipo === 'acumulado' || periodo?.tipo === 'acumulado_trimestre') {
+    const t = Number(periodo?.trimestre) || 4
     if (t >= 4) {
-      return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true, trimestreAcumulado: t }
+      return {
+        inicio: `${anioBase}-01-01`,
+        fin: `${anioBase}-12-31`,
+        anio: anioBase,
+        mes: undefined,
+        trimestre: t,
+        esAcumulado: true,
+        trimestreAcumulado: t,
+      }
     }
     const mesFin = MESES_TRIMESTRE[t] || 10
-    const finDate = new Date(periodo.anio, mesFin, 0).toISOString().slice(0, 10)
-    return { inicio: `${periodo.anio}-01-01`, fin: finDate, anio: periodo.anio, mesesAcumulados: MESES_HASTA_TRIMESTRE[t], esAcumulado: true, trimestreAcumulado: t }
+    const { fin } = rangoDelMes(anioBase, mesFin)
+    return {
+      inicio: `${anioBase}-01-01`,
+      fin,
+      anio: anioBase,
+      trimestre: t,
+      mesesAcumulados: MESES_HASTA_TRIMESTRE[t] || [1],
+      esAcumulado: true,
+      trimestreAcumulado: t,
+    }
   }
-  if (periodo.tipo === 'actual') {
-    const { anio, mes } = trimestreActual()
-    return { ...rangoDelMes(anio, mes), anio, mes, esAcumulado: false }
+
+  if (periodo?.tipo === 'actual') {
+    const actual = trimestreActual()
+    const anioFinal = periodo?.anio ? Number(periodo.anio) : actual.anio
+    const { inicio, fin } = rangoDelMes(anioFinal, actual.mes)
+    return {
+      inicio,
+      fin,
+      anio: anioFinal,
+      mes: actual.mes,
+      trimestre: actual.trimestre,
+      esAcumulado: false,
+    }
   }
-  const mes = MESES_TRIMESTRE[periodo.trimestre]
-  return { ...rangoDelMes(periodo.anio, mes), anio: periodo.anio, mes, esAcumulado: false }
+
+  const t = Number(periodo?.trimestre) || 1
+  const mes = MESES_TRIMESTRE[t] || 1
+  const { inicio, fin } = rangoDelMes(anioBase, mes)
+  return {
+    inicio,
+    fin,
+    anio: anioBase,
+    mes,
+    trimestre: t,
+    esAcumulado: false,
+  }
 }
 
 function normalizar(texto) {
@@ -65,7 +129,6 @@ function normalizar(texto) {
 }
 
 // Unifica nombres de departamento para evitar duplicados en conteos y rankings
-// (ej. "CIENCIAS ECONOMICO-ADMINISTRATIVAS" vs "CIENCIAS ECONÓMICO ADMINISTRATIVAS")
 export function canonizarDepartamento(depto) {
   if (!depto) return 'Sin especificar'
   const limpio = String(depto).trim()
@@ -112,8 +175,6 @@ export function canonizarDepartamento(depto) {
   return limpio
 }
 
-// Deriva "Licenciatura" / "Posgrado" / null a partir del código crudo de
-// docentes.nivel (L / M / P / "M, Maestría" / NULL / etc.)
 function nivelAgrupado(nivelCrudo) {
   const n = normalizar(nivelCrudo).trim()
   if (!n) return null
@@ -140,45 +201,59 @@ function top(mapa, n) {
 }
 
 export async function calcularReporte(periodo) {
-  const { inicio, fin, anio, mes, esAcumulado, mesesAcumulados, trimestreAcumulado } = calcularRango(periodo)
+  const { inicio, fin, anio, mes, trimestre, esAcumulado, mesesAcumulados, trimestreAcumulado } = calcularRango(periodo)
 
   // Palabras clave por categoría (habilidades_digitales / salud_emocional).
-  const { data: palabrasData } = await supabase
-    .from('palabras_clave_categorias')
-    .select('palabra, categoria')
-  const palabrasPorCategoria = { habilidades_digitales: [], salud_emocional: [] }
-  for (const p of palabrasData || []) {
-    if (!palabrasPorCategoria[p.categoria]) palabrasPorCategoria[p.categoria] = []
-    palabrasPorCategoria[p.categoria].push(normalizar(p.palabra))
+  let palabrasPorCategoria = { habilidades_digitales: [], salud_emocional: [] }
+  try {
+    const { data: palabrasData } = await supabase
+      .from('palabras_clave_categorias')
+      .select('palabra, categoria')
+    for (const p of palabrasData || []) {
+      if (!palabrasPorCategoria[p.categoria]) palabrasPorCategoria[p.categoria] = []
+      palabrasPorCategoria[p.categoria].push(normalizar(p.palabra))
+    }
+  } catch (e) {
+    console.warn('Palabras clave no disponibles desde Supabase, usando predeterminadas:', e)
   }
+
   function coincideCategoria(nombreCurso, categoria) {
     const n = normalizar(nombreCurso)
     return (palabrasPorCategoria[categoria] || []).some((palabra) => n.includes(palabra))
   }
 
   // Mapa email -> nivel agrupado (para clasificar también los históricos).
-  const { data: docentesData } = await supabase.from('docentes').select('email, nivel, genero, activo')
+  let docentesData = []
+  try {
+    const res = await supabase.from('docentes').select('email, nivel, genero, activo')
+    docentesData = res.data || []
+  } catch (e) {
+    console.warn('Docentes no disponibles desde Supabase:', e)
+  }
+
   const nivelPorEmail = new Map(
-    (docentesData || []).map((d) => [(d.email || '').toLowerCase(), nivelAgrupado(d.nivel)])
+    docentesData.map((d) => [(d.email || '').toLowerCase(), nivelAgrupado(d.nivel)])
   )
 
-  // Total de plantilla (activos) por género -- denominador de "sin participar".
+  // Total de plantilla (activos) por género
   const totalPlantillaPorGenero = { Hombre: 0, Mujer: 0 }
   let totalPlantilla = 0
-  for (const d of docentesData || []) {
+  for (const d of docentesData) {
     if (d.activo === false) continue
     totalPlantilla++
     if (d.genero === 'Hombre' || d.genero === 'Mujer') totalPlantillaPorGenero[d.genero]++
   }
 
-  // Helper para traer todos los registros sin topar con el límite por defecto de 1000 de Supabase
   async function traerTodosLosRegistros(consultaBase) {
     let todos = []
     let desde = 0
     const paso = 1000
     while (true) {
       const { data, error } = await consultaBase.range(desde, desde + paso - 1)
-      if (error) throw error
+      if (error) {
+        console.warn('Aviso consulta Supabase:', error.message)
+        break
+      }
       if (!data || data.length === 0) break
       todos = todos.concat(data)
       if (data.length < paso) break
@@ -188,38 +263,48 @@ export async function calcularReporte(periodo) {
   }
 
   // --- Fuente 1: inscripciones activas del ciclo actual ---
-  const queryActuales = supabase
-    .from('inscripciones')
-    .select(`
-      docente_id,
-      folio_personal,
-      docentes ( email, genero, nivel, departamento, nombre_completo ),
-      cursos!inner ( id, nombre, tipo, fecha_inicio, departamento )
-    `)
-    .eq('estado', 'activo')
-    .gte('cursos.fecha_inicio', inicio)
-    .lte('cursos.fecha_inicio', fin)
+  let inscripcionesActuales = []
+  try {
+    const queryActuales = supabase
+      .from('inscripciones')
+      .select(`
+        docente_id,
+        folio_personal,
+        docentes ( email, genero, nivel, departamento, nombre_completo ),
+        cursos!inner ( id, nombre, tipo, fecha_inicio, departamento )
+      `)
+      .eq('estado', 'activo')
+      .gte('cursos.fecha_inicio', inicio)
+      .lte('cursos.fecha_inicio', fin)
 
-  const inscripcionesActuales = await traerTodosLosRegistros(queryActuales)
-
-  // --- Fuente 2: histórico 2022-2026 (sin fecha real, solo año + texto) ---
-  let queryHistorico = supabase
-    .from('inscripciones_historial')
-    .select('email, genero, curso, tipo, folio_curso, folio_personal, anio, departamento, nombre_completo')
-    .eq('anio', anio)
-    .ilike('estado', 'activo')
-
-  if (mes) {
-    queryHistorico = queryHistorico.ilike('fecha_curso_texto', `%${NOMBRE_MES[mes]}%`)
+    inscripcionesActuales = await traerTodosLosRegistros(queryActuales)
+  } catch (err) {
+    console.warn('Consulta inscripciones actuales omitida:', err)
   }
 
-  let historico = await traerTodosLosRegistros(queryHistorico)
-  if (mesesAcumulados && mesesAcumulados.length > 0) {
-    const nombresPermitidos = mesesAcumulados.map((m) => NOMBRE_MES[m])
-    historico = historico.filter((h) => {
-      const txt = normalizar(h.fecha_curso_texto || '')
-      return nombresPermitidos.some((nom) => txt.includes(nom))
-    })
+  // --- Fuente 2: histórico 2022-2026 ---
+  let historico = []
+  try {
+    let queryHistorico = supabase
+      .from('inscripciones_historial')
+      .select('email, genero, curso, tipo, folio_curso, folio_personal, anio, departamento, nombre_completo')
+      .eq('anio', anio)
+      .ilike('estado', 'activo')
+
+    if (mes && NOMBRE_MES[mes]) {
+      queryHistorico = queryHistorico.ilike('fecha_curso_texto', `%${NOMBRE_MES[mes]}%`)
+    }
+
+    historico = await traerTodosLosRegistros(queryHistorico)
+    if (mesesAcumulados && mesesAcumulados.length > 0) {
+      const nombresPermitidos = mesesAcumulados.map((m) => NOMBRE_MES[m]).filter(Boolean)
+      historico = historico.filter((h) => {
+        const txt = normalizar(h.fecha_curso_texto || '')
+        return nombresPermitidos.some((nom) => txt.includes(nom))
+      })
+    }
+  } catch (err) {
+    console.warn('Consulta histórico omitida:', err)
   }
 
   // --- Unificar ambas fuentes en un mismo formato ---
@@ -252,8 +337,6 @@ export async function calcularReporte(periodo) {
       cursoNombre: fila.curso,
       cursoClave: `H-${fila.folio_curso || fila.curso}`,
       departamento: canonizarDepartamento(fila.departamento || 'Sin especificar'),
-      // Los históricos no tienen un departamento de curso por separado --
-      // se usa el mismo como mejor aproximación disponible.
       departamentoOferente: canonizarDepartamento(fila.departamento || 'Sin especificar'),
     })
   }
@@ -267,15 +350,15 @@ export async function calcularReporte(periodo) {
     posgrado: nuevoBucketNivel(),
   }
 
-  const cursosPorDocente = new Map() // emailKey -> Set(cursoClave)
-  const infoPorDocente = new Map() // emailKey -> { genero, tipos: Set }
-  const conteoPorCurso = new Map() // cursoNombre -> cantidad de inscritos
-  const conteoPorDepartamento = new Map() // departamento -> cantidad de inscritos
-  const generoPorCurso = new Map() // cursoNombre -> { Hombre, Mujer }
+  const cursosPorDocente = new Map()
+  const infoPorDocente = new Map()
+  const conteoPorCurso = new Map()
+  const conteoPorDepartamento = new Map()
+  const generoPorCurso = new Map()
   const cursosDistintosPorTipo = { Docente: new Set(), Profesional: new Set() }
   const generoPorTipo = { Docente: { Hombre: 0, Mujer: 0 }, Profesional: { Hombre: 0, Mujer: 0 } }
-  const participantesPorDocente = new Map() // emailKey -> { nombre, departamento, cursos: Set }
-  const detalleParticipantes = [] // una fila por cada curso tomado (folio, nombre, curso, departamento)
+  const participantesPorDocente = new Map()
+  const detalleParticipantes = []
 
   for (const fila of filas) {
     const { genero, tipoCurso, nivelGrupo, cursoNombre, emailKey, cursoClave, departamento, departamentoOferente, nombre, folio } = fila
@@ -315,13 +398,11 @@ export async function calcularReporte(periodo) {
 
     if (cursoNombre) {
       detalleParticipantes.push({ folio, nombre, curso: cursoNombre, departamento, departamentoOferente })
-    }
-
-    if (cursoNombre) {
       conteoPorCurso.set(cursoNombre, (conteoPorCurso.get(cursoNombre) || 0) + 1)
       if (!generoPorCurso.has(cursoNombre)) generoPorCurso.set(cursoNombre, { Hombre: 0, Mujer: 0 })
       if (genero === 'Hombre' || genero === 'Mujer') generoPorCurso.get(cursoNombre)[genero]++
     }
+
     const deptoFinal = canonizarDepartamento(departamento)
     conteoPorDepartamento.set(deptoFinal, (conteoPorDepartamento.get(deptoFinal) || 0) + 1)
   }
@@ -333,7 +414,6 @@ export async function calcularReporte(periodo) {
     else if (n >= 1) distribucion[n]++
   }
 
-  // Desglose de docentes ÚNICOS (cada docente cuenta 1 vez).
   const docentesUnicosPorGenero = { Hombre: 0, Mujer: 0 }
   const docentesUnicosPorTipo = { Docente: 0, Profesional: 0 }
   for (const info of infoPorDocente.values()) {
@@ -342,7 +422,7 @@ export async function calcularReporte(periodo) {
     if (info.tipos.has('Profesional')) docentesUnicosPorTipo.Profesional++
   }
 
-  // Docentes de la plantilla que NO participaron en el periodo.
+  const plantillaTotalNum = totalPlantilla || 417
   const sinParticiparPorGenero = {
     Hombre: Math.max(totalPlantillaPorGenero.Hombre - docentesUnicosPorGenero.Hombre, 0),
     Mujer: Math.max(totalPlantillaPorGenero.Mujer - docentesUnicosPorGenero.Mujer, 0),
@@ -351,8 +431,8 @@ export async function calcularReporte(periodo) {
   reporte.docentesUnicos = cursosPorDocente.size
   reporte.docentesUnicosPorGenero = docentesUnicosPorGenero
   reporte.docentesUnicosPorTipo = docentesUnicosPorTipo
-  reporte.totalDocentesInstitucion = totalPlantilla || 417
-  reporte.porcentajeParticipacion = Number(((cursosPorDocente.size / (totalPlantilla || 417)) * 100).toFixed(1))
+  reporte.totalDocentesInstitucion = plantillaTotalNum
+  reporte.porcentajeParticipacion = Number(((cursosPorDocente.size / plantillaTotalNum) * 100).toFixed(1))
   reporte.sinParticipar = {
     total: sinParticiparPorGenero.Hombre + sinParticiparPorGenero.Mujer,
     porGenero: sinParticiparPorGenero,
@@ -376,19 +456,14 @@ export async function calcularReporte(periodo) {
     (a, b) => a.nombre.localeCompare(b.nombre, 'es') || a.curso.localeCompare(b.curso, 'es')
   )
 
-  reporte.esAcumulado = !!esAcumulado
+  reporte.esAcumulado = Boolean(esAcumulado)
   reporte.modalidad = esAcumulado ? 'acumulado' : 'trimestre'
-  reporte.trimestre = periodo.trimestre || trimestreAcumulado
+  reporte.trimestre = periodo?.trimestre || trimestre || trimestreAcumulado || 4
   reporte.trimestreAcumulado = trimestreAcumulado
 
   return reporte
 }
 
-/**
- * Consulta y calcula el comparativo multi-anual histórico (2022 a año actual)
- * para gráficas de evolución, inscripciones acumuladas, docentes por género,
- * tipo de curso, nivel (Licenciatura vs Posgrado) y docentes sin participar.
- */
 export async function calcularHistoricoMultianual(anios = [2022, 2023, 2024, 2025, 2026]) {
   const promesas = anios.map(async (anio) => {
     try {
@@ -427,15 +502,12 @@ export async function calcularHistoricoMultianual(anios = [2022, 2023, 2024, 202
   const resultados = await Promise.all(promesas)
   resultados.sort((a, b) => Number(a.anio) - Number(b.anio))
 
-  // Calcular acumulado progresivo
   let acumulado = 0
-  const conAcumulado = resultados.map((r) => {
+  return resultados.map((r) => {
     acumulado += r.totalInscripciones
     return {
       ...r,
       totalAcumulado: acumulado,
     }
   })
-
-  return conAcumulado
 }

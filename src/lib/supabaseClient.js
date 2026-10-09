@@ -1,7 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://htkiilwlnglqvcfzekwg.supabase.co'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0a2lpbHdsbmdscXZjZnpla3dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3OTE5MzYsImV4cCI6MjA5OTM2NzkzNn0.vJslFfPV1YwBWXLc9IXFbLAY4hGZQeKk4AVToBEzQQ8'
+const supabaseUrl =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
+  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) ||
+  'https://htkiilwlnglqvcfzekwg.supabase.co'
+
+const supabaseAnonKey =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
+  (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) ||
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0a2lpbHdsbmdscXZjZnpla3dnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3OTE5MzYsImV4cCI6MjA5OTM2NzkzNn0.vJslFfPV1YwBWXLc9IXFbLAY4hGZQeKk4AVToBEzQQ8'
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&

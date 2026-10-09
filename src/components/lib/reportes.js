@@ -14,10 +14,13 @@ const MESES_HASTA_TRIMESTRE = {
 const TOP_CURSOS_DEMANDADOS = 10
 const TOP_DEPARTAMENTOS = 15
 
-function rangoDelMes(anio, mes) {
+function rangoDelMes(anioInput, mesInput) {
+  const anio = Number(anioInput) || new Date().getFullYear()
+  const mes = Number(mesInput) || 10
   const inicio = `${anio}-${String(mes).padStart(2, '0')}-01`
-  const finDate = new Date(anio, mes, 0)
-  const fin = finDate.toISOString().slice(0, 10)
+  // Obtiene el último día del mes de forma segura
+  const ultimoDia = new Date(anio, mes, 0).getDate() || 30
+  const fin = `${anio}-${String(mes).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`
   return { inicio, fin }
 }
 
@@ -34,27 +37,47 @@ function trimestreActual() {
 }
 
 /**
- * @param {{ tipo: 'trimestre'|'anio'|'actual'|'acumulado'|'acumulado_trimestre', anio: number, trimestre?: 1|2|3|4 }} periodo
+ * @param {{ tipo?: string, anio?: number, trimestre?: number }} periodo
  */
 function calcularRango(periodo) {
-  if (periodo.tipo === 'anio') {
-    return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true }
+  // Asegurar que periodo sea un objeto válido con tipo definido
+  const p =
+    periodo && typeof periodo === 'object' && typeof periodo.tipo === 'string'
+      ? periodo
+      : { tipo: 'actual' }
+  const anio = Number(p.anio) || new Date().getFullYear()
+
+  if (p.tipo === 'anio') {
+    return { inicio: `${anio}-01-01`, fin: `${anio}-12-31`, anio, mes: undefined, esAcumulado: true }
   }
-  if (periodo.tipo === 'acumulado' || periodo.tipo === 'acumulado_trimestre') {
-    const t = periodo.trimestre || 4
+
+  if (p.tipo === 'acumulado' || p.tipo === 'acumulado_trimestre') {
+    const t = Number(p.trimestre) || 4
     if (t >= 4) {
-      return { inicio: `${periodo.anio}-01-01`, fin: `${periodo.anio}-12-31`, anio: periodo.anio, mes: undefined, esAcumulado: true, trimestreAcumulado: t }
+      return { inicio: `${anio}-01-01`, fin: `${anio}-12-31`, anio, mes: undefined, esAcumulado: true, trimestreAcumulado: t }
     }
     const mesFin = MESES_TRIMESTRE[t] || 10
-    const finDate = new Date(periodo.anio, mesFin, 0).toISOString().slice(0, 10)
-    return { inicio: `${periodo.anio}-01-01`, fin: finDate, anio: periodo.anio, mesesAcumulados: MESES_HASTA_TRIMESTRE[t], esAcumulado: true, trimestreAcumulado: t }
+    const ultimoDia = new Date(anio, mesFin, 0).getDate() || 30
+    const fin = `${anio}-${String(mesFin).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`
+    return {
+      inicio: `${anio}-01-01`,
+      fin,
+      anio,
+      mesesAcumulados: MESES_HASTA_TRIMESTRE[t] || [1],
+      esAcumulado: true,
+      trimestreAcumulado: t,
+    }
   }
-  if (periodo.tipo === 'actual') {
-    const { anio, mes } = trimestreActual()
-    return { ...rangoDelMes(anio, mes), anio, mes, esAcumulado: false }
+
+  if (p.tipo === 'actual') {
+    const { anio: anioAct, mes: mesAct } = trimestreActual()
+    return { ...rangoDelMes(anioAct, mesAct), anio: anioAct, mes: mesAct, esAcumulado: false }
   }
-  const mes = MESES_TRIMESTRE[periodo.trimestre]
-  return { ...rangoDelMes(periodo.anio, mes), anio: periodo.anio, mes, esAcumulado: false }
+
+  // Trimestre específico
+  const t = Number(p.trimestre) || 4
+  const mes = MESES_TRIMESTRE[t] || 10
+  return { ...rangoDelMes(anio, mes), anio, mes, esAcumulado: false }
 }
 
 function normalizar(texto) {
@@ -378,7 +401,7 @@ export async function calcularReporte(periodo) {
 
   reporte.esAcumulado = !!esAcumulado
   reporte.modalidad = esAcumulado ? 'acumulado' : 'trimestre'
-  reporte.trimestre = periodo.trimestre || trimestreAcumulado
+  reporte.trimestre = periodo?.trimestre || trimestreAcumulado || (mes === 1 ? 1 : mes === 6 ? 2 : mes === 8 ? 3 : 4)
   reporte.trimestreAcumulado = trimestreAcumulado
 
   return reporte

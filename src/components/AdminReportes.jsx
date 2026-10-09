@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { calcularReporte } from '../lib/reportes'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable'
 import ReportesGraficas from './ReportesGraficas'
 import { dibujarEncabezadoPDF } from '../lib/pdfEncabezado'
 import { generarReporteEjecutivoTecNM_PDF } from '../lib/reporteEjecutivoTecNM'
+import { supabase } from '../lib/supabaseClient'
 
 const ANIO_ACTUAL = new Date().getFullYear()
 const ANIOS = Array.from({ length: 6 }, (_, i) => ANIO_ACTUAL - i)
@@ -18,20 +19,92 @@ export default function AdminReportes() {
   const [reporte, setReporte] = useState(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [generandoEjecutivoPDF, setGenerandoEjecutivoPDF] = useState(false)
+  const [mensajeExito, setMensajeExito] = useState('')
+
+  // Historial y registro de reportes ejecutivos generados (para persistencia en Vercel/Supabase)
+  const [historialReportes, setHistorialReportes] = useState(() => {
+    try {
+      const guardado = localStorage.getItem('itd_historial_reportes_tecnm')
+      return guardado ? JSON.parse(guardado) : []
+    } catch {
+      return []
+    }
+  })
+
+  useEffect(() => {
+    cargarHistorialSupabase()
+  }, [])
+
+  async function cargarHistorialSupabase() {
+    try {
+      const { data, error } = await supabase
+        .from('historial_reportes_tecnm')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(25)
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        setHistorialReportes(data)
+        try {
+          localStorage.setItem('itd_historial_reportes_tecnm', JSON.stringify(data))
+        } catch {}
+      }
+    } catch (err) {
+      console.warn('Bitácora en Supabase aún no configurada, usando registro local persistente:', err)
+    }
+  }
+
+  async function registrarReporteGenerado(registro) {
+    const nuevoHistorial = [
+      registro,
+      ...historialReportes.filter((r) => r.folio !== registro.folio || r.fecha !== registro.fecha),
+    ].slice(0, 30)
+    setHistorialReportes(nuevoHistorial)
+    try {
+      localStorage.setItem('itd_historial_reportes_tecnm', JSON.stringify(nuevoHistorial))
+    } catch {}
+
+    // Intentar registrar en Supabase para sincronización entre dispositivos y despliegues Vercel
+    try {
+      await supabase.from('historial_reportes_tecnm').insert([
+        {
+          folio: registro.folio,
+          tipo: registro.tipo,
+          periodo: registro.periodo,
+          anio: registro.anio,
+          trimestre: registro.trimestre,
+          total_inscripciones: registro.totalInscripciones,
+          total_horas: registro.totalHoras,
+          porcentaje_aprobacion: registro.porcentajeAprobacion,
+          elaboro: registro.elaboro,
+          created_at: new Date().toISOString(),
+        },
+      ])
+    } catch (err) {
+      console.warn('Guardado en registro local completado (Supabase opcional):', err)
+    }
+  }
 
   async function generar(periodoOverride = null) {
     setCargando(true)
     setErrorMsg('')
     try {
-      const periodo =
-        periodoOverride ||
-        (tipoPeriodo === 'anio'
+      // Ignorar si el argumento es un evento de click de React
+      const esOverrideValido =
+        periodoOverride &&
+        typeof periodoOverride === 'object' &&
+        typeof periodoOverride.tipo === 'string'
+
+      const periodo = esOverrideValido
+        ? periodoOverride
+        : (tipoPeriodo === 'anio'
           ? { tipo: 'anio', anio }
           : tipoPeriodo === 'acumulado' || tipoPeriodo === 'acumulado_trimestre'
           ? { tipo: 'acumulado_trimestre', anio, trimestre }
           : tipoPeriodo === 'actual'
-          ? { tipo: 'actual' }
+          ? { tipo: 'actual', anio }
           : { tipo: 'trimestre', anio, trimestre })
+
       const datos = await calcularReporte(periodo)
       setReporte(datos)
     } catch (err) {
@@ -116,6 +189,7 @@ export default function AdminReportes() {
     if (!reporte) return
     setGenerandoEjecutivoPDF(true)
     setErrorMsg('')
+    setMensajeExito('')
     try {
       const esAcum =
         tipoPeriodo === 'anio' ||
@@ -123,7 +197,7 @@ export default function AdminReportes() {
         tipoPeriodo === 'acumulado_trimestre' ||
         Boolean(reporte.esAcumulado)
 
-      await generarReporteEjecutivoTecNM_PDF(reporte, {
+      const resultado = await generarReporteEjecutivoTecNM_PDF(reporte, {
         tipoPeriodo,
         anio,
         trimestre,
@@ -131,6 +205,36 @@ export default function AdminReportes() {
         tituloPeriodo: tituloPeriodo(),
         descargar: true,
       })
+
+      const tNum = trimestre || reporte?.trimestre || 4
+      const folio = `ITD-CAD-REP-${
+        esAcum
+          ? (tipoPeriodo === 'anio' || tNum >= 4 ? 'Acumulado_Anual' : `Acumulado_${tNum}T`)
+          : `${tNum}T`
+      }/${anio}`
+
+      await registrarReporteGenerado({
+        id: `${folio}_${Date.now()}`,
+        folio,
+        tipo: esAcum ? 'Acumulado' : 'Trimestral',
+        periodo: tituloPeriodo(),
+        anio,
+        trimestre: tNum,
+        totalInscripciones: reporte.totalInscripciones || 0,
+        totalHoras: reporte.totalHorasAcumuladas || 0,
+        porcentajeAprobacion: reporte.resumenAprobacion?.porcentajeAprobacion || 100,
+        elaboro: 'M.C. Alejandro Calderón Rentería',
+        fecha: new Date().toLocaleString('es-MX', {
+          year: 'numeric',
+          month: 'short',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      })
+
+      setMensajeExito(`¡Reporte Oficial ${folio} generado, registrado en bitácora y descargado con éxito!`)
+      setTimeout(() => setMensajeExito(''), 7000)
     } catch (err) {
       console.error('Error al generar Reporte Ejecutivo TecNM:', err)
       setErrorMsg('No se pudo generar el Reporte Ejecutivo TecNM: ' + err.message)
@@ -317,9 +421,10 @@ export default function AdminReportes() {
             )}
 
             <button
-              onClick={generar}
+              type="button"
+              onClick={() => generar()}
               disabled={cargando}
-              className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-50"
+              className="rounded-lg bg-itd-navy text-white px-4 py-2 text-sm font-medium hover:bg-itd-navyDark disabled:opacity-50 cursor-pointer"
             >
               {cargando ? 'Generando…' : 'Generar reporte'}
             </button>
@@ -761,6 +866,128 @@ export default function AdminReportes() {
                         <span>⬇</span> {generandoEjecutivoPDF ? 'Descargando...' : 'Descargar PDF Oficial con Membrete'}
                       </button>
                     </div>
+                  </div>
+
+                  {/* Mensaje de confirmación de registro y descarga */}
+                  {mensajeExito && (
+                    <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center justify-between gap-3 text-sm animate-fade-in">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">✅</span>
+                        <span className="font-semibold">{mensajeExito}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setMensajeExito('')}
+                        className="text-xs text-emerald-600 hover:text-emerald-900 font-bold"
+                      >
+                        Cerrar ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Sección: Bitácora y Registro Histórico Oficial */}
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-100">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-itd-navy flex items-center gap-1.5">
+                            <span>📋</span> Bitácora y Registro de Reportes Generados
+                          </h4>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            Vercel · Supabase Cloud
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Registro de oficios ejecutivos generados para auditoría TecNM y constancia institucional.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500 font-medium">
+                          {historialReportes.length} {historialReportes.length === 1 ? 'registro' : 'registros'} guardados
+                        </span>
+                        <button
+                          type="button"
+                          onClick={cargarHistorialSupabase}
+                          title="Sincronizar historial desde la base de datos de Supabase"
+                          className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1"
+                        >
+                          <span>🔄</span> Actualizar
+                        </button>
+                      </div>
+                    </div>
+
+                    {historialReportes.length === 0 ? (
+                      <div className="text-center py-6 text-slate-400 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                        <p className="text-xs font-medium">Aún no hay reportes registrados en la bitácora.</p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Al hacer clic en &quot;Descargar Reporte Oficial (PDF)&quot;, se guardará automáticamente la constancia con su folio único.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                            <tr>
+                              <th className="p-2.5">Folio Oficio</th>
+                              <th className="p-2.5">Modalidad / Periodo</th>
+                              <th className="p-2.5 text-center">Inscripciones</th>
+                              <th className="p-2.5 text-center">Horas</th>
+                              <th className="p-2.5">Fecha de Registro</th>
+                              <th className="p-2.5">Elaboró</th>
+                              <th className="p-2.5 text-right">Acción</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {historialReportes.map((item, idx) => (
+                              <tr key={item.id || item.folio || idx} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="p-2.5 font-bold text-itd-navy flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                                  {item.folio}
+                                </td>
+                                <td className="p-2.5">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold mr-1.5 ${
+                                    item.tipo === 'Acumulado'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-blue-100 text-blue-800'
+                                  }`}>
+                                    {item.tipo}
+                                  </span>
+                                  <span className="text-slate-600 font-medium">{item.periodo}</span>
+                                </td>
+                                <td className="p-2.5 text-center font-bold text-slate-700">
+                                  {item.total_inscripciones || item.totalInscripciones || '—'}
+                                </td>
+                                <td className="p-2.5 text-center text-slate-600">
+                                  {item.total_horas || item.totalHoras || '—'} hrs
+                                </td>
+                                <td className="p-2.5 text-slate-500">
+                                  {item.created_at
+                                    ? new Date(item.created_at).toLocaleString('es-MX', {
+                                        dateStyle: 'short',
+                                        timeStyle: 'short',
+                                      })
+                                    : item.fecha || 'Reciente'}
+                                </td>
+                                <td className="p-2.5 text-slate-600 truncate max-w-[140px]" title={item.elaboro}>
+                                  {item.elaboro || 'M.C. Alejandro Calderón'}
+                                </td>
+                                <td className="p-2.5 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={exportarReporteEjecutivoTecNM}
+                                    disabled={generandoEjecutivoPDF}
+                                    className="px-2 py-1 text-[11px] font-bold text-itd-guinda hover:bg-rose-50 rounded transition-colors"
+                                  >
+                                    ⬇ Re-descargar
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
