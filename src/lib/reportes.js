@@ -360,6 +360,18 @@ export async function calcularReporte(periodo) {
   const participantesPorDocente = new Map()
   const detalleParticipantes = []
 
+  // Conjuntos para conteo de DOCENTES ÚNICOS por categoría solicitados en el Oficio Oficial
+  const docentesHabDigitales = new Set()
+  const docentesSaludMental = new Set()
+  const docentesPosgradoHabDigitales = new Set()
+  const docentesLicenciaturaHabDigitales = new Set()
+  const docentesPosgradoSaludMental = new Set()
+  const docentesLicenciaturaSaludMental = new Set()
+  const docentesTipoDocente = new Set()
+  const docentesTipoProfesional = new Set()
+  const docentesMujeres = new Set()
+  const docentesHombres = new Set()
+
   for (const fila of filas) {
     const { genero, tipoCurso, nivelGrupo, cursoNombre, emailKey, cursoClave, departamento, departamentoOferente, nombre, folio } = fila
     const esHabilidadDigital = coincideCategoria(cursoNombre, 'habilidades_digitales')
@@ -394,6 +406,18 @@ export async function calcularReporte(periodo) {
         participantesPorDocente.set(emailKey, { nombre, departamento, cursos: new Set() })
       }
       if (cursoNombre) participantesPorDocente.get(emailKey).cursos.add(cursoNombre)
+
+      // Conteo de docentes únicos para el Oficio Institucional
+      if (genero === 'Mujer') docentesMujeres.add(emailKey)
+      if (genero === 'Hombre') docentesHombres.add(emailKey)
+      if (tipoCurso === 'Docente') docentesTipoDocente.add(emailKey)
+      if (tipoCurso === 'Profesional') docentesTipoProfesional.add(emailKey)
+      if (esHabilidadDigital) docentesHabDigitales.add(emailKey)
+      if (esSaludEmocional) docentesSaludMental.add(emailKey)
+      if (nivelGrupo === 'Posgrado' && esHabilidadDigital) docentesPosgradoHabDigitales.add(emailKey)
+      if (nivelGrupo === 'Licenciatura' && esHabilidadDigital) docentesLicenciaturaHabDigitales.add(emailKey)
+      if (nivelGrupo === 'Posgrado' && esSaludEmocional) docentesPosgradoSaludMental.add(emailKey)
+      if (nivelGrupo === 'Licenciatura' && esSaludEmocional) docentesLicenciaturaSaludMental.add(emailKey)
     }
 
     if (cursoNombre) {
@@ -460,6 +484,46 @@ export async function calcularReporte(periodo) {
   reporte.modalidad = esAcumulado ? 'acumulado' : 'trimestre'
   reporte.trimestre = periodo?.trimestre || trimestre || trimestreAcumulado || 4
   reporte.trimestreAcumulado = trimestreAcumulado
+
+  // 14 Indicadores requeridos para el Oficio Oficial Institucional TecNM / ITD
+  // Con conteo exacto de DOCENTES ÚNICOS
+  const coberturaCalc = Number(((cursosPorDocente.size / plantillaTotalNum) * 100).toFixed(2))
+  reporte.indicadoresOficio = {
+    totalRegistros: filas.length,
+    docentesUnicos: cursosPorDocente.size,
+    coberturaPorcentaje: coberturaCalc,
+    plantillaTotal: plantillaTotalNum,
+    docentesNoParticipan: Math.max(plantillaTotalNum - cursosPorDocente.size, 0),
+    tipoDocente: docentesTipoDocente.size,
+    tipoProfesional: docentesTipoProfesional.size,
+    mujeres: docentesMujeres.size,
+    hombres: docentesHombres.size,
+    habilidadesDigitales: docentesHabDigitales.size,
+    saludMental: docentesSaludMental.size,
+    posgradoHabDigitales: docentesPosgradoHabDigitales.size,
+    licenciaturaHabDigitales: docentesLicenciaturaHabDigitales.size,
+    posgradoSaludMental: docentesPosgradoSaludMental.size,
+    licenciaturaSaludMental: docentesLicenciaturaSaludMental.size,
+  }
+
+  // Versión alterna por total de registros / inscripciones
+  reporte.indicadoresRegistros = {
+    totalRegistros: filas.length,
+    docentesUnicos: cursosPorDocente.size,
+    coberturaPorcentaje: coberturaCalc,
+    plantillaTotal: plantillaTotalNum,
+    docentesNoParticipan: Math.max(plantillaTotalNum - cursosPorDocente.size, 0),
+    tipoDocente: reporte.porTipo?.Docente || 0,
+    tipoProfesional: reporte.porTipo?.Profesional || 0,
+    mujeres: reporte.porGenero?.Mujer || 0,
+    hombres: reporte.porGenero?.Hombre || 0,
+    habilidadesDigitales: (reporte.licenciatura?.habilidadesDigitales || 0) + (reporte.posgrado?.habilidadesDigitales || 0),
+    saludMental: (reporte.licenciatura?.saludEmocional || 0) + (reporte.posgrado?.saludEmocional || 0),
+    posgradoHabDigitales: reporte.posgrado?.habilidadesDigitales || 0,
+    licenciaturaHabDigitales: reporte.licenciatura?.habilidadesDigitales || 0,
+    posgradoSaludMental: reporte.posgrado?.saludEmocional || 0,
+    licenciaturaSaludMental: reporte.licenciatura?.saludEmocional || 0,
+  }
 
   return reporte
 }
