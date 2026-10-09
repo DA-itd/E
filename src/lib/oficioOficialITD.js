@@ -1,6 +1,6 @@
-import jsPDF from 'jspdf'
+import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64 } from './plantillaMembrete'
+import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64 } from './plantillaMembrete.js'
 
 /**
  * Devuelve las 14 filas de indicadores en el orden y texto exactos del formato oficial
@@ -208,6 +208,8 @@ export function generarOficioDOC(datos) {
 
   <!-- Encabezado superior derecho -->
   <div class="encabezado-superior">
+    <div class="oficio-meta" style="font-weight: bold;">Instituto Tecnol&oacute;gico de Durango</div>
+    <div class="oficio-meta" style="font-size: 9pt; margin-bottom: 5pt;">Departamento de desarrollo acad&eacute;mico</div>
     <div class="oficio-meta">${fechaTexto}</div>
     <div class="oficio-meta oficio-num">Oficio No. ${numOficio}/${anio}</div>
   </div>
@@ -330,11 +332,20 @@ export async function generarOficioPDF(datos) {
     doc.rect(0, pageHeight - 2.5, pageWidth, 2.5, 'F')
   }
 
-  // 3. Encabezado superior derecho: Durango, Dgo., [Fecha] y Oficio No. XXX/[año]
-  let y = headerHeight + 6
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
+  // 3. Encabezado superior derecho: Instituto Tecnológico de Durango, Depto., Fecha y Oficio No.
+  let y = headerHeight + 5
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
   doc.setTextColor(20, 20, 20)
+  doc.text('Instituto Tecnológico de Durango', pageWidth - marginX, y, { align: 'right' })
+
+  y += 4.2
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.text('Departamento de desarrollo académico', pageWidth - marginX, y, { align: 'right' })
+
+  y += 6
+  doc.setFontSize(9)
   doc.text(fechaTexto, pageWidth - marginX, y, { align: 'right' })
 
   y += 4.5

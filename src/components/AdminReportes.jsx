@@ -544,10 +544,10 @@ export default function AdminReportes() {
               </button>
               <button
                 onClick={descargarOficioPDF}
-                className="rounded-lg bg-itd-guinda hover:bg-itd-guinda/90 text-white px-3.5 py-2 text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
-                title="Descargar oficio oficial en formato PDF idéntico al documento institucional"
+                className="rounded-lg bg-itd-guinda hover:bg-itd-guinda/90 text-white px-3.5 py-2 text-xs font-bold shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                title="Descargar oficio oficial en formato PDF idéntico al documento institucional (Hoja membretada oficial)"
               >
-                <span>📄</span> Oficio Oficial (PDF)
+                <span>📜</span> Descargar Oficio (PDF)
               </button>
               <button
                 onClick={exportarExcel}
@@ -558,8 +558,9 @@ export default function AdminReportes() {
               <button
                 onClick={exportarPDF}
                 className="rounded-lg bg-slate-700 hover:bg-slate-800 text-white px-3.5 py-2 text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                title="Descargar reporte estadístico desglosado"
               >
-                <span>📄</span> PDF con Logos
+                <span>📄</span> Reporte Detallado (PDF)
               </button>
             </div>
 
@@ -748,8 +749,10 @@ export default function AdminReportes() {
                   </div>
 
                   <div className="p-8 sm:p-12 pt-5 pb-4 flex-1">
-                    {/* Encabezado superior derecho: Durango, Dgo., Fecha y Oficio No. XXX/año */}
+                    {/* Encabezado superior derecho: Instituto Tecnológico de Durango, Depto., Fecha y Oficio No. */}
                     <div className="text-right mb-6 space-y-0.5">
+                      <p className="font-bold text-slate-900 text-xs sm:text-sm">Instituto Tecnológico de Durango</p>
+                      <p className="text-slate-700 text-[11px] sm:text-xs mb-1.5">Departamento de desarrollo académico</p>
                       <p className="text-slate-800 text-xs sm:text-sm">{fechaOficio}</p>
                       <p className="font-bold text-slate-900 text-xs sm:text-sm">Oficio No. {numOficio}/{anio}</p>
                     </div>
