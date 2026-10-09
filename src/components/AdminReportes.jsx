@@ -6,6 +6,7 @@ import autoTable from 'jspdf-autotable'
 import ReportesGraficas from './ReportesGraficas'
 import { dibujarEncabezadoPDF } from '../lib/pdfEncabezado'
 import { generarOficioDOC, generarOficioPDF, obtenerFilasIndicadores } from '../lib/oficioOficialITD'
+import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64 } from '../lib/plantillaMembrete'
 import { supabase } from '../lib/supabaseClient'
 
 const ANIO_ACTUAL = new Date().getFullYear()
@@ -737,70 +738,19 @@ export default function AdminReportes() {
               {/* Vista Previa en Vivo de la Hoja Membretada (Idéntica al Formato Oficial PDF) */}
               <div className="bg-slate-200/80 p-4 sm:p-8 rounded-2xl flex justify-center overflow-x-auto shadow-inner">
                 <div className="bg-white text-slate-900 shadow-2xl border border-slate-300 w-full max-w-[760px] text-xs sm:text-sm font-sans relative overflow-hidden flex flex-col justify-between min-h-[920px]">
-                  {/* Membrete Superior: Barras institucionales TecNM */}
-                  <div className="w-full">
-                    <div className="h-2.5 bg-itd-navy w-full"></div>
-                    <div className="h-1 bg-itd-guinda w-full"></div>
+                  {/* Membrete Superior Oficial Institucional (Extraído directamente de plantilla oficial) */}
+                  <div className="w-full bg-white select-none">
+                    <img
+                      src={HEADER_OFICIO_BASE64}
+                      alt="Membrete Superior Oficial TecNM / ITD"
+                      className="w-full h-auto block pointer-events-none"
+                    />
                   </div>
 
-                  <div className="p-8 sm:p-12 pb-4 flex-1">
-                    {/* Membrete institucional superior con logos oficiales */}
-                    <div className="flex flex-wrap items-center justify-between border-b-2 border-slate-200 pb-3.5 mb-6 gap-3">
-                      <div className="flex items-center gap-3">
-                        {/* Logo Secretaría de Educación Pública */}
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-amber-50 border border-amber-300 flex items-center justify-center text-amber-700 shadow-2xs font-bold text-[10px]">
-                            🦅
-                          </div>
-                          <div>
-                            <p className="font-extrabold text-sm sm:text-base tracking-tight text-slate-900 leading-none">
-                              EDUCACIÓN
-                            </p>
-                            <p className="text-[8.5px] text-slate-500 font-semibold tracking-wider mt-0.5">
-                              SECRETARÍA DE EDUCACIÓN PÚBLICA
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="h-8 w-[1px] bg-slate-300 mx-1 hidden sm:block"></div>
-
-                        {/* Logo TecNM */}
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-7 h-7 rounded-lg bg-itd-navy text-white flex items-center justify-center font-bold text-xs shadow-2xs">
-                            ⚙️
-                          </div>
-                          <div>
-                            <p className="font-extrabold text-xs text-itd-navy tracking-tight leading-none">
-                              TECNOLÓGICO NACIONAL DE MÉXICO®
-                            </p>
-                            <p className="text-[8px] text-slate-400 font-medium">
-                              DIRECCIÓN GENERAL
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Escudo Oficial ITD */}
-                      <div className="flex items-center gap-2 text-right">
-                        <div>
-                          <p className="font-extrabold text-xs text-itd-navy leading-none">
-                            INSTITUTO TECNOLÓGICO DE DURANGO
-                          </p>
-                          <p className="text-[8px] text-itd-guinda font-semibold">
-                            EXCELENCIA EN EDUCACIÓN TECNOLÓGICA®
-                          </p>
-                        </div>
-                        <div className="w-8 h-8 rounded-lg bg-itd-navy text-white flex items-center justify-center font-black text-xs shadow-xs border border-itd-navyDark">
-                          ITD
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Encabezado superior derecho */}
+                  <div className="p-8 sm:p-12 pt-5 pb-4 flex-1">
+                    {/* Encabezado superior derecho: Durango, Dgo., Fecha y Oficio No. XXX/año */}
                     <div className="text-right mb-6 space-y-0.5">
-                      <p className="font-bold text-slate-900 text-xs sm:text-sm">Instituto Tecnológico de Durango</p>
-                      <p className="text-slate-600 text-[11px]">Departamento de desarrollo académico</p>
-                      <p className="text-slate-800 text-xs pt-1.5">{fechaOficio}</p>
+                      <p className="text-slate-800 text-xs sm:text-sm">{fechaOficio}</p>
                       <p className="font-bold text-slate-900 text-xs sm:text-sm">Oficio No. {numOficio}/{anio}</p>
                     </div>
 
@@ -867,45 +817,13 @@ export default function AdminReportes() {
                     <p className="text-[11px] text-slate-500 mb-6">c.c.p Archivo</p>
                   </div>
 
-                  {/* Membrete Inferior Oficial (Pie Institucional) */}
-                  <div className="w-full mt-auto">
-                    <div className="border-t border-slate-200 px-8 sm:px-12 py-3 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-[10px] text-slate-500">
-                      {/* Medallón Oficial del Año */}
-                      <div className="flex items-center gap-2">
-                        <div className="w-9 h-9 rounded-full bg-amber-100/80 border border-amber-300 flex flex-col items-center justify-center text-amber-900 leading-none p-0.5 shadow-2xs">
-                          <span className="font-black text-[9px] text-amber-900">2026</span>
-                          <span className="text-[7px] italic font-serif">Maza</span>
-                        </div>
-                        <div className="leading-tight">
-                          <p className="font-extrabold text-amber-900 text-[10px]">2026</p>
-                          <p className="text-[8px] text-slate-600 italic">Año de Margarita Maza</p>
-                        </div>
-                      </div>
-
-                      {/* Dirección oficial */}
-                      <div className="text-center leading-tight max-w-[340px]">
-                        <p className="font-semibold text-slate-700">
-                          Blvd. Felipe Pescador No. 1830 Ote., Durango, Dgo., C.P. 34080
-                        </p>
-                        <p className="text-[9px] text-slate-500 mt-0.5">
-                          e-mail: depdesarrolloacademico@itdurango.edu.mx · <span className="font-bold text-itd-navy">tecnm.mx</span> | <span className="font-bold text-itd-navy">itdurango.edu.mx</span>
-                        </p>
-                      </div>
-
-                      {/* Sellos de Calidad y Ambiental */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-blue-50 text-blue-800 border border-blue-200" title="Sistema de Gestión Integrado">
-                          SGI
-                        </span>
-                        <span className="px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200" title="Espacio 100% Libre de Plástico de un Solo Uso">
-                          🌱 100% Libre Plástico
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Barras inferiores institucionales */}
-                    <div className="h-1 bg-itd-guinda w-full"></div>
-                    <div className="h-1.5 bg-itd-navy w-full"></div>
+                  {/* Membrete Inferior Oficial Institucional (Pie de Página extraído de plantilla oficial) */}
+                  <div className="w-full mt-auto bg-white select-none">
+                    <img
+                      src={FOOTER_OFICIO_BASE64}
+                      alt="Pie de Página Oficial ITD"
+                      className="w-full h-auto block pointer-events-none"
+                    />
                   </div>
                 </div>
               </div>
