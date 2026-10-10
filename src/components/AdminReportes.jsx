@@ -173,10 +173,11 @@ export default function AdminReportes() {
         nombreFirma: item.elaboro || nombreFirma,
         cargoFirma,
         indicadores: ind,
+        anioMembrete: fechaValida ? new Date(fechaReg).getFullYear() : undefined,
       }
 
       if (formato === 'pdf') await generarOficioPDF({ ...parametros, descargar: true })
-      else generarOficioDOC(parametros)
+      else await generarOficioDOC(parametros)
 
       setMensajeExito(`Oficio ${numOf}/${anioOf} regenerado (${parametros.periodoTexto}) con los datos actuales de ese periodo.`)
       setTimeout(() => setMensajeExito(''), 7000)
@@ -339,7 +340,7 @@ export default function AdminReportes() {
     const ind = modoConteo === 'unicos'
       ? (reporte.indicadoresOficio || {})
       : (reporte.indicadoresRegistros || {})
-    generarOficioDOC({
+    await generarOficioDOC({
       numOficio,
       anio,
       fechaTexto: fechaOficio,

@@ -33,8 +33,10 @@ function esBufferPDF(buffer) {
   return h[0] === 37 && h[1] === 80 && h[2] === 68 && h[3] === 70 && h[4] === 45;
 }
 
-async function cargarPlantillaOficio() {
+// Busca primero oficio_registro_blanco_AAAA.pdf (ej. _2027) y si no existe usa la plantilla base
+async function cargarPlantillaOficio(anio) {
   const rutas = [
+    `${BASE}plantillas/oficio_registro_blanco_${anio}.pdf`,
     `${BASE}plantillas/oficio_registro_blanco.pdf`,
     `/plantillas/oficio_registro_blanco.pdf`,
     `./plantillas/oficio_registro_blanco.pdf`,
@@ -168,7 +170,8 @@ function descargarBytes(bytes, nombreArchivo) {
 
 export async function descargarOficioRegistro(item, convocatoria) {
   try {
-    const pdfDoc = await cargarPlantillaOficio();
+    const anioPlantilla = new Date(item.created_at || Date.now()).getFullYear();
+    const pdfDoc = await cargarPlantillaOficio(anioPlantilla);
     const page = pdfDoc.getPages()[0];
 
     const fontNormal = await cargarFuente(pdfDoc, 'Roboto-Regular.ttf', StandardFonts.Helvetica);

@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64 } from './plantillaMembrete.js'
+import { obtenerMembrete, prepararMembrete, medidasMembrete, dibujarMembretePagina } from './pdfEncabezado.js'
 
 /**
  * Devuelve las 14 filas de indicadores en el orden y texto exactos del formato oficial
@@ -28,7 +28,7 @@ export function obtenerFilasIndicadores(indicadores) {
 /**
  * Genera y descarga el archivo .DOC oficial compatible con Microsoft Word y Google Docs
  */
-export function generarOficioDOC(datos) {
+export async function generarOficioDOC(datos) {
   const {
     numOficio = '416',
     anio = new Date().getFullYear(),
@@ -39,8 +39,10 @@ export function generarOficioDOC(datos) {
     nombreFirma = 'M.C. Alejandro Calderón Rentería',
     cargoFirma = 'Coordinador de Actualización Docente',
     indicadores = {},
+    anioMembrete,
   } = datos
 
+  const membrete = await obtenerMembrete(anioMembrete)
   const filas = obtenerFilasIndicadores(indicadores)
   const cobertura = indicadores.coberturaPorcentaje ?? '0'
 
@@ -204,7 +206,7 @@ export function generarOficioDOC(datos) {
 </head>
 <body>
   <!-- Membrete Superior Institucional Oficial -->
-  <img src="${HEADER_OFICIO_BASE64}" alt="Membrete Oficial TecNM / ITD" class="membrete-img" />
+  <img src="${membrete.header}" alt="Membrete Oficial TecNM / ITD" class="membrete-img" />
 
   <!-- Encabezado superior derecho -->
   <div class="encabezado-superior">
@@ -267,7 +269,7 @@ export function generarOficioDOC(datos) {
   </div>
 
   <!-- Membrete Inferior Oficial -->
-  <img src="${FOOTER_OFICIO_BASE64}" alt="Pie de Página Oficial ITD" class="footer-img" />
+  <img src="${membrete.footer}" alt="Pie de Página Oficial ITD" class="footer-img" />
 </body>
 </html>
 `
@@ -298,6 +300,7 @@ export async function generarOficioPDF(datos) {
     cargoFirma = 'Coordinador de Actualización Docente',
     indicadores = {},
     descargar = true,
+    anioMembrete,
   } = datos
 
   const doc = new jsPDF({
@@ -309,28 +312,10 @@ export async function generarOficioPDF(datos) {
   const pageHeight = doc.internal.pageSize.getHeight() // 279.4 mm (Carta)
   const marginX = 20
 
-  // 1. Membrete Superior Oficial (Extraído fielmente de la plantilla oficial)
-  const headerHeight = (pageWidth * 210) / 1275 // ~35.56 mm
-  try {
-    doc.addImage(HEADER_OFICIO_BASE64, 'PNG', 0, 0, pageWidth, headerHeight, undefined, 'FAST')
-  } catch {
-    doc.setFillColor(27, 57, 106)
-    doc.rect(0, 0, pageWidth, 5, 'F')
-    doc.setFillColor(159, 34, 65)
-    doc.rect(0, 5, pageWidth, 2, 'F')
-  }
-
-  // 2. Membrete Inferior Oficial (Pie Institucional extraído de plantilla)
-  const footerHeight = (pageWidth * 230) / 1275 // ~38.95 mm
-  const footerY = pageHeight - footerHeight
-  try {
-    doc.addImage(FOOTER_OFICIO_BASE64, 'PNG', 0, footerY, pageWidth, footerHeight, undefined, 'FAST')
-  } catch {
-    doc.setFillColor(159, 34, 65)
-    doc.rect(0, pageHeight - 4, pageWidth, 1.5, 'F')
-    doc.setFillColor(27, 57, 106)
-    doc.rect(0, pageHeight - 2.5, pageWidth, 2.5, 'F')
-  }
+  // 1-2. Membrete institucional del año (superior e inferior)
+  await prepararMembrete(doc, anioMembrete)
+  dibujarMembretePagina(doc)
+  const { headerHeight } = medidasMembrete(doc)
 
   // 3. Encabezado superior derecho: Instituto Tecnológico de Durango, Depto., Fecha y Oficio No.
   let y = headerHeight + 5
@@ -458,4 +443,3 @@ export async function generarOficioPDF(datos) {
 
   return doc
 }
-

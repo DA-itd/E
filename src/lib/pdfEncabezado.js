@@ -1,9 +1,118 @@
-import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64 } from './plantillaMembrete.js'
+import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64, HEADER_RATIO, FOOTER_RATIO } from './plantillaMembrete.js'
 
-// Proporciones reales del membrete (px de la plantilla carta a 150 dpi: 1275 x 1650)
+/**
+ * MEMBRETE POR AÑO (igual que las constancias)
+ * --------------------------------------------
+ * Para un año nuevo basta con subir  public/plantillas/membrete_2027.png  (o .jpg/.jpeg):
+ * una página carta con el membrete y el cuerpo en blanco. El sistema detecta solo el
+ * alto del encabezado y del pie y los recorta. Si no existe el archivo del año, usa el
+ * membrete incrustado en plantillaMembrete.js (2026).
+ */
+const BASE = import.meta.env?.BASE_URL || '/'
+const ANIO_BASE = 2026
 export const MARGEN_X = 14
-const HEADER_RATIO = 210 / 1275
-const FOOTER_RATIO = 230 / 1275
+
+const MEMBRETE_BASE = {
+  anio: ANIO_BASE,
+  header: HEADER_OFICIO_BASE64,
+  footer: FOOTER_OFICIO_BASE64,
+  headerRatio: HEADER_RATIO,
+  footerRatio: FOOTER_RATIO,
+  origen: 'incrustado',
+}
+
+const cache = new Map() // año -> Promise<membrete>
+
+/** Pura y testeable: alto (px) del encabezado y del pie en una plantilla en blanco. */
+export function detectarBandas(data, W, H, canales = 4) {
+  const filaConContenido = (y) => {
+    const base = y * W * canales
+    for (let x = 0; x < W; x++) {
+      const i = base + x * canales
+      if (data[i] < 240 || data[i + 1] < 240 || data[i + 2] < 240) return true
+    }
+    return false
+  }
+  const pad = Math.round(W * 0.005)
+  let ultima = -1
+  for (let y = 0; y < H / 2; y++) if (filaConContenido(y)) ultima = y
+  let primera = -1
+  for (let y = H - 1; y >= H / 2; y--) if (filaConContenido(y)) primera = y
+  if (ultima < 0 || primera < 0) return null
+  return {
+    headerPx: Math.min(Math.floor(H / 2), ultima + 1 + pad),
+    footerPx: Math.min(Math.floor(H / 2), H - (primera - pad)),
+  }
+}
+
+async function recortarMembrete(blob, anio) {
+  const bmp = await createImageBitmap(blob)
+  const W = bmp.width
+  const H = bmp.height
+  const lienzo = document.createElement('canvas')
+  lienzo.width = W
+  lienzo.height = H
+  const ctx = lienzo.getContext('2d', { willReadFrequently: true })
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, W, H)
+  ctx.drawImage(bmp, 0, 0)
+  const bandas = detectarBandas(ctx.getImageData(0, 0, W, H).data, W, H, 4)
+  if (!bandas) throw new Error('La plantilla parece estar vacía (sin encabezado ni pie)')
+
+  const cortar = (y, alto) => {
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = alto
+    c.getContext('2d').drawImage(lienzo, 0, y, W, alto, 0, 0, W, alto)
+    return c.toDataURL('image/png')
+  }
+  return {
+    anio,
+    header: cortar(0, bandas.headerPx),
+    footer: cortar(H - bandas.footerPx, bandas.footerPx),
+    headerRatio: bandas.headerPx / W,
+    footerRatio: bandas.footerPx / W,
+    origen: 'archivo',
+  }
+}
+
+async function cargarMembreteAnio(anio) {
+  if (typeof document !== 'undefined') {
+    for (const ext of ['png', 'jpg', 'jpeg']) {
+      try {
+        const resp = await fetch(`${BASE}plantillas/membrete_${anio}.${ext}`)
+        if (!resp.ok) continue
+        const blob = await resp.blob()
+        // Evita falsos positivos: el router de la SPA devuelve index.html para rutas inexistentes
+        if (!String(blob.type).startsWith('image/')) continue
+        return await recortarMembrete(blob, anio)
+      } catch (e) {
+        console.warn(`[membrete] No se pudo usar membrete_${anio}.${ext}:`, e)
+      }
+    }
+  }
+  if (anio !== ANIO_BASE) {
+    console.warn(`[membrete] No hay plantillas/membrete_${anio}.png; se usa el membrete base ${ANIO_BASE}.`)
+  }
+  return { ...MEMBRETE_BASE }
+}
+
+/** Membrete (imágenes + proporciones) para un año. Por defecto, el año actual. */
+export function obtenerMembrete(anio) {
+  const a = Number(anio) || new Date().getFullYear()
+  if (!cache.has(a)) cache.set(a, cargarMembreteAnio(a))
+  return cache.get(a)
+}
+
+/** Asocia el membrete del año a un documento jsPDF (hay que llamarla una vez, con await). */
+export async function prepararMembrete(doc, anio) {
+  doc.__membrete = await obtenerMembrete(anio)
+  return doc.__membrete
+}
+
+function membreteDe(doc) {
+  return doc.__membrete || MEMBRETE_BASE
+}
 
 /** Detecta el formato de imagen (PNG/JPEG) a partir del data URL. */
 function formatoImagen(src) {
@@ -15,34 +124,34 @@ function formatoImagen(src) {
 
 /** Medidas del membrete para un documento dado (mm). */
 export function medidasMembrete(doc) {
+  const mem = membreteDe(doc)
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
-  const headerHeight = pageWidth * HEADER_RATIO
-  const footerHeight = pageWidth * FOOTER_RATIO
+  const headerHeight = pageWidth * mem.headerRatio
+  const footerHeight = pageWidth * mem.footerRatio
   return {
     pageWidth,
     pageHeight,
     headerHeight,
     footerHeight,
-    // Zona libre para contenido
     topSeguro: headerHeight + 6,
     bottomSeguro: footerHeight + 4,
   }
 }
 
-/**
- * Dibuja membrete superior e inferior en la página ACTUAL del documento.
- * Úsalo en cada página (por ejemplo desde didDrawPage de autoTable).
- */
+/** Dibuja membrete superior e inferior en la página ACTUAL (una sola vez por página). */
 export function dibujarMembretePagina(doc) {
   const nPag = doc.internal.getCurrentPageInfo().pageNumber
   doc.__membretePags = doc.__membretePags || new Set()
   if (doc.__membretePags.has(nPag)) return
   doc.__membretePags.add(nPag)
+
+  const mem = membreteDe(doc)
   const { pageWidth, pageHeight, headerHeight, footerHeight } = medidasMembrete(doc)
+  const alias = `membrete-${mem.anio}`
 
   try {
-    doc.addImage(HEADER_OFICIO_BASE64, formatoImagen(HEADER_OFICIO_BASE64), 0, 0, pageWidth, headerHeight, 'membrete-sup', 'FAST')
+    doc.addImage(mem.header, formatoImagen(mem.header), 0, 0, pageWidth, headerHeight, `${alias}-sup`, 'FAST')
   } catch (e) {
     console.error('[membrete] No se pudo dibujar el encabezado:', e)
     doc.setFillColor(27, 57, 106)
@@ -52,7 +161,7 @@ export function dibujarMembretePagina(doc) {
   }
 
   try {
-    doc.addImage(FOOTER_OFICIO_BASE64, formatoImagen(FOOTER_OFICIO_BASE64), 0, pageHeight - footerHeight, pageWidth, footerHeight, 'membrete-inf', 'FAST')
+    doc.addImage(mem.footer, formatoImagen(mem.footer), 0, pageHeight - footerHeight, pageWidth, footerHeight, `${alias}-inf`, 'FAST')
   } catch (e) {
     console.error('[membrete] No se pudo dibujar el pie:', e)
     doc.setFillColor(159, 34, 65)
@@ -62,18 +171,18 @@ export function dibujarMembretePagina(doc) {
   }
 }
 
-/**
- * Crea un documento carta (la plantilla institucional es tamaño carta).
- */
+/** Crea un documento carta (la plantilla institucional es tamaño carta). */
 export function crearDocumentoCarta(jsPDFClass, opciones = {}) {
   return new jsPDFClass({ unit: 'mm', format: 'letter', ...opciones })
 }
 
 /**
- * Dibuja membrete en la primera página + título/subtítulos.
+ * Prepara el membrete del año, lo dibuja en la primera página y escribe título/subtítulos.
+ * @param {number} [anio] año del membrete (por defecto, el año actual)
  * @returns {Promise<number>} Y donde inicia el contenido
  */
-export async function dibujarEncabezadoPDF(doc, titulo, subtitulos = []) {
+export async function dibujarEncabezadoPDF(doc, titulo, subtitulos = [], anio) {
+  if (!doc.__membrete) await prepararMembrete(doc, anio)
   const { pageWidth, headerHeight } = medidasMembrete(doc)
   dibujarMembretePagina(doc)
   activarMembreteAutomatico(doc)
@@ -103,27 +212,16 @@ export async function dibujarEncabezadoPDF(doc, titulo, subtitulos = []) {
   return y + 6
 }
 
-/**
- * Opciones de autoTable para que la tabla respete membrete en TODAS las páginas.
- * Uso: autoTable(doc, { startY, ...opcionesTablaMembrete(doc), head, body, ... })
- */
+/** Opciones de autoTable para que la tabla respete el membrete en TODAS las páginas. */
 export function opcionesTablaMembrete(doc) {
   const { topSeguro, bottomSeguro } = medidasMembrete(doc)
   return {
     margin: { top: topSeguro, bottom: bottomSeguro, left: MARGEN_X, right: MARGEN_X },
-    didDrawPage: () => {
-      // La página 1 ya tiene membrete, pero redibujar es inocuo (mismo alias de imagen);
-      // en páginas 2+ es lo que lo agrega.
-      dibujarMembretePagina(doc)
-    },
+    didDrawPage: () => dibujarMembretePagina(doc),
   }
 }
 
-/* ------------------------------------------------------------------
- * Membrete automático: cualquier doc.addPage() (incluidos los saltos de
- * página de autoTable) dibuja el membrete, y autoTable reserva espacio
- * arriba y abajo. Se activa solo al llamar dibujarEncabezadoPDF(doc, ...).
- * ------------------------------------------------------------------ */
+/** Cualquier doc.addPage() (incluidos los saltos de página de autoTable) dibuja el membrete. */
 export function activarMembreteAutomatico(doc) {
   if (doc.__membreteAuto) return
   doc.__membreteAuto = true
@@ -135,10 +233,7 @@ export function activarMembreteAutomatico(doc) {
   }
 }
 
-/**
- * Margen para autoTable que deja libre el membrete arriba y abajo.
- * Uso: autoTable(doc, { startY, margin: margenTabla(doc), ... })
- */
+/** Margen para autoTable que deja libre el membrete arriba y abajo. */
 export function margenTabla(doc, lados = MARGEN_X) {
   const { topSeguro, bottomSeguro } = medidasMembrete(doc)
   return { top: topSeguro, bottom: bottomSeguro, left: lados, right: lados }
