@@ -3,3 +3,4 @@ dist
 .env
 .env.local
 sistema-de-inscripcion-itd*.json
+.DS_Store
