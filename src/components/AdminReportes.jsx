@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { calcularReporte } from '../lib/reportes'
 import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
+import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ReportesGraficas from './ReportesGraficas'
-import { dibujarEncabezadoPDF } from '../lib/pdfEncabezado'
+import { dibujarEncabezadoPDF, opcionesTablaMembrete, crearDocumentoCarta } from '../lib/pdfEncabezado'
 import { generarOficioDOC, generarOficioPDF, obtenerFilasIndicadores } from '../lib/oficioOficialITD'
 import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64 } from '../lib/plantillaMembrete'
 import { supabase } from '../lib/supabaseClient'
@@ -323,7 +323,7 @@ export default function AdminReportes() {
     if (!reporte) return
     const lista = participantesFiltrados(reporte)
     const tituloDepto = filtroDepartamento || 'Todos los departamentos'
-    const doc = new jsPDF()
+    const doc = crearDocumentoCarta(jsPDF)
 
     const startY = await dibujarEncabezadoPDF(doc, 'Listado de Participantes', [
       `Departamento: ${tituloDepto}`,
@@ -332,6 +332,7 @@ export default function AdminReportes() {
 
     autoTable(doc, {
       startY,
+      ...opcionesTablaMembrete(doc),
       head: [['Folio', 'Nombre', 'Curso', 'Departamento oferente']],
       body: lista.map((p) => [p.folio, p.nombre, p.curso, p.departamentoOferente]),
       styles: { fontSize: 8 },
@@ -357,7 +358,7 @@ export default function AdminReportes() {
 
   async function exportarPDF() {
     if (!reporte) return
-    const doc = new jsPDF()
+    const doc = crearDocumentoCarta(jsPDF)
 
     const tituloDoc = tipoPeriodo === 'anio' ? `Reporte Anual de Capacitación ${anio}` : 'Reporte de Inscripciones y Capacitación Docente'
     const startY = await dibujarEncabezadoPDF(doc, tituloDoc, [
@@ -367,6 +368,7 @@ export default function AdminReportes() {
 
     autoTable(doc, {
       startY,
+      ...opcionesTablaMembrete(doc),
       head: [['Indicador / Desglose', 'Total Registros']],
       body: filasPlanas(reporte).map(([a, b]) => [a || '', b === undefined ? '' : String(b)]),
       styles: { fontSize: 8.5, cellPadding: 2.2 },
