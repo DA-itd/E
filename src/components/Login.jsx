@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
+import { VERSION, VERSION_COMPLETA } from '../lib/version'
 import { supabase, DOMINIO_PERMITIDO } from '../lib/supabaseClient'
 import { formatearRangoFechas, formatearHora } from '../lib/formatoFechas'
 import {
@@ -498,8 +499,8 @@ export default function Login({ onIrAValidar }) {
               <span className="text-base">🛡️</span>
               <span>Departamento de Desarrollo Académico</span>
             </div>
-            <span className="px-2 py-0.5 rounded bg-white/10 text-white/80 font-mono text-[11px] font-semibold border border-white/20">
-              v2.1
+            <span title={`Versión ${VERSION_COMPLETA}`} className="px-2 py-0.5 rounded bg-white/10 text-white/80 font-mono text-[11px] font-semibold border border-white/20">
+              {VERSION}
             </span>
           </div>
         </div>

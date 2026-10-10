@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { VERSION, VERSION_COMPLETA } from '../lib/version'
 import { supabase } from '../lib/supabaseClient'
 import AvisosBanner from './AvisosBanner'
 
@@ -790,8 +791,8 @@ export default function MenuPrincipal({ docente, esAdmin, onIr }) {
             <span>D.R. © Alejandro Calderón Rentería. 2026 · Instituto Tecnológico de Durango</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded bg-white/10 text-white/80 font-mono text-[11px] font-semibold border border-white/20">
-              v2.1
+            <span title={`Versión ${VERSION_COMPLETA}`} className="px-2 py-0.5 rounded bg-white/10 text-white/80 font-mono text-[11px] font-semibold border border-white/20">
+              {VERSION}
             </span>
           </div>
         </div>
