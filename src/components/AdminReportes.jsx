@@ -56,6 +56,8 @@ export default function AdminReportes() {
     }
   })
 
+  const [regenerando, setRegenerando] = useState('') // clave de la fila/formato en proceso
+
   useEffect(() => {
     cargarHistorialSupabase()
     // Generar reporte inicial al cargar
@@ -108,6 +110,115 @@ export default function AdminReportes() {
       ])
     } catch (err) {
       console.warn('Guardado en registro local completado (Supabase opcional):', err)
+    }
+  }
+
+  // Reconstruye el periodo a calcular a partir del texto/año/trimestre guardados en la bitácora
+  function periodoDesdeRegistro(item) {
+    const texto = String(item.periodo || '').toLowerCase()
+    const a = Number(item.anio) || Number((texto.match(/(20\d{2})/) || [])[1]) || anio
+    const t = Number(item.trimestre) || Number((texto.match(/(\d)\s*°?\s*trimestre/) || [])[1]) || 4
+
+    if (/año\s+completo|acumulado\s+anual/.test(texto)) return { tipo: 'anio', anio: a }
+    if (/anual\s+acumulado/.test(texto)) return { tipo: 'acumulado_trimestre', anio: a, trimestre: 4 }
+    if (/acumulado\s+al/.test(texto)) return { tipo: 'acumulado_trimestre', anio: a, trimestre: t }
+    if (/periodo\s+actual/.test(texto)) return { tipo: 'actual', anio: a }
+    if (/trimestre/.test(texto)) return { tipo: 'trimestre', anio: a, trimestre: t }
+    return null
+  }
+
+  // Texto "durante el ___" del oficio, según el periodo reconstruido
+  function textoOficioDesdePeriodo(per, datos) {
+    if (per.tipo === 'anio') return `Año Completo ${per.anio}`
+    if (per.tipo === 'acumulado_trimestre') {
+      return per.trimestre >= 4
+        ? `Periodo Anual Acumulado ${per.anio}`
+        : `Periodo Acumulado al ${per.trimestre}° Trimestre ${per.anio}`
+    }
+    const t = per.trimestre || datos?.trimestre || 4
+    return `${t}° Trimestre ${per.anio}`
+  }
+
+  // Regenera el oficio PDF/Word de una fila de la bitácora, con el periodo de ESA fila.
+  // No agrega un registro nuevo a la bitácora y no cambia lo que se ve en pantalla.
+  async function regenerarOficioDeRegistro(item, formato, clave) {
+    const per = periodoDesdeRegistro(item)
+    if (!per) {
+      setErrorMsg(`No se pudo identificar el periodo de "${item.periodo}". Genera el oficio desde las opciones de arriba.`)
+      return
+    }
+    setRegenerando(clave)
+    setErrorMsg('')
+    try {
+      const datos = await calcularReporte(per)
+      const ind = modoConteo === 'unicos' ? (datos.indicadoresOficio || {}) : (datos.indicadoresRegistros || {})
+
+      const m = String(item.folio || '').match(/Oficio\s+No\.\s*([^/\s]+)\s*\/\s*(\d{4})/i)
+      const numOf = m ? m[1] : numOficio
+      const anioOf = m ? Number(m[2]) : Number(item.anio) || anio
+
+      const fechaReg = item.created_at || item.fecha
+      const fechaValida = fechaReg && !Number.isNaN(new Date(fechaReg).getTime())
+      const fechaTexto = fechaValida
+        ? `Durango, Dgo., ${new Date(fechaReg).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}`
+        : fechaOficio
+
+      const parametros = {
+        numOficio: numOf,
+        anio: anioOf,
+        fechaTexto,
+        nombreJefe,
+        cargoJefe,
+        periodoTexto: textoOficioDesdePeriodo(per, datos),
+        nombreFirma: item.elaboro || nombreFirma,
+        cargoFirma,
+        indicadores: ind,
+      }
+
+      if (formato === 'pdf') await generarOficioPDF({ ...parametros, descargar: true })
+      else generarOficioDOC(parametros)
+
+      setMensajeExito(`Oficio ${numOf}/${anioOf} regenerado (${parametros.periodoTexto}) con los datos actuales de ese periodo.`)
+      setTimeout(() => setMensajeExito(''), 7000)
+    } catch (err) {
+      console.error(err)
+      setErrorMsg('No se pudo regenerar el oficio: ' + err.message)
+    }
+    setRegenerando('')
+  }
+
+  // Elimina un registro de la bitácora (Supabase + copia local)
+  async function eliminarRegistroBitacora(item) {
+    if (!window.confirm(`¿Eliminar de la bitácora "${item.folio}" (${item.periodo})?\nEsto no borra archivos ya descargados.`)) return
+    let errorRemoto = null
+    if (item.id) {
+      const { error } = await supabase.from('historial_reportes_tecnm').delete().eq('id', item.id)
+      errorRemoto = error
+    }
+    const nuevo = historialReportes.filter((r) => r !== item)
+    setHistorialReportes(nuevo)
+    try {
+      localStorage.setItem('itd_historial_reportes_tecnm', JSON.stringify(nuevo))
+    } catch {}
+    if (errorRemoto) {
+      setErrorMsg('Se quitó de esta pantalla, pero Supabase no permitió borrarlo (revisa la política DELETE de la tabla). Podría reaparecer al sincronizar.')
+    }
+  }
+
+  // Vacía por completo la bitácora (Supabase + copia local)
+  async function vaciarBitacora() {
+    if (historialReportes.length === 0) return
+    if (!window.confirm(`¿Vaciar TODA la bitácora (${historialReportes.length} registros)?\nEsta acción no se puede deshacer y no borra archivos ya descargados.`)) return
+    const { error } = await supabase.from('historial_reportes_tecnm').delete().not('id', 'is', null)
+    setHistorialReportes([])
+    try {
+      localStorage.removeItem('itd_historial_reportes_tecnm')
+    } catch {}
+    if (error) {
+      setErrorMsg('Se vació en esta pantalla, pero Supabase no permitió borrar los registros (revisa la política DELETE de la tabla). Podrían reaparecer al sincronizar.')
+    } else {
+      setErrorMsg('')
+      setMensajeExito('Bitácora vaciada correctamente.')
     }
   }
 
@@ -841,16 +952,27 @@ export default function AdminReportes() {
                       <span>📋</span> Bitácora de Oficios Oficiales Emitidos
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      Registro de oficios generados para archivo institucional y constancia.
+                      Registro de oficios generados para archivo institucional y constancia. Los botones PDF y Word de cada fila regeneran el oficio de ese periodo con los datos actuales.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={cargarHistorialSupabase}
-                    className="px-2.5 py-1 text-xs font-semibold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
-                  >
-                    <span>🔄</span> Sincronizar
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    {historialReportes.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={vaciarBitacora}
+                        className="px-2.5 py-1 text-xs font-semibold rounded bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>🗑</span> Vaciar bitácora
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={cargarHistorialSupabase}
+                      className="px-2.5 py-1 text-xs font-semibold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>🔄</span> Sincronizar
+                    </button>
+                  </div>
                 </div>
 
                 {historialReportes.length === 0 ? (
@@ -889,18 +1011,31 @@ export default function AdminReportes() {
                             <td className="p-2 text-right space-x-1.5">
                               <button
                                 type="button"
-                                onClick={descargarOficioPDF}
-                                className="text-itd-guinda font-bold hover:underline text-[11px] cursor-pointer"
+                                onClick={() => regenerarOficioDeRegistro(item, 'pdf', `${item.id || item.folio || idx}-${idx}-pdf`)}
+                                disabled={Boolean(regenerando)}
+                                title="Regenera el oficio PDF con el periodo de este registro"
+                                className="text-itd-guinda font-bold hover:underline text-[11px] cursor-pointer disabled:opacity-40 disabled:cursor-wait"
                               >
-                                PDF
+                                {regenerando === `${item.id || item.folio || idx}-${idx}-pdf` ? '…' : 'PDF'}
                               </button>
                               <span className="text-slate-300">·</span>
                               <button
                                 type="button"
-                                onClick={descargarOficioWord}
-                                className="text-blue-700 font-bold hover:underline text-[11px] cursor-pointer"
+                                onClick={() => regenerarOficioDeRegistro(item, 'word', `${item.id || item.folio || idx}-${idx}-word`)}
+                                disabled={Boolean(regenerando)}
+                                title="Regenera el oficio Word con el periodo de este registro"
+                                className="text-blue-700 font-bold hover:underline text-[11px] cursor-pointer disabled:opacity-40 disabled:cursor-wait"
                               >
-                                Word
+                                {regenerando === `${item.id || item.folio || idx}-${idx}-word` ? '…' : 'Word'}
+                              </button>
+                              <span className="text-slate-300">·</span>
+                              <button
+                                type="button"
+                                onClick={() => eliminarRegistroBitacora(item)}
+                                title="Eliminar este registro"
+                                className="text-red-600 font-bold hover:underline text-[11px] cursor-pointer"
+                              >
+                                Eliminar
                               </button>
                             </td>
                           </tr>
