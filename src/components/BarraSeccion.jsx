@@ -1,4 +1,6 @@
 // src/components/BarraSeccion.jsx
+import { VERSION, VERSION_COMPLETA } from '../lib/version'
+
 export default function BarraSeccion({ titulo, subTabs, tabActiva, onCambiarTab, onMenu }) {
   return (
     <div className="bg-itd-navy text-white">
@@ -14,8 +16,8 @@ export default function BarraSeccion({ titulo, subTabs, tabActiva, onCambiarTab,
           <p className="font-display text-sm font-semibold tracking-wide uppercase text-white/90">
             {titulo}
           </p>
-          <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/75 font-mono text-[10px] font-semibold border border-white/20">
-            v2.1
+          <span title={`Versión ${VERSION_COMPLETA}`} className="px-1.5 py-0.5 rounded bg-white/10 text-white/75 font-mono text-[10px] font-semibold border border-white/20">
+            {VERSION}
           </span>
         </div>
       </div>
