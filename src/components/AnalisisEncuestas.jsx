@@ -35,7 +35,7 @@ import {
   BorderStyle,
 } from 'docx'
 import { saveAs } from 'file-saver'
-import { dibujarEncabezadoPDF } from '../lib/pdfEncabezado'
+import { dibujarEncabezadoPDF, margenTabla } from '../lib/pdfEncabezado'
 import { calcularReporte, calcularHistoricoMultianual } from '../lib/reportes'
 
 // Normalización de nombres de departamento para comparaciones robustas
@@ -624,7 +624,7 @@ async function generarPDFInformeDepartamentalCompleto({
 
   autoTable(doc, {
     startY: startY + 8,
-    margin: { left: 14, right: 14 },
+    margin: margenTabla(doc),
     head: [['Métrica de Evaluación', 'Resultado', 'Estatus']],
     body: [
       ['Encuestas Procesadas del Departamento', `${deptoObj.totalEncuestas || respuestasDepto.length}`, 'Completado'],
@@ -672,7 +672,7 @@ async function generarPDFInformeDepartamentalCompleto({
 
   autoTable(doc, {
     startY: currentY + 5.5,
-    margin: { left: 14, right: 14 },
+    margin: margenTabla(doc),
     head: [['Curso', 'Encuestas', 'Satisfacción', 'Aplicación en Aula', 'Recomendación']],
     body: (cursosAnalizados.length > 0 ? cursosAnalizados.slice(0, 8) : [
       { nombre: 'Cursos de Capacitación y Actualización Docente', totalEncuestas: deptoObj.totalEncuestas, promedioSatisfaccion: 4.8, promedioImpacto: 4.7, repetirSemestreSiguiente: true }
@@ -762,7 +762,7 @@ async function generarPDFInformeDepartamentalCompleto({
 
   autoTable(doc, {
     startY: startY2 + 154,
-    margin: { left: 14, right: 14 },
+    margin: margenTabla(doc),
     head: [['Año', 'Inscripciones en el Año', 'Total Acumulado', 'Docentes Únicos', 'Tipo Docente', 'Tipo Profesional']],
     body: datosHistoricoTabla.map((h) => [
       `${h.anio}`,
@@ -1940,7 +1940,7 @@ export default function AnalisisEncuestas() {
 
     autoTable(doc, {
       startY: startY + 9,
-      margin: { left: 14, right: 14 },
+      margin: margenTabla(doc),
       head: [['Métrica Institucional', 'Valor', 'Estatus']],
       body: [
         ['Total de Encuestas Procesadas', `${respuestasFiltradas.length}`, 'Completado'],
@@ -1971,7 +1971,7 @@ export default function AnalisisEncuestas() {
 
     autoTable(doc, {
       startY: currentY + 8.5,
-      margin: { left: 14, right: 14 },
+      margin: margenTabla(doc),
       head: [['Departamento', 'Encuestas', 'Satisfacción', 'Semáforo']],
       body: departamentosAnalizados.map((d) => [
         d.nombre.replace('DEPARTAMENTO DE ', ''),
@@ -2012,7 +2012,7 @@ export default function AnalisisEncuestas() {
 
     autoTable(doc, {
       startY: currentY + 4,
-      margin: { left: 14, right: 14 },
+      margin: margenTabla(doc),
       head: [['Curso', 'Encuestas', 'Satisfacción', 'Aplicación en Aula', 'Recomendación']],
       body: cursosAnalizados.slice(0, 10).map((c) => [
         c.nombre.length > 45 ? c.nombre.slice(0, 45) + '…' : c.nombre,

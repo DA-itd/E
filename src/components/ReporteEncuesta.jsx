@@ -9,7 +9,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, HeadingLevel, ImageRun, WidthType, AlignmentType } from 'docx'
 import { saveAs } from 'file-saver'
-import { dibujarEncabezadoPDF, cargarImagenArrayBuffer, URL_LOGO_TECNM, URL_LOGO_ITD } from '../lib/pdfEncabezado'
+import { dibujarEncabezadoPDF, margenTabla, cargarImagenArrayBuffer, URL_LOGO_TECNM, URL_LOGO_ITD } from '../lib/pdfEncabezado'
 
 const COLOR_HOMBRE = '#3b82f6'
 const COLOR_MUJER = '#ec4899'
@@ -448,7 +448,7 @@ export default function ReporteEncuesta() {
 
     autoTable(doc, {
       startY: y,
-      margin: { left: 14, right: 14 },
+      margin: margenTabla(doc),
       head: [['Indicador', 'Valor']],
       body: [
         ['Total de respuestas', filtradas.length],
@@ -477,7 +477,7 @@ export default function ReporteEncuesta() {
     y += 3
     autoTable(doc, {
       startY: y,
-      margin: { left: 14, right: 14 },
+      margin: margenTabla(doc),
       head: [['Curso', 'Participantes']],
       body: participacionPorCurso.map((p) => [p.curso, p.cantidad]),
       styles: { fontSize: 8 },
@@ -496,7 +496,7 @@ export default function ReporteEncuesta() {
     y += 3
     autoTable(doc, {
       startY: y,
-      margin: { left: 14, right: 14 },
+      margin: margenTabla(doc),
       head: [['Periodo', 'Departamento', 'Participantes']],
       body: participacionPorDepartamentoYPeriodo.map((p) => [p.periodo, p.departamento, p.cantidad]),
       styles: { fontSize: 8 },
@@ -519,7 +519,7 @@ export default function ReporteEncuesta() {
       const preguntasSeccion = resultadoPreguntas.filter((p) => p.seccion === codigoSeccion)
       autoTable(doc, {
         startY: yy,
-        margin: { left: 14, right: 14 },
+        margin: margenTabla(doc),
         head: [['Pregunta', 'Prom.', '1', '2', '3', '4', '5', 'Total']],
         body: preguntasSeccion.map((p) => [p.texto, p.promedio.toFixed(2), ...p.distribucion, p.total]),
         styles: { fontSize: 7.5 },

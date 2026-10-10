@@ -1,6 +1,7 @@
 import { HEADER_OFICIO_BASE64, FOOTER_OFICIO_BASE64 } from './plantillaMembrete.js'
 
 // Proporciones reales del membrete (px de la plantilla carta a 150 dpi: 1275 x 1650)
+export const MARGEN_X = 14
 const HEADER_RATIO = 210 / 1275
 const FOOTER_RATIO = 230 / 1275
 
@@ -34,6 +35,10 @@ export function medidasMembrete(doc) {
  * Úsalo en cada página (por ejemplo desde didDrawPage de autoTable).
  */
 export function dibujarMembretePagina(doc) {
+  const nPag = doc.internal.getCurrentPageInfo().pageNumber
+  doc.__membretePags = doc.__membretePags || new Set()
+  if (doc.__membretePags.has(nPag)) return
+  doc.__membretePags.add(nPag)
   const { pageWidth, pageHeight, headerHeight, footerHeight } = medidasMembrete(doc)
 
   try {
@@ -71,8 +76,9 @@ export function crearDocumentoCarta(jsPDFClass, opciones = {}) {
 export async function dibujarEncabezadoPDF(doc, titulo, subtitulos = []) {
   const { pageWidth, headerHeight } = medidasMembrete(doc)
   dibujarMembretePagina(doc)
+  activarMembreteAutomatico(doc)
 
-  const marginX = 20
+  const marginX = MARGEN_X
   let y = headerHeight + 8
   if (titulo) {
     doc.setFont('helvetica', 'bold')
@@ -104,11 +110,36 @@ export async function dibujarEncabezadoPDF(doc, titulo, subtitulos = []) {
 export function opcionesTablaMembrete(doc) {
   const { topSeguro, bottomSeguro } = medidasMembrete(doc)
   return {
-    margin: { top: topSeguro, bottom: bottomSeguro, left: 20, right: 20 },
+    margin: { top: topSeguro, bottom: bottomSeguro, left: MARGEN_X, right: MARGEN_X },
     didDrawPage: () => {
       // La página 1 ya tiene membrete, pero redibujar es inocuo (mismo alias de imagen);
       // en páginas 2+ es lo que lo agrega.
       dibujarMembretePagina(doc)
     },
   }
+}
+
+/* ------------------------------------------------------------------
+ * Membrete automático: cualquier doc.addPage() (incluidos los saltos de
+ * página de autoTable) dibuja el membrete, y autoTable reserva espacio
+ * arriba y abajo. Se activa solo al llamar dibujarEncabezadoPDF(doc, ...).
+ * ------------------------------------------------------------------ */
+export function activarMembreteAutomatico(doc) {
+  if (doc.__membreteAuto) return
+  doc.__membreteAuto = true
+  const addPageOriginal = doc.addPage.bind(doc)
+  doc.addPage = (...args) => {
+    const r = addPageOriginal(...args)
+    dibujarMembretePagina(doc)
+    return r
+  }
+}
+
+/**
+ * Margen para autoTable que deja libre el membrete arriba y abajo.
+ * Uso: autoTable(doc, { startY, margin: margenTabla(doc), ... })
+ */
+export function margenTabla(doc, lados = MARGEN_X) {
+  const { topSeguro, bottomSeguro } = medidasMembrete(doc)
+  return { top: topSeguro, bottom: bottomSeguro, left: lados, right: lados }
 }
